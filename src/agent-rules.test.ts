@@ -57,9 +57,12 @@ describe('Rule 10–12: no AI or outside calls in the running app, no secrets', 
     expect(S.settings.gis.allowExternal).toBe(false)
     expect(S.settings.gis.basemap).toBe('none')
   })
-  it('network calls exist only behind those two switches', () => {
+  it('network calls exist only behind those two switches, plus the app talking to its own API', () => {
     const net = PROD.filter((f) => /\bfetch\(|XMLHttpRequest|new WebSocket|navigator\.sendBeacon/.test(read(f))).map(rel)
-    expect(net.sort()).toEqual(['src/core/ai.ts', 'src/views/admin/GisSettings.tsx'])
+    expect(net.sort()).toEqual(['src/core/ai.ts', 'src/core/data/server.ts', 'src/views/admin/GisSettings.tsx'])
+    // the data client only ever calls its own API, by relative URL
+    const calls = [...read(path.join(ROOT, 'src/core/data/server.ts')).matchAll(/fetch\(([^,)]+)/g)].map((m) => m[1].trim())
+    expect(calls).toEqual(["'api/' + path"])
   })
   it('index.html loads nothing from outside (no CDN fonts or scripts)', () => {
     expect(read(path.join(ROOT, 'index.html'))).not.toMatch(/https?:\/\//)
