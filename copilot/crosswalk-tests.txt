@@ -3,4 +3,3507 @@ Capital project delivery for gas utilities (prototype, fictional demo data).
 Each file starts with a line '===== FILE: <path> ====='.
 
 FILES IN THIS PART:
+  src/agent-rules.test.ts
+  src/core/__tests__/engine.test.ts
+  src/core/__tests__/geo.test.ts
+  src/core/auth/auth.test.ts
+  src/core/engine/estimatingAdmin.test.ts
+  src/core/engine/factorModel.test.ts
+  src/core/engine/finance.test.ts
+  src/core/engine/lines-sap-quick.test.ts
+  src/core/engine/notify.test.ts
+  src/core/engine/reconcile.test.ts
+  src/core/sync.test.ts
+  src/server/api.test.ts
+  src/views/actuals/actuals.test.tsx
+  src/views/audit/flows.test.ts
+  src/views/audit/smoke.test.tsx
+  src/views/estimating/admin/factorModel.test.tsx
+  src/views/estimating/boe.test.ts
+  src/views/estimating/lib.test.ts
+  src/views/estimating/quick/lib.test.ts
+  src/views/estimating/quick/render.test.tsx
+  src/views/estimating/render-draft.test.tsx
+  src/views/estimating/render.test.tsx
+  src/views/forecast/lib.test.ts
+  src/views/forecast/lines.test.tsx
+  src/views/forecast/render.test.tsx
+  src/views/messages/messages.test.tsx
+  src/views/planning/model.test.ts
+  src/views/portfolio/moduleA.test.tsx
+  src/views/project/tabs/controls/trace.test.ts
+  src/views/project/tabs/finance/views.test.tsx
+  src/views/project/tabs/info/lib.test.ts
+  src/views/project/tabs/info/views.test.tsx
+  src/views/regulatory/render.test.tsx
+  src/views/risk/lib.test.ts
+  src/views/risk/render.test.tsx
+  src/views/workflows/lib.test.ts
+  src/views/workflows/render.test.tsx
 
+===== FILE: src/agent-rules.test.ts =====
+// Guard tests for AGENT_RULES.md. These fail the build if a change breaks a rule the code can check.
+import { describe, expect, it } from 'vitest'
+import { produce } from 'immer'
+import fs from 'node:fs'
+import path from 'node:path'
+import { createHash } from 'node:crypto'
+import { buildSeed } from './core/seed'
+import { computeQuick, inputsFromProject } from './core/engine/quick'
+import { estimateTotals, parametricLines } from './core/engine/estimates'
+import { auditIntact, useStore } from './core/store'
+import { DRIVER_KEYS, backtest, createFactorEstimate, factorInputsFromProject, priceFactor, publishedModel, validateModel } from './core/engine/factorModel'
+
+const ROOT = path.resolve(__dirname, '..')
+function walk(dir: string): string[] {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = path.join(dir, e.name)
+    return e.isDirectory() ? (e.name === 'node_modules' || e.name === 'dist' ? [] : walk(p)) : [p]
+  })
+}
+const SRC = walk(path.join(ROOT, 'src')).filter((f) => /\.(ts|tsx)$/.test(f))
+const PROD = SRC.filter((f) => !/\.test\.tsx?$/.test(f))
+const rel = (f: string) => path.relative(ROOT, f).split(path.sep).join('/')
+const read = (f: string) => fs.readFileSync(f, 'utf8')
+const S = buildSeed()
+
+describe('Rule 1–5: fictional data only', () => {
+  it('no real-looking pipeline line numbers in the seed (fictional lines are AV-xx)', () => {
+    for (const p of S.projects) {
+      expect(p.name, p.code).not.toMatch(/Line \d/)
+      expect(p.asset.lineId, p.code).not.toMatch(/^\d+(-\d+)?$/)
+    }
+  })
+  it('no regulatory proceeding numbers in the real docket format', () => {
+    for (const f of PROD) expect(read(f), rel(f)).not.toMatch(/\b[AD]\.\d{2}-\d{2}-\d{3}\b/)
+  })
+  it('vendor names follow the fictional "… Co." convention', () => {
+    const vendors = new Set([...S.contracts.map((c) => c.vendor), ...S.longLead.map((l) => l.vendor), ...S.actualTxns.map((t) => t.vendor).filter(Boolean)])
+    for (const v of vendors) expect(v, v).toMatch(/Co\.$|^City of Arroyo Valley$/)
+  })
+  // Blocked company and internal-system names are stored as hashes so this public test does not publish them.
+  // To add one: node -e "console.log(require('crypto').createHash('sha256').update('<word in lowercase>').digest('hex').slice(0,16))"
+  const BLOCKED = new Set(['82efad7021f8edae', '00c1c9a927cc3ccb', 'e8ae129e089fe716', '128d077252ff6e80', 'c4bc92512b4cf86e', '50fb28b23c1e32dd', '1c9fcf1f738dff9e', '69d41313de163800'])
+  const hash = (w: string) => createHash('sha256').update(w).digest('hex').slice(0, 16)
+  it('no company names, branding or internal system names in the source or docs', () => {
+    const docs = ['README.md', 'CONTRIBUTING.md', 'AGENT_RULES.md', 'NOTICE', 'index.html'].map((f) => path.join(ROOT, f))
+    for (const f of [...PROD, ...docs]) {
+      const hits = [...new Set(read(f).toLowerCase().match(/[a-z0-9&]+/g) ?? [])].filter((w) => BLOCKED.has(hash(w)))
+      expect(hits, rel(f)).toEqual([])
+    }
+  })
+})
+
+describe('Rule 10–12: no AI or outside calls in the running app, no secrets', () => {
+  it('AI assist and outside map services are off in the demo data', () => {
+    expect(S.settings.ai.enabled).toBe(false)
+    expect(S.settings.ai.endpoint).toBe('')
+    expect(S.settings.gis.allowExternal).toBe(false)
+    expect(S.settings.gis.basemap).toBe('none')
+  })
+  it('network calls exist only behind those two switches, plus the app talking to its own API', () => {
+    const net = PROD.filter((f) => /\bfetch\(|XMLHttpRequest|new WebSocket|navigator\.sendBeacon/.test(read(f))).map(rel)
+    expect(net.sort()).toEqual(['src/core/ai.ts', 'src/core/data/server.ts', 'src/views/admin/GisSettings.tsx'])
+    // the data client only ever calls its own API, by relative URL
+    const calls = [...read(path.join(ROOT, 'src/core/data/server.ts')).matchAll(/fetch\(([^,)]+)/g)].map((m) => m[1].trim())
+    expect(calls).toEqual(["'api/' + path"])
+  })
+  it('index.html loads nothing from outside (no CDN fonts or scripts)', () => {
+    expect(read(path.join(ROOT, 'index.html'))).not.toMatch(/https?:\/\//)
+  })
+  it('no secrets in code; .env files are ignored', () => {
+    for (const f of PROD) expect(read(f), rel(f)).not.toMatch(/(sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/)
+    expect(read(path.join(ROOT, '.gitignore'))).toMatch(/^\.env/m)
+  })
+})
+
+describe('Rule 13–15: fairness in the estimating model', () => {
+  it('no engine code reads location.dac', () => {
+    for (const f of PROD.filter((f) => rel(f).startsWith('src/core/engine/'))) expect(read(f), rel(f)).not.toMatch(/\bdac\b/)
+  })
+  it('estimates are identical whether or not a project is flagged as a disadvantaged community', () => {
+    for (const p of S.projects.filter((x) => x.asset.lengthFt > 0).slice(0, 8)) {
+      const flipped = produce(S, (d) => { const q = d.projects.find((x) => x.id === p.id)!; q.location.dac = !q.location.dac })
+      const q2 = flipped.projects.find((x) => x.id === p.id)!
+      expect(computeQuick(flipped, inputsFromProject(flipped, q2)).total).toBe(computeQuick(S, inputsFromProject(S, p)).total)
+      const t = (lines: ReturnType<typeof parametricLines>) => estimateTotals({ lines, loaders: [], escalationPct: 0, contingency: { method: 'deterministic', pct: 0 }, cls: 5 }).total
+      expect(t(parametricLines(q2, flipped.rates))).toBe(t(parametricLines(p, S.rates)))
+    }
+  })
+  // Factor model (rules 13–15): factors bind only to physical, legal or logistical drivers.
+  const FORBIDDEN = /\bdac\b|disadvantag|income|wealth|race|ethnic|home.?value|property.?value|zip|postal|census|demograph|poverty|language/i
+  it('every factor in every model version binds to an allowed driver, never a demographic or wealth attribute', () => {
+    expect(S.factorModels.length).toBeGreaterThan(0)
+    for (const m of S.factorModels) for (const f of m.factors) {
+      expect(DRIVER_KEYS, `${m.version}/${f.id}`).toContain(f.driver)
+      expect(String(f.driver), f.id).not.toMatch(FORBIDDEN)
+      expect(`${f.id} ${f.name}`, f.id).not.toMatch(FORBIDDEN)
+      expect(['physical', 'legal', 'logistical']).toContain(f.kind)
+    }
+    for (const k of DRIVER_KEYS) expect(k).not.toMatch(FORBIDDEN)
+    for (const r of S.backtestProjects) for (const k of Object.keys(r.drivers)) expect(DRIVER_KEYS, r.id).toContain(k)
+  })
+  it('a factor bound to location.dac (or any other attribute) is rejected and has no effect on price', () => {
+    const m = publishedModel(S)!
+    const bad = { ...m, factors: [...m.factors, { id: 'f-x', name: 'Community', kind: 'legal' as const, driver: 'dac' as never, weight: 1, cv: 0.1, levels: [{ value: 'true', label: 'Yes', multiplier: 1.3 }, { value: 'false', label: 'No', multiplier: 1 }] }] }
+    expect(validateModel(bad).join()).toMatch(/not a physical, legal or logistical driver/)
+    const p = S.projects[0]
+    expect(priceFactor(S, bad, factorInputsFromProject(S, p)).direct).toBe(priceFactor(S, m, factorInputsFromProject(S, p)).direct)
+  })
+  it('factor-model inputs carry no community attributes, and estimates are invariant to location.dac', () => {
+    for (const p of S.projects) {
+      const i = factorInputsFromProject(S, p)
+      expect(Object.keys(i.site).sort()).toEqual(['classLocation', 'crossings', 'hca', 'permitComplexity', 'remoteness', 'soil', 'traffic', 'workHours'])
+      expect(JSON.stringify(i)).not.toMatch(/"dac"/)
+      const flipped = produce(S, (d) => { const q = d.projects.find((x) => x.id === p.id)!; q.location.dac = !q.location.dac })
+      const q2 = flipped.projects.find((x) => x.id === p.id)!
+      for (const m of S.factorModels) {
+        const a = priceFactor(S, m, factorInputsFromProject(S, p)), b = priceFactor(flipped, m, factorInputsFromProject(flipped, q2))
+        expect([b.total, b.p10, b.p90], p.code).toEqual([a.total, a.p10, a.p90])
+      }
+      const e1 = produce(S, (d) => { createFactorEstimate(d, p.id, factorInputsFromProject(d, d.projects.find((x) => x.id === p.id)!), 'x') }).estimates.at(-1)!
+      const e2 = produce(flipped, (d) => { createFactorEstimate(d, p.id, factorInputsFromProject(d, d.projects.find((x) => x.id === p.id)!), 'x') }).estimates.at(-1)!
+      expect(estimateTotals(e2).total, p.code).toBe(estimateTotals(e1).total)
+    }
+    const all = (s: typeof S) => s.factorModels.map((m) => backtest(s, m).mape)
+    expect(all(produce(S, (d) => { for (const p of d.projects) p.location.dac = !p.location.dac }))).toEqual(all(S))
+  })
+})
+
+describe('Rule 16–17: pure engine, one data-access interface', () => {
+  it('src/core/engine imports nothing from UI, storage, network or frameworks', () => {
+    for (const f of PROD.filter((f) => rel(f).startsWith('src/core/engine/'))) {
+      const src = read(f)
+      const imports = [...src.matchAll(/from '([^']+)'/g)].map((m) => m[1])
+      for (const i of imports) expect(i, `${rel(f)} imports ${i}`).toMatch(/^(\.\.\/types|\.\.\/util|\.\/[a-zA-Z]+)$/)
+      expect(src, rel(f)).not.toMatch(/\b(window|document|localStorage)\.|\bfetch\(/)
+    }
+  })
+  it('nothing outside src/core/data touches browser storage', () => {
+    for (const f of PROD.filter((f) => !rel(f).startsWith('src/core/data/'))) expect(read(f), rel(f)).not.toMatch(/\b(localStorage|sessionStorage|indexedDB)\b/)
+  })
+})
+
+describe('Rule 21: append-only audit log', () => {
+  it('auditIntact accepts appends and rejects edits or deletions', () => {
+    const a = S.audit.slice(0, 3)
+    expect(auditIntact(a, [...a, { ...a[0], id: 'new' }])).toBe(true)
+    expect(auditIntact(a, a.slice(1))).toBe(false)
+    expect(auditIntact(a, [{ ...a[0], summary: 'edited' }, a[1], a[2]])).toBe(false)
+  })
+  it('the store refuses an update that removes audit entries', () => {
+    const before = useStore.getState().audit.length
+    useStore.getState().update((d) => { d.audit.splice(0, 1); d.settings.orgName = 'changed' })
+    expect(useStore.getState().audit.length).toBe(before)
+    expect(useStore.getState().settings.orgName).not.toBe('changed')
+  })
+})
+
+===== FILE: src/core/__tests__/engine.test.ts =====
+import { buildSeed } from '../seed'
+import { computeClass, estimateTotals, MATURITY_ITEMS, CLASS_RANGES } from '../engine/estimates'
+import { decideGate, readiness, ensureDeliverables } from '../engine/gates'
+import { position, takeSnapshot, compareSnapshots, latestOf } from '../engine/position'
+import { startWorkflow, actOnWorkflow, tasksFor, simulate, latestDef } from '../engine/workflow'
+import { monteCarlo } from '../engine/risk'
+import { evmMetrics } from '../engine/evm'
+import { setClock } from '../util'
+
+const all = (cls: number) => Object.fromEntries(MATURITY_ITEMS.map((m) => [m.key, m.forClass >= cls]))
+
+describe('estimating', () => {
+  test('class is computed from maturity, never skips a coarser requirement', () => {
+    expect(computeClass({})).toBe(5)
+    expect(computeClass(all(4))).toBe(4)
+    expect(computeClass(all(3))).toBe(3)
+    const gap = { ...all(3), 'route-selected': false }
+    expect(computeClass(gap)).toBe(5)
+  })
+  test('totals apply loaders, escalation, contingency and class range', () => {
+    const t = estimateTotals({ cls: 3, lines: [{ id: 'a', categoryId: 'cat-contract', workPackage: '', description: '', qty: 100, unit: 'ft', unitCost: 1000, source: 'library', confidence: 'high' }], loaders: [{ name: 'x', pct: 10 }], escalationPct: 5, contingency: { method: 'deterministic', pct: 20 } })
+    expect(t.lines).toBe(100000)
+    expect(t.loaders).toBe(10000)
+    expect(t.escalation).toBe(5500)
+    expect(t.contingency).toBe(Math.round(115500 * 0.2))
+    expect(t.low).toBe(Math.round(t.total * (1 + CLASS_RANGES[3].low)))
+  })
+})
+
+describe('gates & baselines', () => {
+  test('control gate converts the Class 3 estimate into a budget and creates Original + Current baselines', () => {
+    const s = buildSeed()
+    setClock(s.settings.asOf)
+    const p = s.projects.find((x) => x.code === 'PRJ-1003')!
+    const before = s.budgets.filter((b) => b.projectId === p.id && b.kind === 'control').length
+    // approve the in-review Class 3 by walking its workflow
+    const inst = s.workflows.find((w) => w.projectId === p.id && w.recordType === 'estimate' && w.status === 'running')!
+    while (inst.status === 'running') { const a = inst.active[0]; actOnWorkflow(s, inst.id, a.nodeId, a.assigneeIds[0], 'approve') }
+    for (const d of s.deliverables.filter((d) => d.projectId === p.id && d.stageIndex === p.stageIndex)) d.status = 'accepted'
+    for (const r of s.risks.filter((r) => r.projectId === p.id)) if (!r.responses.length) r.responses.push({ id: 'x', action: 'x', ownerId: 'u-pm1', due: '2027-01-01', status: 'open', cost: 0 })
+    expect(readiness(s, p).ready).toBe(true)
+    decideGate(s, p.id, 'go', ['u-dir1'], 'ok')
+    expect(p.stageIndex).toBe(3)
+    expect(s.budgets.filter((b) => b.projectId === p.id && b.kind === 'control').length).toBe(before + 1)
+    expect(latestOf(s, p.id, 'original')).toBeTruthy()
+    const pos = position(s, p.id)
+    expect(pos.budgetKind).toBe('control')
+    setClock(null)
+  })
+  test('snapshot compare bridges cost and milestone moves', () => {
+    const s = buildSeed()
+    const p = s.projects.find((x) => x.code === 'PRJ-1001')!
+    const a = latestOf(s, p.id, 'original')!
+    const b = takeSnapshot(s, p.id, 'forecast', 'test')
+    const d = compareSnapshots(a, b)
+    expect(typeof d.totalDelta).toBe('number')
+    expect(Array.isArray(d.costBridge)).toBe(true)
+  })
+})
+
+describe('workflow', () => {
+  test('change request routes by dollar authority and long schedule impacts add a scheduler review', () => {
+    const s = buildSeed()
+    const p = s.projects.find((x) => x.code === 'PRJ-1001')!
+    const def = latestDef(s, 'change-request')!
+    const small = simulate(s, def, { amount: 100000, scheduleImpactDays: 0 }, p.id, p.team.pm)
+    const big = simulate(s, def, { amount: 8000000, scheduleImpactDays: 45 }, p.id, p.team.pm)
+    expect(small.map((x) => x.node.id)).toEqual(['prep', 'impact', 'approve'])
+    expect(small.at(-1)!.people.every((x) => x.roles.includes('program-manager'))).toBe(true)
+    expect(big.map((x) => x.node.id)).toEqual(['prep', 'impact', 'sched', 'approve'])
+    expect(big.at(-1)!.people.every((x) => x.roles.includes('exec'))).toBe(true)
+  })
+  test('approved change creates a new Current baseline', () => {
+    const s = buildSeed()
+    const p = s.projects.find((x) => x.code === 'PRJ-1011')!
+    const n0 = s.snapshots.filter((x) => x.projectId === p.id && x.type === 'current').length
+    s.changes.push({ id: 'c1', projectId: p.id, code: 'CR-T', title: 't', type: 'cost', rootCause: 'Permitting', description: '', costImpact: 50000, scheduleImpactDays: 0, scopeImpact: '', categoryId: 'cat-contract', fundedFrom: 'contingency', status: 'draft', requestedById: p.team.pm!, requestedAt: s.settings.asOf })
+    const inst = startWorkflow(s, 'change-request', { title: 't', recordType: 'change', recordId: 'c1', projectId: p.id, data: { amount: 50000, scheduleImpactDays: 0 }, startedById: p.team.pm })!
+    while (inst.status === 'running') { const a = inst.active[0]; actOnWorkflow(s, inst.id, a.nodeId, a.assigneeIds[0], a.nodeId === 'prep' ? 'submit' : 'approve') }
+    expect(inst.status).toBe('approved')
+    expect(s.changes.find((c) => c.id === 'c1')!.status).toBe('approved')
+    expect(s.snapshots.filter((x) => x.projectId === p.id && x.type === 'current').length).toBe(n0 + 1)
+  })
+  test('demo user has inbox tasks', () => {
+    const s = buildSeed()
+    expect(tasksFor(s, 'u-me').length).toBeGreaterThan(5)
+  })
+})
+
+describe('risk & evm', () => {
+  test('monte carlo percentiles are ordered', () => {
+    const s = buildSeed()
+    const p = s.projects.find((x) => x.code === 'PRJ-1020')!
+    const r = monteCarlo(p.id, s.risks.filter((x) => x.projectId === p.id), 1e8, 600, s.settings.asOf, 2000)
+    expect(r.costP.P10).toBeLessThanOrEqual(r.costP.P50)
+    expect(r.costP.P50).toBeLessThanOrEqual(r.costP.P80)
+    expect(r.costP.P80).toBeLessThanOrEqual(r.costP.P90)
+  })
+  test('evm metrics', () => {
+    const m = evmMetrics([{ id: '1', projectId: 'p', period: '2026-01', planned: 100, earned: 80, actual: 100, commitments: 0 }], 1000)
+    expect(m.cpi).toBeCloseTo(0.8)
+    expect(m.spi).toBeCloseTo(0.8)
+    expect(m.eac).toBe(1250)
+  })
+})
+
+===== FILE: src/core/__tests__/geo.test.ts =====
+import { parseCoordinates, parseGeoJSON, lengthFt, offset, distanceToLineFt, nearbyNetwork } from '../engine/geo'
+import { buildSeed } from '../seed'
+
+test('parses typed, pasted and Google Maps coordinates', () => {
+  expect(parseCoordinates('35.4231, -119.8765')).toEqual([[35.4231, -119.8765]])
+  expect(parseCoordinates('-119.8765 35.4231')).toEqual([[35.4231, -119.8765]])
+  expect(parseCoordinates('https://www.google.com/maps/@35.42,-119.87,15z')).toEqual([[35.42, -119.87]])
+  expect(parseCoordinates('35.1,-119.1\n35.2,-119.2\n35.3,-119.3').length).toBe(3)
+})
+test('distances and offsets agree', () => {
+  const a: [number, number] = [35, -119]
+  const b = offset(a, 5280, 90)
+  expect(Math.abs(lengthFt([a, b]) - 5280)).toBeLessThan(5)
+  expect(distanceToLineFt(offset(a, 100, 0), [a, b]).ft).toBeGreaterThan(90)
+})
+test('GeoJSON lines are read as lat/lng', () => {
+  const g = parseGeoJSON({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[-119, 35], [-118.9, 35.1]] } })
+  expect(g.lines[0][0]).toEqual([35, -119])
+})
+test('seed projects sit on or near the demo network', () => {
+  const s = buildSeed()
+  expect(s.projects.every((p) => p.location.lat && p.location.lng)).toBe(true)
+  const p = s.projects.find((x) => x.code === 'PRJ-1001')!
+  expect(nearbyNetwork(s, p, 1500)[0]?.ft).toBe(0)
+  const v = s.projects.find((x) => x.code === 'PRJ-1024')!
+  expect(nearbyNetwork(s, v, 50).length).toBeGreaterThan(0)
+})
+
+===== FILE: src/core/auth/auth.test.ts =====
+import { expect, it } from 'vitest'
+import { demoAuthProvider, demoGroupMap, rolesForGroups } from './index'
+import { buildSeed } from '../seed'
+
+it('groups map to roles; the demo provider exposes only id, name and groups', () => {
+  const s = buildSeed()
+  const me = s.people.find((p) => p.id === s.currentUserId)!
+  const u = demoAuthProvider(() => me).currentUser()!
+  expect(Object.keys(u).sort()).toEqual(['groups', 'id', 'name'])
+  const map = demoGroupMap(s.roles.map((r) => r.id))
+  expect(rolesForGroups(map, u.groups).sort()).toEqual([...me.roles].sort())
+  expect(rolesForGroups(map, ['someone-elses-group'])).toEqual([])
+})
+
+===== FILE: src/core/engine/estimatingAdmin.test.ts =====
+import { produce } from 'immer'
+import { buildSeed } from '../seed'
+import { computeClass, estimateTotals, maturityItems, parametricLines, ratesFor, regionalUnitCost } from './estimates'
+import { applyReprice, currentEstimateOf, keepHistorical, pricedOnVersion, publishRateTable, rateTableVersionAt, repriceCandidates, salesTaxFor, scopeQuantities } from './estimatingAdmin'
+import { computeQuick, inputsFromProject } from './quick'
+
+const s = buildSeed()
+const P = (code: string) => s.projects.find((p) => p.code === code)!
+
+test('sales tax is weighted by the county split and lands in taxable categories', () => {
+  const split = s.projects.find((p) => (p.counties?.length ?? 0) > 1)!
+  const t = salesTaxFor(s, split)
+  const rate = (c: string) => s.settings.estimating.taxRates.find((x) => x.county === c)!.rate
+  const expect_ = split.counties!.reduce((a, c) => a + (c.pct / 100) * rate(c.county), 0)
+  expect(t.pct).toBeCloseTo(expect_, 2)
+  const e = { cls: 3 as const, lines: [{ id: 'a', categoryId: 'cat-pipe', workPackage: '', description: '', qty: 100, unit: 'ft', unitCost: 100, source: 'library' as const, confidence: 'medium' as const }, { id: 'b', categoryId: 'cat-contract', workPackage: '', description: '', qty: 1, unit: 'LS', unitCost: 10000, source: 'library' as const, confidence: 'medium' as const }], loaders: [], escalationPct: 0, contingency: { method: 'deterministic' as const, pct: 0 }, salesTax: { pct: 10, counties: [], categoryIds: ['cat-pipe'] } }
+  const tt = estimateTotals(e)
+  expect(tt.tax).toBe(1000)
+  expect(tt.lines).toBe(20000)
+  expect(tt.byCategory['cat-pipe']).toBe(11000)
+  expect(tt.total).toBe(21000)
+  // estimates without a stamp are unchanged
+  expect(estimateTotals({ ...e, salesTax: undefined }).total).toBe(20000)
+})
+
+test('region selects regional rows, else base × factor', () => {
+  const p = P('PRJ-1001') // West
+  const cfg = s.settings.estimating
+  const pool = s.rates.filter((r) => r.assetType === p.asset.type && r.workMethod === p.workMethod && !r.region)
+  const r0 = pool.find((r) => r.categoryId === 'cat-traffic' && r.terrain === p.location.terrain)!
+  const rates = [...s.rates.filter((r) => !r.region), { ...r0, id: 'rate-west-traffic', region: 'West', p50: 999 }, { ...r0, id: 'rate-east-traffic', region: 'East', p50: 1 }]
+  const picked = ratesFor(p, rates).find((r) => r.categoryId === 'cat-traffic')!
+  expect(picked.id).toBe('rate-west-traffic')
+  const lines = parametricLines(p, rates, { region: 'West', regionFactors: cfg.regionFactors })
+  expect(lines.find((l) => l.categoryId === 'cat-traffic')!.unitCost).toBe(999)
+  const pipe = lines.find((l) => l.categoryId === 'cat-pipe')!
+  const base = s.rates.find((r) => r.id === pipe.rateId)!
+  expect(pipe.unitCost).toBeCloseTo(regionalUnitCost(base, { region: 'West', regionFactors: cfg.regionFactors }).unitCost, 2)
+  expect(pipe.unitCost).toBeGreaterThan(base.p50) // West factor > 1
+  expect(rates.filter((r) => r.region === 'East').some((r) => ratesFor(p, rates).includes(r))).toBe(false)
+})
+
+test('scope statement feeds the rate-table estimate inputs', () => {
+  const p = P('PRJ-1001')
+  const q = scopeQuantities(s, p)
+  expect(q.lengthFt).toBeGreaterThan(0)
+  const v = P('PRJ-1026')
+  expect(scopeQuantities(s, v).sites).toBe(3)
+})
+
+test('maturity checklist comes from settings', () => {
+  const items = maturityItems(s)
+  expect(items.length).toBeGreaterThan(5)
+  const all3 = Object.fromEntries(items.map((m) => [m.key, m.forClass >= 3]))
+  expect(computeClass(all3, items)).toBe(3)
+  const extra = [...items, { key: 'x-new', label: 'New', forClass: 3 as const, hint: '' }]
+  expect(computeClass(all3, extra)).toBe(4)
+})
+
+test('rate table versions, bulk reprice and keep decisions', () => {
+  const v = s.settings.estimating.rateTableVersion
+  expect(rateTableVersionAt(s, '2025-03-01T00:00:00Z')).toBe(1)
+  const plans = repriceCandidates(s)
+  expect(plans.length).toBeGreaterThan(3)
+  expect(plans.every((p) => p.fromVersion < v && p.estimate.method !== 'quick')).toBe(true)
+  const ok = plans.filter((p) => p.eligible)
+  expect(ok.length).toBeGreaterThan(0)
+
+  const st = produce(s, (d) => {
+    const r = applyReprice(d, ok.slice(0, 2).map((p) => p.estimate.id), 'test')
+    expect(r.created.length + r.updated.length).toBe(2)
+    for (const e of r.created) {
+      expect(e.status).toBe('draft')
+      expect(e.rateTableVersion).toBe(v)
+      expect(e.loaders.length).toBeGreaterThan(0)
+      expect(e.salesTax).toBeDefined()
+    }
+    keepHistorical(d, [ok[2]?.estimate.id ?? ok[0].estimate.id], 'construction under way')
+  })
+  const after = repriceCandidates(st)
+  expect(after.length).toBe(plans.length - 2)
+  expect(after.some((p) => p.kept)).toBe(true)
+  for (const p of ok.slice(0, 2)) expect(pricedOnVersion(st, currentEstimateOf(st, p.project.id)!)).toBe(v)
+
+  const st2 = produce(st, (d) => {
+    const rates = d.rates.map((r) => (r.categoryId === 'cat-contract' ? { ...r, p50: Math.round(r.p50 * 1.1) } : r))
+    const res = publishRateTable(d, JSON.parse(JSON.stringify(rates)), 'contract +10%')
+    expect(res.version).toBe(v + 1)
+    expect(res.changes.length).toBeGreaterThan(5)
+  })
+  expect(st2.settings.estimating.rateTableHistory.slice(-1)[0].note).toBe('contract +10%')
+  const after2 = repriceCandidates(st2)
+  expect(after2.length).toBeGreaterThan(after.length) // the fresh drafts are now stale too
+  expect(after2.some((p) => !p.eligible && p.estimate.status === 'in-review')).toBe(true)
+})
+
+test('quick estimates read region factors and class 5 contingency from administration', () => {
+  const p = P('PRJ-1006')
+  const i = inputsFromProject(s, p)
+  const a = computeQuick(s, i)
+  const st = produce(s, (d) => { d.settings.estimating.regionFactors[p.location.district] = 2; d.settings.estimating.contingencyByClass['5'] = 40 })
+  const b = computeQuick(st, i)
+  expect(b.contingencyPct).toBe(40)
+  expect(b.direct).toBeGreaterThan(a.direct * 1.5)
+})
+
+===== FILE: src/core/engine/factorModel.test.ts =====
+import { describe, expect, it } from 'vitest'
+import { produce } from 'immer'
+import type { AppState, FactorModel } from '../types'
+import { buildSeed } from '../seed'
+import { sum } from '../util'
+import { estimateTotals } from './estimates'
+import {
+  DRIVER_KEYS, adjustFactorEstimate, backtest, baseRateFor, createFactorEstimate, diffModels, discardDraft, factorInputsFromProject, gateCheck,
+  levelOf, monteCarloFactor, newDraft, openDraft, priceFactor, publishedModel, rateTableEstimate, saveDraft, validateModel,
+} from './factorModel'
+import { returnedForRevision, submitBlockers, submitFactorModel, withdrawFactorModel } from './factorWorkflow'
+import { actOnWorkflow, tasksFor } from './workflow'
+
+const S = buildSeed()
+const pub = publishedModel(S)!
+const proj = (code: string) => S.projects.find((p) => p.code === code)!
+
+describe('Factor model seed', () => {
+  it('has exactly one published model, a draft, and a retired version', () => {
+    expect(S.factorModels.filter((m) => m.status === 'published')).toHaveLength(1)
+    expect(openDraft(S)?.status).toBe('draft')
+    expect(S.factorModels.some((m) => m.status === 'retired')).toBe(true)
+    expect(S.settings.factorModel.overrideReasons.length).toBeGreaterThanOrEqual(4)
+  })
+  it('every project has drivers and the backtest set has ~60 closed projects', () => {
+    for (const p of S.projects) expect(p.drivers, p.code).toBeTruthy()
+    expect(S.backtestProjects.length).toBeGreaterThanOrEqual(55)
+    expect(S.backtestProjects.every((r) => r.actual > 0)).toBe(true)
+  })
+  it('seed is deterministic', () => {
+    const T = buildSeed()
+    expect(T.backtestProjects.map((r) => r.actual)).toEqual(S.backtestProjects.map((r) => r.actual))
+    expect(T.projects.map((p) => p.drivers)).toEqual(S.projects.map((p) => p.drivers))
+  })
+  it('base rates start from the historical cost table P50s', () => {
+    for (const b of pub.baseRates) expect(S.historicalCosts.find((h) => h.id === b.sourceRowId)?.p50).toBe(b.rate)
+  })
+})
+
+describe('Pricing', () => {
+  const p = proj('PRJ-1005')
+  const i = factorInputsFromProject(S, p)
+  const r = priceFactor(S, pub, i)
+  it('finds a base rate and itemizes every driver; item effects add up to direct − baseline', () => {
+    expect(r.base).toBeTruthy()
+    expect(r.match).toBe('exact')
+    expect(sum(r.items.map((x) => x.effect))).toBe(r.direct - r.baseline)
+    const applicable = pub.factors.filter((f) => !f.appliesTo || f.appliesTo.includes(i.assetType))
+    for (const f of applicable) expect(r.items.some((x) => x.id === f.id)).toBe(true)
+    expect(r.items.some((x) => x.id === 'region')).toBe(true)
+    expect(r.items.some((x) => x.id === 'escalation')).toBe(true)
+  })
+  it('direct follows the formula and the total matches the estimate tables', () => {
+    const expected = r.baseline * r.scale * r.factorProduct * r.regionFactor * r.escalationFactor
+    expect(Math.abs(r.direct - expected)).toBeLessThanOrEqual(1)
+    expect(r.total).toBe(estimateTotals({ lines: r.lines, loaders: S.settings.loaderRates.filter((x) => x.year === 2026), escalationPct: 0, contingency: { method: 'deterministic', pct: r.contingencyPct }, cls: 5, salesTax: r.salesTax }).total)
+    expect(r.p10).toBeLessThan(r.p50)
+    expect(r.p90).toBeGreaterThan(r.p50)
+    expect(r.p90 / r.p50).toBeCloseTo(Math.exp(1.2816 * r.sigma), 3)
+  })
+  it('a driver moves the cost by its weighted multiplier; weight 0 makes it neutral', () => {
+    const soft = { ...i, site: { ...i.site, soil: 'normal' as const } }
+    const rock = { ...i, site: { ...i.site, soil: 'rock' as const } }
+    const m = pub.factors.find((f) => f.id === 'f-soil')!.levels.find((l) => l.value === 'rock')!.multiplier
+    expect(priceFactor(S, pub, rock).direct / priceFactor(S, pub, soft).direct).toBeCloseTo(m, 3)
+    const zero: FactorModel = { ...pub, factors: pub.factors.map((f) => (f.id === 'f-soil' ? { ...f, weight: 0 } : f)) }
+    expect(priceFactor(S, zero, rock).direct).toBe(priceFactor(S, zero, soft).direct)
+    expect(priceFactor(S, { ...pub, factors: pub.factors.map((f) => (f.id === 'f-soil' ? { ...f, weight: 0.5 } : f)) }, rock).direct / priceFactor(S, pub, soft).direct).toBeCloseTo(1 + 0.5 * (m - 1), 3)
+  })
+  it('size scale: below 1 the unit cost falls as quantity grows', () => {
+    const small = priceFactor(S, pub, { ...i, qty: 2000 }), big = priceFactor(S, pub, { ...i, qty: 40000 })
+    expect(big.direct / 40000).toBeLessThan(small.direct / 2000)
+    expect(priceFactor(S, { ...pub, scaleExponent: 1 }, { ...i, qty: 40000 }).scale).toBe(1)
+  })
+  it('crossings are banded; booleans read yes/no', () => {
+    const d = { ...i.site, terrain: i.terrain }
+    expect(levelOf({ ...d, crossings: 0 }, 'crossings')).toBe('0')
+    expect(levelOf({ ...d, crossings: 2 }, 'crossings')).toBe('1-2')
+    expect(levelOf({ ...d, crossings: 7 }, 'crossings')).toBe('6+')
+    expect(levelOf({ ...d, hca: true }, 'hca')).toBe('yes')
+  })
+  it('falls back to the nearest diameter band, and reports none for an asset it has no rate for', () => {
+    expect(baseRateFor(pub, { assetType: 'transmission-pipeline', workMethod: 'replace-open-trench', diameterBand: 'le-8' }).match).toBe('nearest-band')
+    expect(baseRateFor(pub, { assetType: 'storage-field', workMethod: 'abandon', diameterBand: 'n/a' }).match).toBe('none')
+  })
+  it('the rate-table comparison prices the same project', () => {
+    expect(rateTableEstimate(S, p)!.total).toBeGreaterThan(0)
+  })
+})
+
+describe('Backtest and publish gate', () => {
+  const bt = backtest(S, pub)
+  it('backtests every closed project and reports accuracy by asset type', () => {
+    expect(bt.n).toBe(S.backtestProjects.length)
+    expect(sum(bt.byAsset.map((g) => g.n))).toBe(bt.n)
+    expect(bt.points.every((x) => x.p10 < x.predicted && x.predicted < x.p90)).toBe(true)
+  })
+  it('the published model meets the default gate', () => {
+    const g = gateCheck(bt, S.settings.factorModel.gate)
+    expect(g.reasons).toEqual([])
+    expect(bt.mape).toBeLessThanOrEqual(25)
+    expect(bt.coverage).toBeGreaterThanOrEqual(70)
+    expect(bt.coverage).toBeLessThanOrEqual(95)
+  })
+  it('a badly calibrated model fails the gate with reasons', () => {
+    const wide = { ...pub, baseCv: 0.9 }
+    const g = gateCheck(backtest(S, wide), S.settings.factorModel.gate)
+    expect(g.ok).toBe(false)
+    expect(g.reasons.join()).toMatch(/P10–P90/)
+    const biased: FactorModel = { ...pub, baseRates: pub.baseRates.map((b) => ({ ...b, rate: b.rate * 1.5 })) }
+    expect(gateCheck(backtest(S, biased), S.settings.factorModel.gate).reasons.join()).toMatch(/Bias/)
+  })
+  it('validation rejects out-of-range weights and a baseline level that is not 1', () => {
+    const bad: FactorModel = { ...pub, factors: pub.factors.map((f, k) => (k === 0 ? { ...f, weight: 1.5, levels: f.levels.map((l) => ({ ...l, multiplier: 1.1 })) } : f)) }
+    const v = validateModel(bad)
+    expect(v.some((x) => /weight/.test(x))).toBe(true)
+    expect(v.some((x) => /baseline/.test(x))).toBe(true)
+  })
+})
+
+describe('Versions, submission and approval', () => {
+  it('diffs report weight and multiplier changes', () => {
+    const draft = openDraft(S)!
+    const d = diffModels(pub, draft)
+    expect(d.some((x) => /Traffic: weight 0\.80 → 0\.90/.test(x))).toBe(true)
+    expect(d.some((x) => /Rock: ×1\.35 → ×1\.42/.test(x))).toBe(true)
+  })
+  it('save draft writes a diff to the audit trail; only one open draft at a time', () => {
+    const draft = openDraft(S)!
+    const next = produce(S, (d) => { saveDraft(d, { ...draft, factors: draft.factors.map((f) => (f.id === 'f-hours' ? { ...f, weight: 0.7 } : f)) }, 'u-est2') })
+    expect(next.audit[next.audit.length - 1].summary).toMatch(/Work-hour restrictions: weight 1\.00 → 0\.70/)
+    let again: unknown = 'x'
+    produce(S, (d) => { again = newDraft(d, 'u-est1') })
+    expect(again).toBeUndefined()
+  })
+  it('submit is blocked with reasons when the gate fails, and nothing changes', () => {
+    const draft = openDraft(S)!
+    const s1 = produce(S, (d) => { d.settings.factorModel.gate.maxMape = 5 })
+    expect(submitBlockers(s1, draft.id)[0]).toMatch(/Mean absolute % error/)
+    let res: ReturnType<typeof submitFactorModel> | undefined
+    const s2 = produce(s1, (d) => { res = submitFactorModel(d, draft.id, 'u-est2') })
+    expect(res!.ok).toBe(false)
+    expect(s2.factorModels.find((m) => m.id === draft.id)!.status).toBe('draft')
+    expect(s2.workflows.length).toBe(s1.workflows.length)
+  })
+  it('submit → estimating lead approves → published; prior version retired; audited', () => {
+    const draft = openDraft(S)!
+    let res: ReturnType<typeof submitFactorModel> | undefined
+    let s: AppState = produce(S, (d) => { res = submitFactorModel(d, draft.id, 'u-est2', 'Refit after closeouts') })
+    expect(res!.ok).toBe(true)
+    const m = s.factorModels.find((x) => x.id === draft.id)!
+    expect(m.status).toBe('in-review')
+    expect(m.backtest?.passed).toBe(true)
+    const task = tasksFor(s, 'u-estl').find((t) => t.inst.id === res!.instId)!
+    expect(task.node.id).toBe('lead')
+    s = produce(s, (d) => { actOnWorkflow(d, res!.instId!, 'lead', 'u-estl', 'approve', 'Approved') })
+    expect(s.factorModels.find((x) => x.id === draft.id)!.status).toBe('published')
+    expect(s.factorModels.find((x) => x.id === pub.id)!.status).toBe('retired')
+    expect(s.factorModels.filter((x) => x.status === 'published')).toHaveLength(1)
+    expect(s.audit.some((a) => a.entityId === draft.id && a.action === 'publish')).toBe(true)
+    expect(s.audit.some((a) => a.entityId === pub.id && a.action === 'retire')).toBe(true)
+    // new quick estimates price on the newly published version
+    const e = produce(s, (d) => { createFactorEstimate(d, proj('PRJ-1014').id, factorInputsFromProject(d, proj('PRJ-1014')), 'x') }).estimates.at(-1)!
+    expect(e.factor?.modelVersion).toBe(m.version)
+  })
+  it('the person who submitted a model cannot approve it, even as an estimating lead or admin', () => {
+    const draft = openDraft(S)!
+    let res: ReturnType<typeof submitFactorModel> | undefined
+    const s = produce(S, (d) => { res = submitFactorModel(d, draft.id, 'u-estl') })
+    expect(res!.ok).toBe(true)
+    expect(() => produce(s, (d) => { actOnWorkflow(d, res!.instId!, 'lead', 'u-estl', 'approve', 'Self') })).toThrow(/cannot approve/)
+    expect(s.factorModels.find((x) => x.id === draft.id)!.status).toBe('in-review')
+  })
+  it('returned in review goes back to an editable draft; discard keeps the record as retired', () => {
+    const draft = openDraft(S)!
+    let res: ReturnType<typeof submitFactorModel> | undefined
+    let s: AppState = produce(S, (d) => { res = submitFactorModel(d, draft.id, 'u-est2') })
+    s = produce(s, (d) => { actOnWorkflow(d, res!.instId!, 'lead', 'u-estl', 'return', 'Explain the rock change') })
+    expect(returnedForRevision(s, draft.id)?.event?.comment).toBe('Explain the rock change')
+    s = produce(s, (d) => { expect(withdrawFactorModel(d, draft.id, 'u-est2')).toBe(true) })
+    expect(s.factorModels.find((x) => x.id === draft.id)!.status).toBe('draft')
+    // rejected outright: back to draft too
+    s = produce(s, (d) => { res = submitFactorModel(d, draft.id, 'u-est2') })
+    s = produce(s, (d) => { actOnWorkflow(d, res!.instId!, 'lead', 'u-estl', 'reject', 'Not this cycle') })
+    expect(s.factorModels.find((x) => x.id === draft.id)!.status).toBe('draft')
+    s = produce(s, (d) => { discardDraft(d, draft.id, 'u-est2') })
+    expect(s.factorModels.find((x) => x.id === draft.id)!.status).toBe('retired')
+    s = produce(s, (d) => { newDraft(d, 'u-est1') })
+    expect(openDraft(s)?.parentVersion).toBe(pub.version)
+  })
+})
+
+describe('Monte Carlo', () => {
+  const r = priceFactor(S, pub, factorInputsFromProject(S, proj('PRJ-1001')))
+  const mc = monteCarloFactor(r, 5000, 11)
+  it('is seeded and pure', () => {
+    expect(monteCarloFactor(r, 5000, 11)).toEqual(mc)
+    expect(monteCarloFactor(r, 5000, 12).p.P50).not.toBe(mc.p.P50)
+  })
+  it('centres on the point estimate and matches the analytic range', () => {
+    expect(Math.abs(mc.p.P50 / r.total - 1)).toBeLessThan(0.03)
+    expect(Math.abs(mc.p.P10 / r.p10 - 1)).toBeLessThan(0.04)
+    expect(Math.abs(mc.p.P90 / r.p90 - 1)).toBeLessThan(0.04)
+    expect(mc.p.P80).toBeLessThan(mc.p.P90)
+  })
+  it('histogram, S-curve and tornado', () => {
+    expect(sum(mc.histogram.map((b) => b.n))).toBe(5000)
+    expect(mc.scurve[0].pct).toBe(0)
+    expect(mc.scurve.at(-1)!.pct).toBe(100)
+    for (let k = 1; k < mc.scurve.length; k++) expect(mc.scurve[k].value).toBeGreaterThanOrEqual(mc.scurve[k - 1].value)
+    expect(sum(mc.tornado.map((t) => t.share))).toBeCloseTo(1, 6)
+    expect(mc.tornado[0].id).toBe('base')
+  })
+})
+
+describe('Quick estimates on the factor model', () => {
+  const p = proj('PRJ-1014')
+  it('creates a Class 5 quick estimate whose totals equal the model price, with drivers, range and BOE', () => {
+    const i = factorInputsFromProject(S, p)
+    const r = priceFactor(S, pub, i, { salesTax: undefined })
+    const next = produce(S, (d) => { createFactorEstimate(d, p.id, i, 'test') })
+    const e = next.estimates.at(-1)!
+    expect(e.method).toBe('quick')
+    expect(e.cls).toBe(5)
+    expect(e.factor?.modelVersion).toBe(pub.version)
+    expect(Math.abs(estimateTotals(e).total - r.total)).toBeLessThanOrEqual(2)
+    expect(e.factor?.items.length).toBeGreaterThan(4)
+    expect(e.quick?.range.low).toBe(e.factor?.p10)
+    expect(e.basis.scopeBasis).toMatch(/factor model v2/)
+    expect(e.factor?.rateTable).toBeGreaterThan(0)
+  })
+  it('estimator adjustment needs a reason; before/after kept; BOE records it', () => {
+    const e0 = S.estimates.find((e) => e.factor && e.status === 'in-review')!
+    const next = produce(S, (d) => { adjustFactorEstimate(d, e0.id, { pct: -10, reason: S.settings.factorModel.overrideReasons[1], note: 'Shorter route' }, 'u-est2') })
+    const e = next.estimates.find((x) => x.id === e0.id)!
+    expect(e.quick!.adjustment!.pct).toBe(-10)
+    expect(e.quick!.adjustment!.toTotal).toBe(estimateTotals(e).total)
+    expect(e.quick!.adjustment!.toTotal / e.quick!.adjustment!.fromTotal).toBeCloseTo(0.9, 2)
+    expect(e.factor!.adjustment!.reason).toBe(S.settings.factorModel.overrideReasons[1])
+    expect(e.basis.assumptions.join(' ')).toMatch(/Shorter route/)
+    expect(next.audit.at(-1)!.summary).toMatch(/−?-?10%: \$[\d.]+M → \$[\d.]+M — /)
+  })
+  it('driver keys are a closed list', () => {
+    expect([...DRIVER_KEYS].sort()).toEqual(['classLocation', 'crossings', 'hca', 'permitComplexity', 'remoteness', 'soil', 'terrain', 'traffic', 'workHours'])
+  })
+})
+
+===== FILE: src/core/engine/finance.test.ts =====
+import { buildSeed } from '@/core/seed'
+import { produce } from 'immer'
+import type { AppState } from '@/core/types'
+import { actOnWorkflow } from './workflow'
+import {
+  capitalSplit, commitmentIssues, commitmentRow, completeScheduleNotice, createCommitmentChange, deliverableCompleteness,
+  ioCoverage, lineCoverage, nextCcoCode, nextIoNumber, notifyScheduler,
+} from './finance'
+
+const seed = buildSeed()
+const P = (s: AppState, id: string) => s.projects.find((p) => p.id === id)!
+
+describe('financial accounts', () => {
+  it('flags WBS functions with budget that no IO carries, and clears the gap once assigned', () => {
+    const p = P(seed, 'prj-1001')
+    const cov = ioCoverage(seed, p)
+    expect(cov.basis).toBe('budget')
+    for (const g of cov.gaps) expect(g.budget).toBeGreaterThan(0)
+    const gap = cov.gaps.find((g) => g.status === 'gap')
+    expect(gap).toBeTruthy()
+    const next = produce(seed, (d) => { P(d, 'prj-1001').finance!.ios[0].functionIds.push(gap!.fnId) })
+    expect(ioCoverage(next, P(next, 'prj-1001')).gaps.some((g) => g.fnId === gap!.fnId)).toBe(false)
+  })
+  it('reports requested-only IOs as pending and initiation projects (estimate basis) as gaps', () => {
+    const stage1 = seed.projects.find((p) => p.stageIndex === 1 && p.status === 'active' && p.finance?.ios.every((i) => i.status === 'requested'))!
+    expect(ioCoverage(seed, stage1).gaps.some((g) => g.status === 'pending')).toBe(true)
+    const init = ioCoverage(seed, P(seed, 'prj-1006'))
+    expect(init.basis).toBe('estimate')
+    expect(init.gaps.every((g) => g.status === 'gap')).toBe(true)
+  })
+  it('compares the capital split the IOs carry with the scope statement', () => {
+    const p = seed.projects.find((x) => (x.finance?.ios.length ?? 0) >= 2)!
+    const sp = capitalSplit(seed, p)
+    expect(sp.capital).toBeGreaterThan(0)
+    expect(sp.om).toBeGreaterThan(0)
+    expect(sp.ioCapitalPct).toBeCloseTo((sp.capital / (sp.capital + sp.om)) * 100, 0)
+    expect(sp.deltaPts).toBeCloseTo(sp.ioCapitalPct! - p.scope.capitalPct!, 0)
+  })
+  it('numbers new IOs in the project series', () => {
+    const p = P(seed, 'prj-1001')
+    expect(nextIoNumber(p, 'capital')).toBe('71100102')
+    expect(nextIoNumber(P(seed, 'prj-1006'), 'om')).toBe('72100601')
+  })
+})
+
+describe('commitments', () => {
+  it('computes current, remaining and PO share for every commitment', () => {
+    for (const c of seed.contracts) {
+      const r = commitmentRow(seed, c)
+      expect(r.current).toBe(c.value + c.changeOrders)
+      expect(r.remaining).toBe(r.current - c.invoiced)
+      // approved changes tie out to approved RFI / CCOs
+      expect(c.changeOrders).toBe(r.ccos.filter((x) => x.status === 'approved').reduce((a, x) => a + x.amount, 0))
+    }
+  })
+  it('flags estimate lines with budget that no commitment covers, but not company labor', () => {
+    const lc = lineCoverage(seed, 'prj-1001')
+    expect(lc.gaps.length).toBeGreaterThan(0)
+    expect(lc.gaps.every((g) => g.status === 'gap' && g.budget > 0 && g.contractIds.length === 0)).toBe(true)
+    expect(lc.rows.find((r) => r.lineId === 'fl-100')?.status).toBe('company')
+    const line = lc.gaps[0].lineId
+    const next = produce(seed, (d) => { d.contracts.find((c) => c.projectId === 'prj-1001')!.lineIds!.push(line) })
+    expect(lineCoverage(next, 'prj-1001').gaps.some((g) => g.lineId === line)).toBe(false)
+  })
+  it('flags a commitment whose IO does not carry its lines', () => {
+    const next = produce(seed, (d) => {
+      const p = P(d, 'prj-1001')
+      p.finance!.ios[0].functionIds = p.finance!.ios[0].functionIds.filter((f) => f !== 'wbs-500')
+    })
+    const c = next.contracts.find((x) => x.projectId === 'prj-1001' && x.type === 'Construction')!
+    expect(commitmentIssues(next, P(next, 'prj-1001'), c).some((x) => x.includes('does not carry 500'))).toBe(true)
+  })
+})
+
+describe('RFI / change orders', () => {
+  it('routes a new CCO and adds the amount to the commitment on approval', () => {
+    const c0 = seed.contracts.find((x) => x.projectId === 'prj-1001' && x.type === 'Construction')!
+    const ch = seed.changes.find((x) => x.projectId === 'prj-1001' && x.status !== 'rejected')
+    const code = nextCcoCode(seed, P(seed, 'prj-1001'))
+    let s = produce(seed, (d) => {
+      d.currentUserId = P(d, 'prj-1001').team.pm!
+      createCommitmentChange(d, 'prj-1001', { contractId: c0.id, rfi: 'Rock at Sta 18+00', description: 'Rock excavation', amount: 42_000, scheduleImpactDays: 3, changeId: ch?.id })
+    })
+    const cc = s.commitmentChanges.find((x) => x.code === code)!
+    expect(cc.status).toBe('in-review')
+    if (ch) expect(s.changes.find((x) => x.id === ch.id)!.contractIds).toContain(c0.id)
+    const inst = s.workflows.find((w) => w.id === cc.workflowInstanceId)!
+    expect(inst.active[0].nodeId).toBe('cm') // PM's prep step submitted on creation
+    for (let i = 0; i < 6; i++) {
+      const w = s.workflows.find((x) => x.id === inst.id)!
+      if (w.status !== 'running') break
+      const slot = w.active[0]
+      s = produce(s, (d) => actOnWorkflow(d, w.id, slot.nodeId, slot.assigneeIds[0], 'approve', 'ok'))
+    }
+    expect(s.commitmentChanges.find((x) => x.id === cc.id)!.status).toBe('approved')
+    expect(s.contracts.find((x) => x.id === c0.id)!.changeOrders).toBe(c0.changeOrders + 42_000)
+  })
+})
+
+describe('scheduler notice', () => {
+  it('creates a task and notification for the project scheduler and closes it when P6 is updated', () => {
+    const ch = seed.changes.find((x) => x.scheduleImpactDays > 0 && !x.scheduleNotice)!
+    const p = P(seed, ch.projectId)
+    let res: { ok: boolean } = { ok: false }
+    let s = produce(seed, (d) => { res = notifyScheduler(d, ch.id) })
+    expect(res.ok).toBe(true)
+    const c = s.changes.find((x) => x.id === ch.id)!
+    expect(c.scheduleNotice?.schedulerId).toBe(p.team.scheduler)
+    const a = s.actions.find((x) => x.id === c.scheduleNotice!.actionId)!
+    expect(a.ownerId).toBe(p.team.scheduler)
+    expect(s.notifications.some((n) => n.toId === p.team.scheduler && n.kind === 'task' && n.text.includes(ch.code))).toBe(true)
+    // a second notice is refused while the first is open
+    s = produce(s, (d) => { res = notifyScheduler(d, ch.id) })
+    expect(res.ok).toBe(false)
+    s = produce(s, (d) => completeScheduleNotice(d, ch.id))
+    expect(s.changes.find((x) => x.id === ch.id)!.scheduleNotice!.status).toBe('done')
+    expect(s.actions.find((x) => x.id === a.id)!.status).toBe('done')
+  })
+})
+
+describe('deliverable completeness', () => {
+  it('derives completeness from the gate checklist deliverables', () => {
+    for (const p of seed.projects) {
+      const dc = deliverableCompleteness(seed, p)
+      expect(dc.current.total).toBeGreaterThan(0)
+      expect(dc.current.done).toBeLessThanOrEqual(dc.current.total)
+      expect(dc.toDate.total).toBeGreaterThanOrEqual(dc.current.total)
+    }
+    const closed = deliverableCompleteness(seed, P(seed, 'prj-1009'))
+    expect(closed.current.pct).toBe(100)
+  })
+})
+
+===== FILE: src/core/engine/lines-sap-quick.test.ts =====
+import { describe, expect, it } from 'vitest'
+import { produce } from 'immer'
+import { buildSeed } from '../seed'
+import { sum } from '../util'
+import { applyProfile, budgetByLine, etcEacByFunction, linesOfFunction, profileWeights, resample, rollupGrid, splitExact, syncForecast, toLines } from './lines'
+import { matchRule, parseSapExtract, postImport, projectForWbs, readDelimited, remap, resolveTxn, sampleExtract, stageImport } from './sap'
+import { adjustQuickEstimate, computeQuick, createQuickEstimate, findHistorical, inputsFromProject } from './quick'
+import { estimateTotals } from './estimates'
+import { activeBudget } from './position'
+import { latestForecast } from './wbs'
+
+const S = buildSeed()
+const pid = 'prj-1001'
+const P = S.projects.find((p) => p.id === pid)!
+
+describe('forecast lines', () => {
+  it('budget by line ties to the active budget (excl. contingency)', () => {
+    const b = activeBudget(S, pid)!
+    const bl = budgetByLine(S, pid)
+    const changes = sum(S.changes.filter((c) => c.projectId === pid && c.status === 'approved' && c.fundedFrom === 'new-funding' && (c.decidedAt ?? c.requestedAt) >= b.createdAt).map((c) => c.costImpact))
+    expect(sum(Object.values(bl.byLine))).toBe(b.total - b.contingency + changes)
+  })
+  it('toLines puts overhead on 900 and keeps contingency separate', () => {
+    const r = toLines(S, { 'cat-pipe': 600, 'cat-contract': 400, 'cat-loaders': 100, 'cat-contingency': 50 })
+    expect(r.byLine['fl-300-10']).toBe(600)
+    expect(r.byLine['fl-500-10']).toBe(400)
+    expect(r.byLine['fl-900']).toBe(100) // overhead is owned by 900 Project Overhead
+    expect(r.contingency).toBe(50)
+  })
+  it('every cost period byLine sums to actual', () => {
+    for (const cp of S.costPeriods.filter((c) => c.byLine)) expect(Math.abs(sum(Object.values(cp.byLine!)) - cp.actual)).toBeLessThanOrEqual(1)
+  })
+  it('splitExact and resample are exact / shaped', () => {
+    expect(sum(Object.values(splitExact(1001, { a: 1, b: 1, c: 1 })))).toBe(1001)
+    expect(resample([0, 10], 5)).toEqual([0, 2.5, 5, 7.5, 10])
+  })
+  it('zero-month profiles black out calendar months', () => {
+    const w = profileWeights(S, 'prof-moratorium', ['2026-10', '2026-11', '2026-12', '2027-01', '2027-02'])
+    expect(w[1]).toBe(0); expect(w[2]).toBe(0); expect(w[3]).toBe(0); expect(w[0]).toBeGreaterThan(0)
+  })
+  it('applyProfile keeps the function ETC and respects the window', () => {
+    const f = latestForecast(S, pid)!
+    const before = sum(linesOfFunction(S, 'wbs-500').flatMap((l) => Object.values(f.lineSpread![l.id] ?? {})))
+    const months = Object.keys(Object.values(f.lineSpread!)[0]).sort()
+    const g = applyProfile(S, P, f, 'wbs-500', { profileId: 'back', start: months[1], end: months[3] })
+    expect(sum(Object.values(g).flatMap((m) => Object.values(m)))).toBe(before)
+    for (const m of Object.values(g)) { expect(m[months[0]]).toBe(0); if (months[5]) expect(m[months[5]]).toBe(0) }
+  })
+  it('ETC/EAC by function: EAC = actual + ETC and totals tie to the forecast EAC', () => {
+    const f = latestForecast(S, pid)!
+    const r = etcEacByFunction(S, P, f)
+    for (const row of r.rows) expect(row.eac).toBe(row.actual + row.etc)
+    expect(r.totals.eac).toBe(f.eac)
+    expect(rollupGrid(S, f.lineSpread)['wbs-500']).toEqual(f.spread!['wbs-500'])
+  })
+  it('syncForecast re-derives EAC after a line edit', () => {
+    const next = produce(S, (d) => {
+      const f = latestForecast(d, pid)!
+      const m = Object.keys(f.lineSpread!['fl-500-10']).sort()[0]
+      f.lineSpread!['fl-500-10'][m] += 100_000
+      syncForecast(d, f)
+    })
+    expect(latestForecast(next, pid)!.eac - latestForecast(S, pid)!.eac).toBe(100_000)
+  })
+})
+
+describe('SAP actuals', () => {
+  it('reads quoted CSV with embedded commas and SAP trailing minus', () => {
+    expect(readDelimited('a,b\n"x, y",2\n')).toEqual([['a', 'b'], ['x, y', '2']])
+    const r = parseSapExtract('WBS Element,Cost Element,Amount,Posting Date\nC.PSE.1001,5200110,"1,250.50-",10/03/2026\n', '2026-10')
+    expect(r.errors).toEqual([])
+    expect(r.rows[0]).toMatchObject({ amount: -1250.5, period: '2026-10', postingDate: '2026-10-03' })
+  })
+  it('maps by priority: company labor on the .02 sub-WBS goes to engineering', () => {
+    const rules = S.settings.sapMappings
+    expect(matchRule(rules, { costElement: '5100110', sapWbs: `${P.erpWbs}.02`, text: '', vendor: '' })?.lineId).toBe('fl-200')
+    expect(matchRule(rules, { costElement: '5100110', sapWbs: P.erpWbs, text: '', vendor: '' })?.lineId).toBe('fl-700')
+    expect(matchRule(rules, { costElement: '5900130', sapWbs: P.erpWbs, text: '', vendor: '' })?.lineId).toBe('fl-900')
+    expect(matchRule(rules, { costElement: '5450110', sapWbs: P.erpWbs, text: '', vendor: '' })).toBeUndefined()
+    expect(projectForWbs(S, `${P.erpWbs}.02`)?.id).toBe(pid)
+  })
+  it('seed: three posted month-end imports and a staged October extract with exceptions', () => {
+    expect(S.actualsImports.filter((i) => i.status === 'posted').length).toBe(3)
+    const st = S.actualsImports.find((i) => i.status === 'staged')!
+    expect(st.unmapped).toBeGreaterThan(0)
+    expect(st.noProject).toBeGreaterThan(0)
+    expect(st.excluded).toBeGreaterThan(0)
+  })
+  it('posting is blocked until exceptions are resolved, then rebuilds period actuals by line', () => {
+    const st = S.actualsImports.find((i) => i.status === 'staged')!
+    let res: ReturnType<typeof postImport> | undefined
+    produce(S, (d) => { res = postImport(d, st.id) })
+    expect(res!.ok).toBe(false)
+    const next = produce(S, (d) => {
+      for (const t of d.actualTxns.filter((t) => t.importId === st.id && (t.status === 'unmapped' || t.status === 'no-project'))) {
+        if (t.status === 'no-project') resolveTxn(d, t.id, { projectId: pid, lineId: 'fl-500-10' }, 'WBS mis-keyed; belongs to PRJ-1001')
+        else resolveTxn(d, t.id, { lineId: 'fl-100' }, 'Field software charged to PM & controls')
+      }
+      res = postImport(d, st.id)
+    })
+    expect(res!.ok).toBe(true)
+    const txns = next.actualTxns.filter((t) => t.importId === st.id && t.projectId === pid && t.period === '2026-10' && t.status !== 'excluded')
+    const cp = next.costPeriods.find((c) => c.projectId === pid && c.period === '2026-10')!
+    expect(cp.source).toBe('sap')
+    expect(cp.actual).toBe(Math.round(sum(txns.map((t) => t.amount))))
+    expect(sum(Object.values(cp.byLine!))).toBe(cp.actual)
+    expect(sum(Object.values(cp.byFunction!))).toBe(cp.actual)
+  })
+  it('sample extract stages, remaps and flags its exceptions', () => {
+    const next = produce(S, (d) => {
+      const { rows } = parseSapExtract(sampleExtract(d, '2026-10'), '2026-10')
+      const imp = stageImport(d, rows, 'sample.csv')
+      remap(d, imp.id)
+    })
+    const imp = next.actualsImports[next.actualsImports.length - 1]
+    expect(imp.rows).toBeGreaterThan(20)
+    expect(imp.unmapped + imp.noProject).toBeGreaterThan(0)
+  })
+})
+
+describe('Class 5 quick estimate', () => {
+  const p = S.projects.find((x) => x.id === 'prj-1012')!
+  it('finds a historical row and computes a forward-looking range', () => {
+    const i = inputsFromProject(S, p)
+    expect(findHistorical(S, i).row).toBeTruthy()
+    const r = computeQuick(S, i)
+    expect(r.low).toBeLessThan(r.total)
+    expect(r.high).toBeGreaterThan(r.total)
+    expect(r.escalationFactor).toBeGreaterThanOrEqual(1)
+  })
+  it('estimate lines + loaders + contingency reproduce the computed total', () => {
+    const i = inputsFromProject(S, p)
+    const r = computeQuick(S, i)
+    const next = produce(S, (d) => { createQuickEstimate(d, p.id, i, 'test') })
+    const e = next.estimates[next.estimates.length - 1]
+    expect(e.method).toBe('quick')
+    expect(Math.abs(estimateTotals(e).total - r.total)).toBeLessThanOrEqual(2)
+  })
+  it('estimator adjustment is recorded with before/after', () => {
+    const e0 = S.estimates.find((e) => e.projectId === p.id && e.method === 'quick')!
+    const next = produce(S, (d) => { adjustQuickEstimate(d, e0.id, { pct: -10, reason: 'Shorter route than the population' }, 'u-est2') })
+    const e = next.estimates.find((x) => x.id === e0.id)!
+    expect(e.quick!.adjustment!.pct).toBe(-10)
+    expect(e.quick!.adjustment!.toTotal).toBeLessThan(e.quick!.adjustment!.fromTotal)
+  })
+  it('seed: one quick estimate already adjusted and approved; others in review', () => {
+    const q = S.estimates.filter((e) => e.method === 'quick')
+    expect(q.some((e) => e.status === 'approved' && e.quick?.adjustment)).toBe(true)
+    expect(q.filter((e) => e.status === 'in-review').length).toBeGreaterThanOrEqual(3)
+  })
+})
+
+===== FILE: src/core/engine/notify.test.ts =====
+import { describe, expect, it } from 'vitest'
+import { produce } from 'immer'
+import { buildSeed } from '../seed'
+import type { AppState } from '../types'
+import { addDays } from '../util'
+import { noticesFor, openEscalations, planReminders, runReminders, taskNoticeState } from './notify'
+import { actOnWorkflow, tasksFor } from './workflow'
+
+const S = buildSeed()
+const asOf = S.settings.asOf
+
+/** A running step for a person with a manager, re-dated so it is `late` days past due. */
+function withStep(s: AppState, late: number) {
+  return produce(s, (d) => {
+    const inst = d.workflows.find((w) => w.status === 'running' && w.active.some((a) => a.assigneeIds.length === 1 && d.people.find((p) => p.id === a.assigneeIds[0])?.managerId))!
+    const slot = inst.active.find((a) => a.assigneeIds.length === 1)!
+    slot.due = addDays(asOf, -late)
+    d.workflows = [inst] // isolate one instance so counts are exact
+    d.notifications = []
+  })
+}
+
+describe('workflow reminders', () => {
+  it('sends a due-soon reminder within reminderDays and nothing earlier', () => {
+    const early = withStep(S, -5) // due in 5 days
+    expect(planReminders(early)).toHaveLength(0)
+    const soon = withStep(S, -1) // due tomorrow, reminderDays = 1
+    const p = planReminders(soon)
+    expect(p.map((x) => x.kind)).toEqual(['reminder'])
+    expect(p[0].text).toContain('due tomorrow')
+  })
+
+  it('is idempotent: a second run sends nothing new', () => {
+    const s0 = withStep(S, -1)
+    let r1: ReturnType<typeof runReminders> | undefined
+    const s1 = produce(s0, (d) => { r1 = runReminders(d) })
+    expect(r1!.reminders).toBe(1)
+    expect(s1.notifications.filter((n) => n.kind === 'reminder')).toHaveLength(1)
+    let r2: ReturnType<typeof runReminders> | undefined
+    const s2 = produce(s1, (d) => { r2 = runReminders(d) })
+    expect(r2!.notices).toHaveLength(0)
+    expect(s2.notifications).toHaveLength(s1.notifications.length)
+  })
+
+  it('sends one overdue reminder, then escalates to the manager after escalateAfterDays', () => {
+    const late1 = withStep(S, 1)
+    expect(planReminders(late1).map((x) => x.kind)).toEqual(['overdue'])
+    const late3 = withStep(S, 3) // escalateAfterDays = 3
+    const plan = planReminders(late3)
+    expect(plan.map((x) => x.kind).sort()).toEqual(['escalation', 'overdue'])
+    const esc = plan.find((x) => x.kind === 'escalation')!
+    const mgr = late3.people.find((p) => p.id === esc.assigneeId)!.managerId
+    expect(esc.toIds).toEqual([mgr])
+    const after = produce(late3, (d) => { runReminders(d) })
+    const inst = after.workflows[0]
+    expect(inst.history.some((h) => h.action === 'escalate')).toBe(true)
+    expect(after.notifications.some((n) => n.toId === mgr && n.kind === 'escalation')).toBe(true)
+    const st = taskNoticeState(inst, inst.active[0], esc.assigneeId)
+    expect(st.overdueReminded).toBe(asOf)
+    expect(st.escalated?.to).toBe(mgr)
+    expect(openEscalations(after, mgr)).toHaveLength(1)
+    // running again the next day does not re-escalate
+    expect(planReminders(after, addDays(asOf, 1)).filter((x) => x.kind === 'escalation')).toHaveLength(0)
+  })
+
+  it('escalation can be switched off with escalateAfterDays = 0', () => {
+    const s = produce(withStep(S, 10), (d) => { d.settings.workflow.escalateAfterDays = 0 })
+    expect(planReminders(s).map((x) => x.kind)).toEqual(['overdue'])
+  })
+
+  it('a re-entered step (new since) is reminded again', () => {
+    const s1 = produce(withStep(S, 1), (d) => { runReminders(d) })
+    const s2 = produce(s1, (d) => { d.workflows[0].active[0].since = '2026-10-28T09:00:00.000Z' })
+    expect(noticesFor(s2.workflows[0], s2.workflows[0].active[0]).overdue).toEqual({})
+    expect(planReminders(s2).map((x) => x.kind)).toContain('overdue')
+  })
+
+  it('copies the reminder to the delegate of an out-of-office assignee', () => {
+    const s = produce(withStep(S, -1), (d) => {
+      const pid = d.workflows[0].active[0].assigneeIds[0]
+      const p = d.people.find((x) => x.id === pid)!
+      p.outOfOffice = { from: addDays(asOf, -2), to: addDays(asOf, 5), delegateId: 'u-pmo2' === pid ? 'u-me' : 'u-pmo2' }
+    })
+    const [n] = planReminders(s)
+    expect(n.toIds).toHaveLength(2)
+    expect(n.text).toContain('covering for')
+  })
+
+  it('runs across the whole seed without duplicates', () => {
+    const s1 = produce(S, (d) => { runReminders(d) })
+    const added = s1.notifications.length - S.notifications.length
+    expect(added).toBeGreaterThan(0)
+    const s2 = produce(s1, (d) => { runReminders(d) })
+    expect(s2.notifications.length).toBe(s1.notifications.length)
+  })
+})
+
+describe('out-of-office delegation of steps assigned before the absence', () => {
+  it('the delegate sees and can act on the absent person\'s open step', () => {
+    const base = withStep(S, -4)
+    const slot = base.workflows[0].active[0]
+    const pid = slot.assigneeIds[0]
+    const del = pid === 'u-pmo2' ? 'u-me' : 'u-pmo2'
+    const s = produce(base, (d) => { d.people.find((x) => x.id === pid)!.outOfOffice = { from: asOf, to: addDays(asOf, 3), delegateId: del } })
+    const t = tasksFor(s, del).find((x) => x.inst.id === s.workflows[0].id)
+    expect(t?.actingFor).toBe(pid)
+    const after = produce(s, (d) => { actOnWorkflow(d, d.workflows[0].id, slot.nodeId, del, t!.node.type === 'form' ? 'submit' : 'approve', 'ok') })
+    const ev = after.workflows[0].history.find((h) => h.actorId === del)
+    expect(ev?.comment).toMatch(/^On behalf of/)
+    expect(tasksFor(after, del).some((x) => x.inst.id === s.workflows[0].id && x.node.id === slot.nodeId)).toBe(false)
+  })
+
+  it('outside the absence window the delegate cannot act', () => {
+    const base = withStep(S, -4)
+    const slot = base.workflows[0].active[0]
+    const pid = slot.assigneeIds[0]
+    const del = pid === 'u-pmo2' ? 'u-me' : 'u-pmo2'
+    const s = produce(base, (d) => { d.people.find((x) => x.id === pid)!.outOfOffice = { from: addDays(asOf, 5), to: addDays(asOf, 9), delegateId: del } })
+    expect(tasksFor(s, del).some((x) => x.actingFor === pid)).toBe(false)
+  })
+})
+
+===== FILE: src/core/engine/reconcile.test.ts =====
+import { describe, expect, it } from 'vitest'
+import { produce } from 'immer'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { buildSeed } from '../seed'
+import { sum } from '../util'
+import { parseSapExtract, postImport, resolveTxn, stageImport } from './sap'
+import { CJI3_HEADERS, FICTIONAL_SAMPLE_FILE, fictionalSapExtract, sapAmount } from './sapSample'
+import { reconcile, reconCsvRows, reconItemCsvRows, UNPLACED } from './reconcile'
+
+const S = buildSeed()
+const SAMPLE_PATH = resolve(__dirname, '../../../samples', FICTIONAL_SAMPLE_FILE)
+// `npm run sample:sap` regenerates the committed file from the generator
+if (process.env.UPDATE_SAP_SAMPLE) writeFileSync(SAMPLE_PATH, fictionalSapExtract(S))
+const SAMPLE = readFileSync(SAMPLE_PATH, 'utf8')
+const parsed = parseSapExtract(SAMPLE, '2026-10')
+const byDoc = (doc: string) => parsed.rows.find((r) => r.docNo === doc)!
+
+describe('fictional SAP sample extract', () => {
+  it('the committed file parses cleanly with every CJI3 column recognised', () => {
+    expect(SAMPLE.split('\n')[0]).toBe(CJI3_HEADERS.join(','))
+    expect(parsed.errors).toEqual([])
+    expect(parsed.columns).toMatchObject({ sapWbs: 'WBS Element', costElement: 'Cost Element', costElementName: 'Cost Element Name', fiscalYear: 'Fiscal Year', period: 'Period', postingDate: 'Posting Date', docNo: 'Document Number', refDoc: 'Reference Document', poNumber: 'Purchasing Document', vendor: 'Name', amount: 'Value in Obj. Currency', currency: 'Object Currency', text: 'Text' })
+    const dataLines = SAMPLE.trim().split('\n').length - 2 // header and the ALV total line
+    expect(parsed.rows.length).toBe(dataLines)
+    expect(new Set(parsed.rows.map((r) => r.period))).toEqual(new Set(['2026-09']))
+    expect(parsed.rows.every((r) => r.currency === 'USD' && /^\d{4}-\d{2}-\d{2}$/.test(r.postingDate))).toBe(true)
+  })
+  it('contains only fictional identifiers: seed WBS elements and vendors ending in "Co."', () => {
+    const wbs = new Set(S.projects.map((p) => p.erpWbs))
+    for (const r of parsed.rows) {
+      if (r.sapWbs !== 'C.PSE.9999') expect(wbs.has(r.sapWbs.split('.').slice(0, 3).join('.'))).toBe(true)
+      if (r.vendor) expect(r.vendor).toMatch(/ Co\.$/)
+    }
+  })
+  it('carries the realistic quirks', () => {
+    expect(SAMPLE).toMatch(/"\d{1,3}(,\d{3})+\.\d{2}"/) // thousands separators
+    expect(SAMPLE).toContain('"15,000.00-"') // trailing-minus credit
+    expect(byDoc('4900590020').amount).toBe(-15_000)
+    expect(byDoc('4900590010').amount + byDoc('4900590011').amount).toBe(0) // reversal pair
+    expect(byDoc('4900590011').refDoc).toBe('4900590010')
+    expect(byDoc('4900590001').costElement).toBe('5450110') // no mapping rule
+    expect(byDoc('4900590030').sapWbs).toBe('C.PSE.9999') // no project
+    expect(byDoc('4900590002').costElement).toBe('1400110') // balance sheet
+    expect(sapAmount(-1234.5)).toBe('1,234.50-')
+  })
+  it('the generator produces the same layout and quirks', () => {
+    const g = parseSapExtract(fictionalSapExtract(S), '2026-10')
+    expect(g.errors).toEqual([])
+    expect(g.rows.filter((r) => r.docNo.startsWith('490059')).length).toBe(6)
+    expect(new Set(g.rows.map((r) => r.sapWbs.split('.').slice(0, 3).join('.'))).size).toBe(7) // six projects + C.PSE.9999
+  })
+  it('reads fiscal year + bare period, rejects other currencies, prefers the vendor name over its number', () => {
+    const r = parseSapExtract('WBS Element,Cost Element,Fiscal Year,Period,Vendor,Name,Value in Obj. Currency,Object Currency\nC.PSE.1001,5200110,2026,009,300010,Pinecone Builders Co.,"1,000.00",USD\nC.PSE.1001,5200110,2026,9,300010,Pinecone Builders Co.,5.00,EUR\n', '2026-10')
+    expect(r.rows).toHaveLength(1)
+    expect(r.rows[0]).toMatchObject({ period: '2026-09', vendor: 'Pinecone Builders Co.', amount: 1000 })
+    expect(r.errors[0]).toContain('EUR')
+  })
+})
+
+describe('reconciliation', () => {
+  it('posted imports tie to Crosswalk actuals by project, period and line', () => {
+    for (const imp of S.actualsImports.filter((i) => i.status === 'posted')) {
+      const rec = reconcile(S, S.actualTxns.filter((t) => t.importId === imp.id))
+      expect(rec.projects.length).toBeGreaterThan(10)
+      expect(rec.projects.every((p) => p.status === 'ties')).toBe(true)
+      expect(rec.totals.diff).toBe(0)
+      expect(rec.items).toEqual([])
+      expect(rec.totals.posted).toBe(rec.totals.sapCost)
+      for (const pp of rec.projects.flatMap((p) => p.periods)) {
+        expect(pp.lines.every((l) => l.diff === 0)).toBe(true)
+        expect(pp.functions.every((l) => l.diff === 0)).toBe(true)
+        expect(pp.forecast.inActuals).toBe(true)
+        expect(pp.forecast.actual).toBe(pp.posted)
+      }
+    }
+  })
+  it('the sample file reconciles against posted September: ties except its quirks, all explained', () => {
+    const rec = reconcile(S, parsed.rows, { period: '2026-09' })
+    const [a, b, c, ...rest] = rec.projects
+    expect(rec.projects).toHaveLength(6)
+    expect(a.status).toBe('differs')
+    expect(a.diff).toBe(-12_480) // SAP has an unknown cost element Crosswalk never posted
+    expect(a.sapExcluded).toBe(86_400) // balance sheet excluded by rule
+    expect(b.status).toBe('ties') // reversal pair nets to zero
+    expect(c.diff).toBe(15_000) // SAP credit memo not yet in Crosswalk
+    expect(rest.every((p) => p.status === 'ties')).toBe(true)
+    expect(rec.projects.every((p) => p.diff === p.explained)).toBe(true)
+    expect(rec.noProject.amount).toBe(48_210.55)
+    expect(rec.items.map((i) => i.kind)).toEqual(['sap-only', 'sap-only', 'sap-only', 'sap-only'])
+    expect(reconCsvRows(S, rec).length).toBe(7)
+    expect(reconItemCsvRows(S, rec)[0]).toHaveProperty('Note')
+  })
+  it('detects rows excluded or mapped to another line by hand after posting the sample', () => {
+    const next = produce(S, (d) => {
+      const imp = stageImport(d, parsed.rows, FICTIONAL_SAMPLE_FILE)
+      const tx = () => d.actualTxns.filter((t) => t.importId === imp.id)
+      for (const t of tx().filter((t) => t.status === 'unmapped')) resolveTxn(d, t.id, { lineId: 'fl-100' }, 'Field software is PM cost')
+      for (const t of tx().filter((t) => t.status === 'no-project')) resolveTxn(d, t.id, { exclude: true }, 'Belongs to another utility program; AP to transfer')
+      const pids = [...new Set(tx().map((t) => t.projectId))].filter(Boolean).sort()
+      const ex = tx().find((t) => t.projectId === pids[3] && t.status === 'mapped')!
+      resolveTxn(d, ex.id, { exclude: true }, 'Looks like a duplicate')
+      const mis = tx().find((t) => t.projectId === pids[4] && t.status === 'mapped' && t.lineId !== 'fl-999')!
+      resolveTxn(d, mis.id, { lineId: 'fl-999' }, 'Not sure where this goes')
+      expect(postImport(d, imp.id).ok).toBe(true)
+    })
+    const rec = reconcile(next, parsed.rows)
+    const [a, b, c, d, e, f] = rec.projects
+    // a: the unknown cost element was placed by hand — total ties, lines differ (unplaced vs 100.10)
+    expect(a.status).toBe('lines-differ')
+    expect(a.periods[0].lines.find((l) => l.key === UNPLACED)!.diff).toBe(-12_480)
+    expect([b.status, c.status, f.status]).toEqual(['ties', 'ties', 'ties'])
+    const exAmt = rec.items.find((i) => i.cw?.manual === 'Looks like a duplicate')!.row.amount
+    expect(d.status).toBe('differs')
+    expect(d.diff).toBe(-Math.round(exAmt))
+    expect(d.explained).toBe(d.diff)
+    expect(e.status).toBe('lines-differ')
+    expect(e.diff).toBe(0)
+    expect(e.periods[0].lines.find((l) => l.key === 'fl-999')!.diff).toBeGreaterThan(0)
+    expect(rec.items.filter((i) => i.kind === 'mapped-differently').length).toBe(3)
+    expect(rec.totals.tie).toBe(3)
+  })
+  it('a row dropped from a posted month shows as Crosswalk-only; a staged extract differs from summary actuals', () => {
+    const p09 = S.actualsImports.find((i) => i.status === 'posted' && i.period === '2026-09')!
+    const rows = S.actualTxns.filter((t) => t.importId === p09.id)
+    const dropped = rows[5]
+    const rec = reconcile(S, rows.filter((t) => t.id !== dropped.id))
+    const p = rec.projects.find((x) => x.projectId === dropped.projectId)!
+    expect(p.status).toBe('differs')
+    expect(p.diff).toBe(Math.round(dropped.amount))
+    expect(rec.items).toHaveLength(1)
+    expect(rec.items[0].kind).toBe('crosswalk-only')
+    // October: Crosswalk holds summary actuals; the staged weekly extract carries exceptions
+    const oct = S.actualsImports.find((i) => i.status === 'staged')!
+    const r10 = reconcile(S, S.actualTxns.filter((t) => t.importId === oct.id), { period: '2026-10' })
+    expect(r10.projects.every((x) => x.periods.every((pp) => pp.source === 'summary'))).toBe(true)
+    expect(r10.projects.some((x) => x.status === 'differs')).toBe(true)
+    expect(r10.noProject.rows).toHaveLength(1)
+    expect(Math.abs(sum(r10.projects.map((x) => x.sapCost)) + r10.totals.noProject + r10.totals.sapExcluded - r10.totals.sapGross)).toBeLessThan(r10.projects.length)
+  })
+})
+
+===== FILE: src/core/sync.test.ts =====
+// End to end without a browser: the store + sync engine + shared data client talk to the real API handler
+// (fetch is routed to it) backed by Postgres (PGlite). A second "browser" is simulated with direct API calls.
+import fs from 'node:fs'
+import path from 'node:path'
+import { PGlite } from '@electric-sql/pglite'
+import { handle } from '@/server/api'
+import { migrate } from '@/server/migrate'
+import { sqlRepo, type Exec } from '@/server/repo'
+import { sharedDataAccess, gzipBase64, gunzipBase64 } from '@/core/data/server'
+import { createSync, PASSCODE_KEY, type Sync } from './sync'
+import { mutate, useStore } from './store'
+import { buildSeed, SCHEMA_VERSION } from './seed'
+
+const PASS = 'arroyo-demo'
+let db: PGlite
+let exec: Exec
+let apiUp = true
+let data: ReturnType<typeof sharedDataAccess>
+const notes: string[] = []
+const st = () => useStore.getState()
+const orgName = () => st().settings.orgName
+
+beforeAll(async () => {
+  db = new PGlite()
+  exec = async (sql, params) => (await db.query(sql, params as any[])).rows as Record<string, unknown>[]
+  const dir = path.resolve(__dirname, '../../migrations')
+  await migrate(exec, (sql) => db.exec(sql), fs.readdirSync(dir).map((name) => ({ name, sql: fs.readFileSync(path.join(dir, name), 'utf8') })))
+  ;(globalThis as any).fetch = async (input: string, init?: RequestInit) => {
+    if (!apiUp) throw new TypeError('network down')
+    return handle(new Request('https://demo.test/' + input, init), { repo: sqlRepo(exec), passcode: PASS })
+  }
+  data = sharedDataAccess()
+})
+afterAll(async () => { await db.close() })
+
+const newSync = () => createSync({ data, gzip: gzipBase64, gunzip: gunzipBase64, notify: (m) => notes.push(m) })
+/** A second editor, writing straight to the API. */
+async function otherEditor(patches: unknown[], summary = 'other') {
+  const s = await (await fetch('api/state?schema=' + SCHEMA_VERSION)).json()
+  const r = await fetch('api/changes', { method: 'POST', headers: { 'x-crosswalk-passcode': PASS }, body: JSON.stringify({ generation: s.generation.id, seq: s.head + 1, actor: 'u-pm1', summary, patches }) })
+  expect(r.status).toBe(200)
+}
+
+describe('shared data sync', () => {
+  let sync: Sync
+  beforeEach(() => { useStore.setState(buildSeed()); data.removePref(PASSCODE_KEY); notes.length = 0 })
+  afterEach(() => sync?.stop())
+
+  it('with no API the app runs in memory and says so', async () => {
+    apiUp = false
+    sync = newSync()
+    await sync.start({ poll: false })
+    expect(st().sync.mode).toBe('offline')
+    apiUp = true
+  })
+
+  it('a viewer without the passcode sees shared data; their edits stay on the page only', async () => {
+    sync = newSync()
+    await sync.start({ poll: false })
+    expect(st().sync).toMatchObject({ mode: 'shared', editable: true, canEdit: false })
+    mutate((d) => { d.settings.orgName = 'Viewer edit' })
+    expect(st().sync.unsaved).toBe(true)
+    expect((await (await fetch('api/state?schema=' + SCHEMA_VERSION)).json()).generation).toBeNull()
+    expect(await sync.unlock('wrong')).toBe(false)
+  })
+
+  it('an editor’s first change starts the shared dataset; changes persist across a fresh load', async () => {
+    sync = newSync()
+    await sync.start({ poll: false })
+    expect(await sync.unlock(PASS)).toBe(true)
+    expect(data.getPref(PASSCODE_KEY)).toBe(PASS)
+    mutate((d) => { d.settings.orgName = 'Arroyo Valley Gas — shared' }, { entity: 'settings', entityId: 'org', action: 'update', summary: 'Renamed org' })
+    expect(await sync.idle()).toBe(true)
+    mutate((d) => { d.projects[0].name = 'Renamed project' })
+    expect(await sync.idle()).toBe(true)
+    expect(sync.position).toMatchObject({ seq: 2, pending: 0 })
+    const g = sync.position.generation
+    sync.stop()
+
+    // a brand-new browser session: everything comes back from the database
+    useStore.setState(buildSeed())
+    data.removePref(PASSCODE_KEY)
+    sync = newSync()
+    await sync.start({ poll: false })
+    expect(orgName()).toBe('Arroyo Valley Gas — shared')
+    expect(st().projects[0].name).toBe('Renamed project')
+    expect(st().audit.at(-1)?.summary).toBe('Renamed org')
+    expect(sync.position).toMatchObject({ generation: g, seq: 2 })
+  })
+
+  it('others’ edits arrive by polling; the persona you act as stays per browser', async () => {
+    sync = newSync()
+    await sync.start({ poll: false })
+    await sync.unlock(PASS)
+    useStore.getState().setUser('u-pm1')
+    await otherEditor([{ op: 'replace', path: ['settings', 'orgName'], value: 'Edited elsewhere' }])
+    await sync.poll()
+    expect(orgName()).toBe('Edited elsewhere')
+    expect(st().currentUserId).toBe('u-pm1')
+    const changes = await exec('select patches from changes')
+    expect(changes.some((c) => String(c.patches).includes('currentUserId'))).toBe(false)
+  })
+
+  it('secrets (AI key, map tokens) and the persona never reach the shared database', async () => {
+    sync = newSync()
+    await sync.start({ poll: false })
+    await sync.unlock(PASS)
+    mutate((d) => { d.settings.ai.apiKey = 'sk-live-should-never-leave'; d.settings.orgName = 'With secret nearby' })
+    mutate((d) => { d.settings.ai = { ...d.settings.ai, apiKey: 'sk-also-hidden' } })
+    expect(await sync.idle()).toBe(true)
+    const rows = await exec('select patches from changes union all select state_gz as patches from snapshots')
+    for (const r of rows) expect(String(r.patches)).not.toMatch(/sk-live|sk-also/)
+    for (const r of await exec('select state_gz from snapshots')) expect(await gunzipBase64(String(r.state_gz))).not.toMatch(/sk-live|sk-also|"apiKey"/)
+    expect(st().settings.ai.apiKey).toBe('sk-also-hidden') // still usable on this browser
+  })
+
+  it('two editors at once: our change is re-applied on top of theirs (no lost update)', async () => {
+    sync = newSync()
+    await sync.start({ poll: false })
+    await sync.unlock(PASS)
+    const before = st().projects.length
+    // someone else saves first…
+    await otherEditor([{ op: 'replace', path: ['projects', 1, 'name'], value: 'Their edit' }])
+    // …then we save without having seen it
+    mutate((d) => { d.projects[2].name = 'Our edit' })
+    expect(await sync.idle()).toBe(true)
+    expect(st().projects[1].name).toBe('Their edit')
+    expect(st().projects[2].name).toBe('Our edit')
+    expect(st().projects.length).toBe(before)
+    expect(sync.position.pending).toBe(0)
+    // and the database agrees: a fresh load shows both
+    sync.stop(); useStore.setState(buildSeed()); sync = newSync(); await sync.start({ poll: false })
+    expect([st().projects[1].name, st().projects[2].name]).toEqual(['Their edit', 'Our edit'])
+  })
+
+  it('"Reset demo data" by an editor starts a new generation for everyone; history is kept', async () => {
+    sync = newSync()
+    await sync.start({ poll: false })
+    await sync.unlock(PASS)
+    const old = sync.position.generation
+    mutate((d) => { d.settings.orgName = 'Before reset' })
+    expect(await sync.idle()).toBe(true)
+    st().reset()
+    for (let i = 0; i < 40 && sync.position.generation === old; i++) await new Promise((r) => setTimeout(r, 25))
+    expect(sync.position.generation).not.toBe(old)
+    expect(orgName()).toBe(buildSeed().settings.orgName)
+    expect((await exec('select count(*)::int as n from changes where generation_id = $1', [old]))[0].n).toBeGreaterThan(0)
+  })
+})
+
+===== FILE: src/server/api.test.ts =====
+// The shared-state API against a real Postgres (PGlite, in memory): migrations, passcode, append-only log,
+// conflicts, snapshots and resets.
+import fs from 'node:fs'
+import path from 'node:path'
+import { PGlite } from '@electric-sql/pglite'
+import { handle, sameSecret } from './api'
+import { migrate } from './migrate'
+import { sqlRepo, type Exec } from './repo'
+
+const MIG = path.resolve(__dirname, '../../migrations')
+const migrations = fs.readdirSync(MIG).filter((f) => f.endsWith('.sql')).map((name) => ({ name, sql: fs.readFileSync(path.join(MIG, name), 'utf8') }))
+
+let db: PGlite
+let exec: Exec
+const PASS = 'arroyo-demo'
+const call = (method: string, url: string, body?: unknown, pass?: string) =>
+  handle(new Request('https://demo.test' + url, { method, body: body === undefined ? undefined : JSON.stringify(body), headers: pass ? { 'x-crosswalk-passcode': pass } : {} }), { repo: sqlRepo(exec), passcode: PASS })
+
+beforeAll(async () => {
+  db = new PGlite()
+  exec = async (sql, params) => (await db.query(sql, params as any[])).rows as Record<string, unknown>[]
+  expect(await migrate(exec, (sql) => db.exec(sql), migrations)).toEqual(migrations.map((m) => m.name))
+  expect(await migrate(exec, (sql) => db.exec(sql), migrations)).toEqual([]) // idempotent
+})
+afterAll(async () => { await db.close() })
+
+describe('shared state API', () => {
+  it('health reports that editing is on; auth checks the passcode', async () => {
+    expect(await (await call('GET', '/api/health')).json()).toEqual({ ok: true, editable: true })
+    expect((await call('POST', '/api/auth', {}, 'nope')).status).toBe(401)
+    expect((await call('POST', '/api/auth', {}, PASS)).status).toBe(204)
+    expect(sameSecret('abc', 'abc')).toBe(true)
+    expect(sameSecret('abc', 'abd')).toBe(false)
+    expect(sameSecret('abc', 'abcd')).toBe(false)
+  })
+
+  it('reads are open, writes need the passcode', async () => {
+    expect(await (await call('GET', '/api/state?schema=9')).json()).toMatchObject({ generation: null, changes: [], head: 0 })
+    expect((await call('POST', '/api/generation', { schema: 9, reason: 'x', actor: 'u', stateGz: 'AAA' })).status).toBe(401)
+    expect((await call('POST', '/api/generation', { schema: 9, reason: 'x', actor: 'u', stateGz: 'AAA' }, 'wrong')).status).toBe(401)
+  })
+
+  it('generation → ordered changes → conflict on a stale seq → snapshot → read back', async () => {
+    const g = (await (await call('POST', '/api/generation', { schema: 9, reason: 'First edit', actor: 'u-me', stateGz: 'SEED' }, PASS)).json()).generation
+    expect(g.id).toBeGreaterThan(0)
+    const p1 = [{ op: 'replace', path: ['settings', 'orgName'], value: 'A' }]
+    expect(await (await call('POST', '/api/changes', { generation: g.id, seq: 1, actor: 'u-me', summary: 'one', patches: p1 }, PASS)).json()).toEqual({ seq: 1 })
+    // a second writer that has not seen change 1 is told to catch up
+    const stale = await call('POST', '/api/changes', { generation: g.id, seq: 1, actor: 'u-pm1', summary: 'late', patches: p1 }, PASS)
+    expect(stale.status).toBe(409)
+    expect(await stale.json()).toEqual({ head: 1 })
+    expect((await call('POST', '/api/changes', { generation: g.id, seq: 3, actor: 'u-me', summary: 'gap', patches: p1 }, PASS)).status).toBe(409)
+    await call('POST', '/api/changes', { generation: g.id, seq: 2, actor: 'u-pm1', summary: 'two', patches: [{ op: 'add', path: ['audit', 0], value: { id: 'a' } }] }, PASS)
+
+    const st = await (await call('GET', '/api/state?schema=9')).json()
+    expect(st.snapshot).toEqual({ seq: 0, stateGz: 'SEED' })
+    expect(st.changes.map((c: { seq: number }) => c.seq)).toEqual([1, 2])
+    expect(JSON.parse(st.changes[0].patches)).toEqual(p1) // patches pass through untouched
+    expect(st.head).toBe(2)
+
+    expect((await (await call('GET', `/api/changes?schema=9&generation=${g.id}&after=1`)).json()).changes.map((c: { seq: number }) => c.seq)).toEqual([2])
+    expect((await call('POST', '/api/snapshot', { generation: g.id, seq: 5, stateGz: 'X' }, PASS)).status).toBe(400) // ahead of the log
+    expect((await call('POST', '/api/snapshot', { generation: g.id, seq: 2, stateGz: 'SNAP2' }, PASS)).status).toBe(204)
+    const st2 = await (await call('GET', '/api/state?schema=9')).json()
+    expect(st2.snapshot).toEqual({ seq: 2, stateGz: 'SNAP2' })
+    expect(st2.changes).toEqual([])
+    expect(st2.head).toBe(2)
+  })
+
+  it('"Reset demo data" starts a new generation; clients on the old one are told to reload', async () => {
+    const old = (await (await call('GET', '/api/state?schema=9')).json()).generation
+    const g2 = (await (await call('POST', '/api/generation', { schema: 9, reason: 'Reset demo data', actor: 'u-me', stateGz: 'SEED2' }, PASS)).json()).generation
+    expect(g2.id).toBeGreaterThan(old.id)
+    expect(await (await call('GET', `/api/changes?schema=9&generation=${old.id}&after=2`)).json()).toMatchObject({ reset: true, generation: { id: g2.id } })
+    // the old generation's history is still there (nothing was deleted)
+    expect((await exec('select count(*)::int as n from changes where generation_id = $1', [old.id]))[0].n).toBe(2)
+  })
+
+  it('the database refuses to update or delete any record (append-only, rule 21)', async () => {
+    await expect(exec("update changes set summary = 'edited'")).rejects.toThrow(/append-only/)
+    await expect(exec('delete from changes')).rejects.toThrow(/append-only/)
+    await expect(exec('delete from snapshots')).rejects.toThrow(/append-only/)
+    await expect(exec("update generations set reason = 'x'")).rejects.toThrow(/append-only/)
+    await expect(db.exec('truncate changes')).rejects.toThrow(/append-only/)
+  })
+
+  it('editing is off when the server has no passcode configured; bad input is rejected', async () => {
+    const off = (m: string, u: string, b?: unknown) => handle(new Request('https://demo.test' + u, { method: m, body: b ? JSON.stringify(b) : undefined, headers: { 'x-crosswalk-passcode': '' } }), { repo: sqlRepo(exec), passcode: '' })
+    expect(await (await off('GET', '/api/health')).json()).toEqual({ ok: true, editable: false })
+    expect((await off('POST', '/api/changes', { generation: 1, seq: 9, patches: [] })).status).toBe(403)
+    expect((await call('GET', '/api/state')).status).toBe(400)
+    expect((await call('POST', '/api/changes', { nope: true }, PASS)).status).toBe(400)
+    expect((await call('GET', '/api/nothing')).status).toBe(404)
+  })
+})
+
+===== FILE: src/views/actuals/actuals.test.tsx =====
+// SAP actuals: import review, exceptions, posting, and the mapping / line / profile configuration pages.
+import React from 'react'
+import { renderToString } from 'react-dom/server'
+import { mutate, useStore } from '@/core/store'
+import { buildSeed } from '@/core/seed'
+import { parseSapExtract, postImport, remap, resolveTxn, sampleExtract, stageImport } from '@/core/engine/sap'
+import { sum } from '@/core/util'
+import Actuals from './Actuals'
+import Reconciliation, { SAMPLE_CSV, SAMPLE_SOURCE, sourceRows } from './Reconcile'
+import ForecastLines, { lineIssues } from '../admin/ForecastLines'
+import SapMappings from '../admin/SapMappings'
+import SpreadProfiles, { parseWeights, previewShares } from '../admin/SpreadProfiles'
+import { exceptionReason, importFigures, importTxns, isException, linesWithoutRule, previewAllocation, projectLineRollup, ruleOverlaps, testRow, unmappedElements } from './lib'
+
+const render = (el: React.ReactElement) => { Object.assign((useStore as any).getInitialState(), useStore.getState()); return renderToString(el) }
+const staged = () => useStore.getState().actualsImports.find((x) => x.status === 'staged')!
+
+describe('import review helpers', () => {
+  const s = buildSeed()
+  const imp = s.actualsImports.find((x) => x.status === 'staged')!
+  const txns = importTxns(s, imp.id)
+  it('summarises the staged October extract with its exceptions', () => {
+    const F = importFigures(txns)
+    expect(imp.fileName).toBe('CJI3_FY2026_P10_wk4.csv')
+    expect(F.exceptions).toBe(2)
+    expect(F.unmapped).toBe(12_480)
+    expect(Math.round(F.noProject)).toBe(48_211)
+    expect(F.excluded).toBe(86_400)
+    expect(F.credits).toBeGreaterThanOrEqual(1)
+    expect(F.mapped + F.allocated + F.excluded + F.unmapped + F.noProject).toBeCloseTo(F.total, -1)
+    const ex = txns.filter(isException)
+    expect(exceptionReason(s, ex.find((t) => t.status === 'unmapped')!)).toContain('5450110')
+    expect(exceptionReason(s, ex.find((t) => t.status === 'no-project')!)).toContain('C.PSE.9999')
+  })
+  it('previews allocation the way posting does', () => {
+    const roll = projectLineRollup(s, txns)
+    for (const r of roll.filter((x) => x.p)) {
+      const alloc = sum(Object.values(r.byLine).map((x) => x.allocated))
+      expect(Math.abs(alloc - r.allocated)).toBeLessThan(0.05)
+    }
+    // the default mapping sends overhead to 900 Project Overhead, so allocation only runs when a rule asks for it
+    const a = txns.find((t) => t.status === 'allocated')
+    if (a) expect(sum(Object.values(previewAllocation(txns, a)))).toBeCloseTo(a.amount, 1)
+  })
+  it('checks the mapping table', () => {
+    const o = ruleOverlaps(s.settings.sapMappings)
+    expect(o.some((x) => x.a.id === 'map-01' && x.b.id === 'map-02' && x.kind === 'refines')).toBe(true)
+    expect(o.some((x) => x.kind === 'shadowed')).toBe(false)
+    const shadow = ruleOverlaps([...s.settings.sapMappings, { id: 'x', priority: 5, costElementFrom: '5000000', costElementTo: '5999999', target: 'exclude', note: '', active: true }])
+    expect(shadow.filter((x) => x.kind === 'shadowed').length).toBeGreaterThan(5)
+    expect(linesWithoutRule(s).map((l) => l.code)).toEqual([])
+    expect(unmappedElements(s).map((x) => x.costElement)).toEqual(['5450110'])
+    const t = testRow(s, { costElement: '5100110', sapWbs: 'C.PSE.1001.02', text: '' })
+    expect(t.winner?.id).toBe('map-01')
+    expect(t.line?.code).toBe('200.10')
+    expect(t.all.length).toBe(2)
+    expect(testRow(s, { costElement: '5100110', sapWbs: 'C.PSE.1001', text: '' }).line?.code).toBe('700.10')
+  })
+  it('validates lines and profiles', () => {
+    expect(lineIssues(s.settings.forecastLines, s.categories, s.settings.wbsFunctions).unassigned).toEqual([])
+    const broken = lineIssues(s.settings.forecastLines.map((l) => (l.code === '500.20' ? { ...l, categoryIds: ['cat-contract'] } : l)), s.categories, s.settings.wbsFunctions)
+    expect(broken.multi.map((c) => c.id)).toEqual(['cat-contract'])
+    expect(broken.unassigned.map((c) => c.id)).toEqual(['cat-traffic'])
+    expect(parseWeights('3, 8,12 ;4')).toEqual([3, 8, 12, 4])
+    expect(parseWeights('3, x')).toBeNull()
+    const sh = previewShares(s, { id: 'tmp', name: 't', description: '', weights: [1], zeroMonths: [12] }, ['2026-11', '2026-12', '2027-01', '2027-02'])
+    expect(sh).toEqual([1 / 3, 0, 1 / 3, 1 / 3])
+  })
+})
+
+describe('SAP actuals flow through the store', () => {
+  beforeEach(() => { useStore.setState(buildSeed()) })
+  it('posting is blocked until exceptions are resolved, then rebuilds project actuals by line', () => {
+    const imp = staged()
+    let res: ReturnType<typeof postImport> = { ok: true, periods: 0 }
+    mutate((d) => { res = postImport(d, imp.id) })
+    expect(res.ok).toBe(false)
+    expect(res.reason).toContain('2 row')
+    const s = useStore.getState()
+    const tx = importTxns(s, imp.id)
+    const unk = tx.find((t) => t.status === 'unmapped')!
+    const nop = tx.find((t) => t.status === 'no-project')!
+    const owner = s.projects.find((p) => p.status === 'active' && p.stageIndex >= 2)!
+    mutate((d) => {
+      resolveTxn(d, unk.id, { lineId: 'fl-100' }, 'Field software is PM cost')
+      resolveTxn(d, nop.id, { projectId: owner.id }, 'Pay app keyed to the wrong WBS')
+    })
+    const after = importTxns(useStore.getState(), imp.id)
+    expect(after.find((t) => t.id === nop.id)!.status).toBe('mapped') // project assigned → mapping rule applies
+    expect(after.find((t) => t.id === nop.id)!.lineId).toBe('fl-500-10')
+    expect(after.some(isException)).toBe(false)
+    mutate((d) => { remap(d, imp.id) })
+    expect(importTxns(useStore.getState(), imp.id).some(isException)).toBe(false) // manual resolutions survive a re-run
+    mutate((d) => { res = postImport(d, imp.id) })
+    expect(res.ok).toBe(true)
+    const st = useStore.getState()
+    const cp = st.costPeriods.find((c) => c.projectId === owner.id && c.period === '2026-10')!
+    expect(cp.source).toBe('sap')
+    expect(sum(Object.values(cp.byLine!))).toBe(cp.actual)
+    expect(render(<Actuals />)).toContain('Posted')
+  })
+  it('stages an uploaded extract and renders the review', () => {
+    const s = useStore.getState()
+    const text = sampleExtract(s, '2026-10', 3)
+    const parsed = parseSapExtract(text, '2026-10')
+    expect(parsed.errors).toEqual([])
+    mutate((d) => { stageImport(d, parsed.rows, 'sample.csv') })
+    expect(useStore.getState().actualsImports.filter((x) => x.status === 'staged').length).toBe(2)
+    const h = render(<Actuals />)
+    expect(h).toContain('SAP actuals')
+    expect(h).toContain('CJI3_FY2026_P10_wk4.csv')
+    expect(h).toContain('Load the fictional sample file')
+    expect(h).toContain('Fictional data only')
+    expect(h).toContain('Mapping table')
+    expect(h).toContain('block posting')
+    expect(h).toContain('No active mapping rule covers cost element 5450110')
+  })
+  it('renders the configuration pages', () => {
+    const l = render(<ForecastLines />)
+    expect(l).toContain('Forecast line items')
+    expect(l).toContain('Contract construction')
+    const m = render(<SapMappings />)
+    expect(m).toContain('Test a row')
+    expect(m).toContain('Coverage checks')
+    expect(m).toContain('5450110')
+    const p = render(<SpreadProfiles />)
+    expect(p).toContain('Mobilize, produce, demobilize')
+    expect(p).toContain('Built-in curves')
+  })
+})
+
+describe('reconciliation view', () => {
+  beforeEach(() => { useStore.setState(buildSeed()) })
+  it('bundles the fictional sample file and stages it like an upload', () => {
+    const s = useStore.getState()
+    const parsed = parseSapExtract(SAMPLE_CSV, '2026-10')
+    expect(parsed.errors).toEqual([])
+    expect(sourceRows(s, SAMPLE_SOURCE).length).toBe(parsed.rows.length)
+    mutate((d) => { stageImport(d, parsed.rows, 'sap-actuals-fictional.csv') })
+    const imp = useStore.getState().actualsImports.find((x) => x.fileName === 'sap-actuals-fictional.csv')!
+    expect(imp.unmapped).toBe(12_480)
+    expect(imp.excluded).toBe(86_400)
+  })
+  it('renders the sample reconciliation with differences, reconciling rows and the no-project bucket', () => {
+    const h = render(<Reconciliation s={useStore.getState()} source={SAMPLE_SOURCE} onSource={() => {}} />)
+    expect(h).toContain('SAP project cost')
+    expect(h).toContain('Differs by')
+    expect(h).toContain('Reconciling rows')
+    expect(h).toContain('WBS elements with no project')
+    expect(h).toContain('C.PSE.9999')
+  })
+  it('a posted import ties; the per-project entry opens the reconciliation tab with the drawer', () => {
+    const s = useStore.getState()
+    const p09 = s.actualsImports.find((x) => x.status === 'posted' && x.period === '2026-09')!
+    const h = render(<Reconciliation s={s} source={p09.id} onSource={() => {}} />)
+    expect(h).toContain('Ties')
+    expect(h).not.toContain('Differs by')
+    const page = render(<Actuals projectId="prj-1002" />)
+    expect(page).toContain('Reconciliation · PRJ-1002')
+    expect(page).toContain('By cost element')
+  })
+})
+
+===== FILE: src/views/audit/flows.test.ts =====
+import { buildSeed } from '@/core/seed'
+import { produce } from 'immer'
+import { startWorkflow, actOnWorkflow } from '@/core/engine/workflow'
+import { ensureDeliverables } from '@/core/engine/gates'
+import { validateImport } from '../admin/Data'
+
+test('contract award routes and awards', () => {
+  let s = buildSeed()
+  const c = s.contracts.find((x) => x.status === 'rfp')!
+  s = produce(s, (d) => { startWorkflow(d, 'contract-award', { title: 't', recordType: 'contract', recordId: c.id, projectId: c.projectId, data: { amount: c.value, nonStandard: true, vendor: 'X' } }) })
+  const inst = s.workflows.find((w) => w.recordId === c.id)!
+  expect(inst.status).toBe('running')
+  for (let i = 0; i < 6; i++) {
+    const cur = s.workflows.find((w) => w.id === inst.id)!
+    if (cur.status !== 'running') break
+    const slot = cur.active[0]
+    s = produce(s, (d) => actOnWorkflow(d, inst.id, slot.nodeId, slot.assigneeIds[0], slot.nodeId === 'prep' ? 'submit' : 'approve'))
+  }
+  const fin = s.workflows.find((w) => w.id === inst.id)!
+  console.log('award path', fin.history.map((h) => h.nodeId + ':' + h.action).join(' > '))
+  expect(fin.status).toBe('approved')
+  expect(s.contracts.find((x) => x.id === c.id)!.status).toBe('awarded')
+})
+
+test('closeout workflow starts', () => {
+  let s = buildSeed()
+  s = produce(s, (d) => { startWorkflow(d, 'closeout', { title: 't', recordType: 'closeout', recordId: 'prj-1004', projectId: 'prj-1004', data: {} }) })
+  const w = s.workflows.find((x) => x.defKey === 'closeout')!
+  expect(w.active.length).toBe(1)
+  console.log('closeout assignees', w.active[0].assigneeIds)
+})
+
+test('template edit adds deliverables to active projects', () => {
+  let s = buildSeed()
+  const before = s.deliverables.length
+  s = produce(s, (d) => {
+    const st = d.templates[0].stages[2]
+    st.gate.deliverables.push({ id: 'd-new', name: 'Traffic plan', description: '', kind: 'document', ownerRole: 'pm', reviewerRole: 'pmo', acceptance: 'x', condition: { field: 'permitsNeeded.encroachment', op: 'truthy' } })
+    for (const p of d.projects) if (p.status === 'active') ensureDeliverables(d, p)
+  })
+  console.log('new deliverables', s.deliverables.length - before)
+  expect(s.deliverables.length).toBeGreaterThan(before)
+})
+
+test('import validation', () => {
+  expect(validateImport({ schemaVersion: 1 }).ok).toBe(false)
+  expect(validateImport(JSON.parse(JSON.stringify(buildSeed()))).ok).toBe(true)
+})
+
+===== FILE: src/views/audit/smoke.test.tsx =====
+import { renderToString } from 'react-dom/server'
+import { useStore } from '@/core/store'
+import { candidates, newScenario, suggestFit } from '../planning/model'
+
+const mem: Record<string, string> = {}
+;(globalThis as any).localStorage = { getItem: (k: string) => mem[k] ?? null, setItem: (k: string, v: string) => { mem[k] = v }, removeItem: (k: string) => { delete mem[k] } }
+
+import Admin from '../admin/Admin'
+import Planning from '../planning/Planning'
+import Audit from './Audit'
+import Permits from '../project/tabs/Permits'
+import Records from '../project/tabs/Records'
+
+const tabs = ['templates', 'programs', 'cbs', 'libraries', 'fields', 'people', 'data']
+test('admin tabs render', () => {
+  for (const t of tabs) {
+    mem['crosswalk:admin-tab'] = JSON.stringify(t)
+    const html = renderToString(<Admin />)
+    expect(html.length).toBeGreaterThan(500)
+  }
+})
+test('planning renders with scenarios', () => {
+  const s = useStore.getState()
+  const base = newScenario('Base', s.settings.asOf)
+  const sug = suggestFit(s as any, candidates(s as any), newScenario('Fit', s.settings.asOf, base), [2026, 2027, 2028, 2029, 2030])
+  mem['crosswalk:planning:scenarios:v1'] = JSON.stringify([base, sug.scenario])
+  const html = renderToString(<Planning />)
+  expect(html).toContain('Benefit-cost ranking')
+})
+test('audit renders', () => { expect(renderToString(<Audit />)).toContain('Audit log') })
+test('permits + records render for every project', () => {
+  for (const p of useStore.getState().projects) {
+    renderToString(<Permits projectId={p.id} />)
+    renderToString(<Records projectId={p.id} />)
+  }
+})
+
+===== FILE: src/views/estimating/admin/factorModel.test.tsx =====
+import { renderToString } from 'react-dom/server'
+const mem: Record<string, string> = {}
+;(globalThis as any).localStorage = { getItem: (k: string) => mem[k] ?? null, setItem: (k: string, v: string) => { mem[k] = v }, removeItem: (k: string) => { delete mem[k] } }
+import { mutate, useStore } from '@/core/store'
+import { actOnWorkflow, tasksFor } from '@/core/engine/workflow'
+import { openDraft, publishedModel, saveDraft } from '@/core/engine/factorModel'
+import { submitFactorModel } from '@/core/engine/factorWorkflow'
+import { RecordSummary } from '@/views/inbox/records'
+import { FactorModelAdmin } from './FactorModel'
+import { EstimatingAdmin } from './Admin'
+
+const st = () => useStore.getState()
+const as = (id: string) => { useStore.setState({ currentUserId: id }); (useStore.getInitialState() as any).currentUserId = id }
+
+describe('Factor model administration', () => {
+  test('estimator sees the editable draft with weights, multipliers, submit gate and tabs', () => {
+    as('u-est2')
+    const html = renderToString(<FactorModelAdmin s={st()} canEdit />)
+    expect(html).toMatch(/factor model/i)
+    for (const t of ['Published', 'Draft v3', 'Driver factors', 'Soil / rock', 'Crossings', 'Permit complexity', 'Work-hour restrictions', 'Remoteness / access', 'Run backtest', 'Save draft', 'Submit for approval', 'Discard draft', 'Base rates &amp; uncertainty', 'Draft vs published', 'Version history', 'Override reasons &amp; gate', 'You can edit this draft']) expect(html).toContain(t)
+    expect(html).toContain('type="range"')
+    expect(html).not.toMatch(/disadvantaged/i)
+  })
+
+  test('read-only for people outside the estimating team; the admin shell lists the sub-tab', () => {
+    as('u-pm1')
+    const html = renderToString(<FactorModelAdmin s={st()} canEdit={false} />)
+    expect(html).toContain('Read-only')
+    expect(html).not.toContain('Save draft')
+    expect(html).not.toContain('Submit for approval')
+    mem['crosswalk:estimating:admin'] = 'factor'
+    expect(renderToString(<EstimatingAdmin s={st()} />)).toContain('Driver factors')
+  })
+
+  test('gate failure blocks submission with reasons shown', () => {
+    as('u-est2')
+    mutate((d) => { d.settings.factorModel.gate.maxMape = 5 })
+    const html = renderToString(<FactorModelAdmin s={st()} canEdit />)
+    expect(html).toContain('Blocked by the publish gate')
+    expect(html).toMatch(/Mean absolute % error [\d.]+% \(needs ≤ 5%\)/)
+    mutate((d) => { d.settings.factorModel.gate.maxMape = 25 })
+  })
+
+  test('store walk: estimator edits and submits → lead approves in the inbox → published, prior retired', () => {
+    as('u-est2')
+    const draft = openDraft(st())!
+    const prior = publishedModel(st())!
+    mutate((d) => { saveDraft(d, { ...draft, factors: draft.factors.map((f) => (f.id === 'f-hours' ? { ...f, weight: 0.9 } : f)) }, 'u-est2') })
+    expect(st().audit.at(-1)!.summary).toMatch(/Work-hour restrictions: weight 1\.00 → 0\.90/)
+    let res: ReturnType<typeof submitFactorModel> = { ok: false, reasons: [] }
+    mutate((d) => { res = submitFactorModel(d, draft.id, 'u-est2', 'Hours weight trimmed') })
+    expect(res.reasons).toEqual([])
+    const task = tasksFor(st(), 'u-estl').find((t) => t.inst.id === res.instId)!
+    expect(task.node.label).toBe('Estimating lead approval')
+    as('u-estl')
+    const summary = renderToString(<RecordSummary s={st()} inst={task.inst} />)
+    expect(summary).toMatch(/Factor model v(<!-- -->)?3/)
+    expect(summary).toContain('weight 1.00 → 0.90')
+    mutate((d) => actOnWorkflow(d, res.instId!, 'lead', 'u-estl', 'approve', 'Approved'))
+    expect(publishedModel(st())!.id).toBe(draft.id)
+    expect(st().factorModels.find((m) => m.id === prior.id)!.status).toBe('retired')
+    const html = renderToString(<FactorModelAdmin s={st()} canEdit />)
+    expect(html).toMatch(/Start a new draft from v(<!-- -->)?3/)
+  })
+})
+
+===== FILE: src/views/estimating/boe.test.ts =====
+import { buildSeed } from '@/core/seed'
+import { boeCsv, boePdf } from './boe'
+import { latestEstimate } from './lib'
+
+const s = buildSeed()
+test('BOE downloads as PDF and CSV', async () => {
+  for (const code of ['PRJ-1001', 'PRJ-1003', 'PRJ-1006', 'PRJ-1020']) {
+    const p = s.projects.find((x) => x.code === code)!
+    const e = latestEstimate(s, p.id)!
+    const csv = boeCsv(s, e)
+    expect(csv.startsWith('﻿Basis of Estimate')).toBe(true)
+    expect(csv).toContain(p.code)
+    const pdf = boePdf(s, e)
+    const head = new Uint8Array(await pdf.arrayBuffer()).slice(0, 5)
+    expect(String.fromCharCode(...head)).toBe('%PDF-')
+    expect(pdf.size).toBeGreaterThan(4000)
+  }
+})
+
+===== FILE: src/views/estimating/lib.test.ts =====
+import { buildSeed } from '@/core/seed'
+import { estimateTotals, computeClass } from '@/core/engine/estimates'
+import { accuracyPoints, analogs, boeHtml, buildFromExisting, buildParametric, defaultInputs, defaultPackages, escalationTo, latestEstimate, splitIntoPackages, summarize } from './lib'
+
+const s = buildSeed()
+test('parametric class 5 draft prices like the seed', () => {
+  const p = s.projects.find((x) => x.code === 'PRJ-1006')!
+  const e = buildParametric(s, p, defaultInputs(p, s), 'u-est1')
+  expect(e.cls).toBe(5)
+  expect(e.lines.length).toBeGreaterThan(5)
+  const t = estimateTotals(e)
+  expect(t.total).toBeGreaterThan(5e6)
+  expect(e.version).toBe(2)
+  expect(e.rateTableVersion).toBe(s.settings.estimating.rateTableVersion)
+  expect(e.salesTax?.pct).toBeGreaterThan(0)
+  expect(t.tax).toBeGreaterThanOrEqual(0)
+  expect(e.title).toMatch(/rate-table/)
+})
+test('class 3 split conserves quantities', () => {
+  const p = s.projects.find((x) => x.code === 'PRJ-1006')!
+  const src = latestEstimate(s, p.id)!
+  const lines = splitIntoPackages(src.lines, defaultPackages(p))
+  const a = src.lines.reduce((x, l) => x + l.qty * l.unitCost, 0), b = lines.reduce((x, l) => x + l.qty * l.unitCost, 0)
+  expect(Math.abs(a - b) / a).toBeLessThan(0.001)
+  const e = buildFromExisting(s, src, 'u-est1', { split: defaultPackages(p), toClass3: true })
+  expect(e.method).toBe('line-item')
+  expect(e.cls).toBe(computeClass(e.maturity))
+})
+test('accuracy points and analogs', () => {
+  const pts = accuracyPoints(s)
+  expect(pts.length).toBeGreaterThan(10)
+  const sm = summarize(pts.filter((x) => x.cls === 5))
+  expect(sm.n).toBeGreaterThan(5)
+  const p = s.projects.find((x) => x.code === 'PRJ-1003')!
+  const a = analogs(s, p)
+  expect(a[0].project.workMethod).toBe('replace-hdd')
+  expect(escalationTo(s, 2025, 2027)).toBeGreaterThan(5)
+  const b = boeHtml(s, latestEstimate(s, p.id)!)
+  expect(b.body).toContain('Basis of Estimate')
+})
+
+import { produce } from 'immer'
+import { actOnWorkflow } from '@/core/engine/workflow'
+import { submitEstimate, budgetKindAvailable } from './lib'
+test('submit routes through workflow and approval locks the estimate', () => {
+  const p = s.projects.find((x) => x.code === 'PRJ-1006')!
+  let st = produce(s, (d) => {
+    d.currentUserId = 'u-est1'
+    const e = buildParametric(d, d.projects.find((x) => x.id === p.id)!, defaultInputs(p), 'u-est1')
+    d.estimates.push(e)
+    // recall the seeded in-review estimate first is not needed: different record
+    const msg = submitEstimate(d, e.id)
+    expect(msg).toMatch(/Submitted|Sent/)
+    expect(d.estimates.find((x) => x.id === e.id)!.status).toBe('in-review')
+    const inst = d.workflows.find((w) => w.id === d.estimates.find((x) => x.id === e.id)!.workflowInstanceId)!
+    for (let i = 0; i < 6 && inst.status === 'running'; i++) {
+      const a = inst.active[0]
+      actOnWorkflow(d, inst.id, a.nodeId, a.assigneeIds[0], a.nodeId === 'prep' ? 'submit' : 'approve')
+    }
+    expect(inst.status).toBe('approved')
+    expect(d.estimates.find((x) => x.id === e.id)!.status).toBe('approved')
+  })
+  expect(st.estimates.filter((e) => e.projectId === p.id && e.status === 'approved').length).toBe(1)
+  expect(budgetKindAvailable(s, s.projects.find((x) => x.code === 'PRJ-1001')!)?.kind).toBe('control')
+  expect(budgetKindAvailable(s, p)).toBeNull()
+})
+
+===== FILE: src/views/estimating/quick/lib.test.ts =====
+import { produce } from 'immer'
+import type { AppState } from '@/core/types'
+import { buildSeed } from '@/core/seed'
+import { estimateTotals } from '@/core/engine/estimates'
+import { computeQuick, findHistorical, inputsFromProject } from '@/core/engine/quick'
+import { actOnWorkflow, recallWorkflow, tasksFor } from '@/core/engine/workflow'
+import { toCSV } from '@/core/download'
+import {
+  aaceCompare, adjustmentHistory, applyAdjustment, applyImport, canAdjust, deriveSuggestions, historicalCsvRows, matchNote, mixTotal, normalizeInputs,
+  parseHistoricalCsv, planImport, previewAdjust, quickEligibility, readCsv, returnedToRequester, reviseQuickRequest, storedMatch, submitQuickRequest, validateHistorical, toFactorInputs, modelNote,
+} from './lib'
+
+const seed = buildSeed()
+const pid = (s: AppState, code: string) => s.projects.find((p) => p.code === code)!.id
+
+describe('quick estimate lib', () => {
+  test('rows kept without a diameter band cover every diameter (no nearest-band fallback)', () => {
+    const p = seed.projects.find((x) => x.code === 'PRJ-1006')! // hydrotest, 10"–16"
+    const m = findHistorical(seed, inputsFromProject(seed, p))
+    expect(m.row?.diameterBand).toBe('n/a')
+    expect(m.match).toBe('exact')
+    const v = seed.projects.find((x) => x.code === 'PRJ-1027')! // valve automation: one row for all sizes and settings
+    const mv = findHistorical(seed, inputsFromProject(seed, v))
+    expect(mv.match).toBe('any-terrain')
+    expect(matchNote(seed, mv, inputsFromProject(seed, v)).tone).not.toBe('bad')
+  })
+
+  test('matchNote flags fallbacks, small samples and no data', () => {
+    const i = normalizeInputs({ ...inputsFromProject(seed, seed.projects.find((x) => x.code === 'PRJ-1001')!), diameterBand: 'le-8' })
+    const r = computeQuick(seed, i)
+    expect(r.match).toBe('nearest-band')
+    expect(matchNote(seed, r, i).tone).toBe('warn')
+    const none = normalizeInputs({ ...i, assetType: 'distribution-main', workMethod: 'replace-hdd' })
+    expect(matchNote(seed, computeQuick(seed, none), none).tone).toBe('bad')
+  })
+
+  test('normalizeInputs keeps method, unit and band consistent with the asset', () => {
+    const i = normalizeInputs({ ...inputsFromProject(seed, seed.projects[0]), assetType: 'compressor-station' }, 'transmission-pipeline')
+    expect(i.workMethod).toBe('compressor-replacement')
+    expect(i.unit).toBe('hp')
+    expect(i.diameterBand).toBe('n/a')
+    expect(i.qty).toBe(10000)
+  })
+
+  test('AACE comparison of the historical spread', () => {
+    const a = aaceCompare({ total: 100, low: 70, high: 150 })
+    expect(a.lo).toBeCloseTo(-0.3)
+    expect(a.hi).toBeCloseTo(0.5)
+    expect(a.inside).toBe(true)
+    expect(aaceCompare({ total: 100, low: 40, high: 150 }).inside).toBe(false)
+  })
+
+  test('eligibility blocks a second request while one is in review, and projects with an approved Class 3', () => {
+    expect(quickEligibility(seed, pid(seed, 'PRJ-1012')).ok).toBe(false) // in review
+    expect(quickEligibility(seed, pid(seed, 'PRJ-1001')).ok).toBe(false) // approved Class 3
+    expect(quickEligibility(seed, pid(seed, 'PRJ-1006')).ok).toBe(true) // approved Class 5 can be re-requested
+  })
+
+  test('request → estimator adjusts → approve: approved with the adjustment recorded', () => {
+    let s: AppState = produce(seed, (d) => { d.currentUserId = 'u-pm1' })
+    const p = s.projects.find((x) => x.code === 'PRJ-1005')!
+    const inputs = inputsFromProject(s, p)
+    let res = { ok: false, estimateId: '', instId: '' } as ReturnType<typeof submitQuickRequest>
+    s = produce(s, (d) => { res = submitQuickRequest(d, p.id, { inputs, note: 'Screening number for the GRC forecast', needBy: '2026-11-15' }) })
+    expect(res.ok).toBe(true)
+    const e0 = s.estimates.find((e) => e.id === res.estimateId)!
+    expect(e0.method).toBe('quick')
+    expect(e0.status).toBe('in-review')
+    expect(e0.quick?.needBy).toBe('2026-11-15')
+    // it lands in the estimators' inbox
+    expect(tasksFor(s, 'u-est2').some((t) => t.inst.id === res.instId && t.node.id === 'est')).toBe(true)
+    expect(canAdjust(s, e0, 'u-est2')).toBe(true)
+    expect(canAdjust(s, e0, 'u-pm1')).toBe(false)
+    const before = estimateTotals(e0).total
+    const preview = previewAdjust(s, e0, 'p50', 8)!
+    s = produce(s, (d) => { applyAdjustment(d, e0.id, { pct: 8, basis: 'p50', reason: 'Two bore pits in a bike path not in the population' }, 'u-est2') })
+    const e1 = s.estimates.find((e) => e.id === e0.id)!
+    const after = estimateTotals(e1).total
+    expect(after).toBe(preview.total)
+    expect(after / before).toBeCloseTo(1.08, 2)
+    expect(e1.quick?.adjustment).toMatchObject({ pct: 8, byId: 'u-est2', fromTotal: before, toTotal: after })
+    expect(s.workflows.find((w) => w.id === res.instId)!.data.amount).toBe(after)
+    s = produce(s, (d) => { actOnWorkflow(d, res.instId!, 'est', 'u-est2', 'approve', 'Adjusted for bore pits') })
+    const e2 = s.estimates.find((e) => e.id === e0.id)!
+    expect(e2.status).toBe('approved')
+    expect(e2.approvedById).toBe('u-est2')
+    expect(e2.quick?.adjustment?.reason).toMatch(/bore pits/)
+    const hist = adjustmentHistory(s, e0.id)
+    expect(hist).toHaveLength(1)
+    expect(hist[0]).toMatchObject({ byId: 'u-est2', pct: 8 })
+    expect(storedMatch(s, e2)).toBe('exact')
+  })
+
+  test('adjusting reprices on the model version it was created with, even after a newer one is published', () => {
+    const e = seed.estimates.find((x) => x.method === 'quick' && x.status === 'in-review')!
+    expect(e.factor?.modelVersion).toBe(2)
+    // publish the draft v3: v2 retired
+    const s = produce(seed, (d) => { for (const m of d.factorModels) m.status = m.version === 3 ? 'published' : m.status === 'published' ? 'retired' : m.status })
+    const s2 = produce(s, (d) => applyAdjustment(d, e.id, { pct: 0, basis: 'p90', reason: 'Known market or vendor pricing' }, 'u-est1'))
+    const e2 = s2.estimates.find((x) => x.id === e.id)!
+    expect(e2.factor?.modelVersion).toBe(2)
+    expect(estimateTotals(e2).total).toBeGreaterThan(estimateTotals(e).total)
+    expect(estimateTotals(e2).total).toBe(previewAdjust(seed, e, 'p90', 0)!.total)
+    expect(e2.basis.assumptions.join(' ')).toMatch(/priced at P90: Known market or vendor pricing/)
+  })
+
+  test('requests price on the published factor model with the project drivers; a new need uses baseline drivers', () => {
+    const p = seed.projects.find((x) => x.code === 'PRJ-1014')!
+    const fi = toFactorInputs(seed, p, inputsFromProject(seed, p))
+    expect(fi.site.soil).toBe(p.drivers!.soil)
+    expect(fi.site.classLocation).toBe(p.location.classLocation)
+    const blank = toFactorInputs(seed, undefined, { ...inputsFromProject(seed, p), district: 'West' })
+    expect(blank.site.crossings).toBe(0)
+    expect(blank.taxPct).toBeGreaterThan(0)
+    let res = { ok: false } as ReturnType<typeof submitQuickRequest>
+    const s = produce(seed, (d) => { res = submitQuickRequest(d, p.id, { inputs: fi, note: 'GRC', byId: 'u-pm4' }) })
+    expect(res.ok).toBe(true)
+    const e = s.estimates.find((x) => x.id === res.estimateId)!
+    expect(e.factor?.modelVersion).toBe(2)
+    expect(modelNote(s, e)?.label).toBe('Model v2')
+    const none = produce(seed, (d) => { for (const m of d.factorModels) if (m.status === 'published') m.status = 'retired' })
+    produce(none, (d) => { res = submitQuickRequest(d, p.id, { inputs: fi, note: 'GRC', byId: 'u-pm4' }) })
+    expect(res.ok).toBe(false)
+    expect(res.message).toMatch(/No published factor model/)
+  })
+
+  test('a returned request is revised in place and routed again', () => {
+    let s: AppState = produce(seed, (d) => { d.currentUserId = 'u-pm1' })
+    const e = s.estimates.find((x) => x.method === 'quick' && x.status === 'in-review')!
+    s = produce(s, (d) => { actOnWorkflow(d, e.workflowInstanceId!, 'est', 'u-est1', 'return', 'Quantity looks low') })
+    expect(returnedToRequester(s, s.estimates.find((x) => x.id === e.id)!)?.event?.comment).toBe('Quantity looks low')
+    const n = s.estimates.length
+    const inputs = { ...e.quick!.inputs, qty: Math.round(e.quick!.inputs.qty * 1.5) || 2 }
+    let res: ReturnType<typeof reviseQuickRequest> = { ok: false, message: '' }
+    s = produce(s, (d) => { res = reviseQuickRequest(d, e.id, { inputs, note: 'Updated quantity', byId: s.workflows.find((w) => w.id === e.workflowInstanceId)!.startedById }) })
+    expect(res.ok).toBe(true)
+    expect(s.estimates.length).toBe(n)
+    const r = s.estimates.find((x) => x.id === e.id)!
+    expect(r.status).toBe('in-review')
+    expect(r.version).toBe(e.version)
+    expect(r.quick?.inputs.qty).toBe(inputs.qty)
+    expect(r.workflowInstanceId).toBe(e.workflowInstanceId)
+    expect(s.workflows.find((w) => w.id === e.workflowInstanceId)!.active[0].nodeId).toBe('est')
+    // recalled to draft: routed on a fresh workflow
+    const starter = s.workflows.find((w) => w.id === e.workflowInstanceId)!.startedById
+    s = produce(s, (d) => { recallWorkflow(d, e.workflowInstanceId!, starter) })
+    expect(s.estimates.find((x) => x.id === e.id)!.status).toBe('draft')
+    s = produce(s, (d) => { res = reviseQuickRequest(d, e.id, { inputs, note: 'Again', byId: starter }) })
+    expect(res.ok).toBe(true)
+    expect(s.estimates.find((x) => x.id === e.id)!.workflowInstanceId).not.toBe(e.workflowInstanceId)
+  })
+
+  test('CSV export → import round-trips with no changes', () => {
+    const csv = toCSV(historicalCsvRows(seed.historicalCosts))
+    expect(readCsv('a,"b,c","d ""e"""\n1,2,3')).toEqual([['a', 'b,c', 'd "e"'], ['1', '2', '3']])
+    const parsed = parseHistoricalCsv(csv, seed)
+    expect(parsed.errors).toEqual([])
+    expect(parsed.rows).toHaveLength(seed.historicalCosts.length)
+    const plan = planImport(seed.historicalCosts, parsed.rows, 'merge')
+    expect(plan.add.length + plan.update.length + plan.deactivate.length).toBe(0)
+  })
+
+  test('import merge updates and adds; replace deactivates rows not in the file', () => {
+    const rows = historicalCsvRows(seed.historicalCosts.slice(0, 2)).map((r) => ({ ...r }))
+    rows[0].p50 = Number(rows[0].p50) + 100
+    rows[0].p90 = Number(rows[0].p90) + 100
+    rows.push({ ...rows[1], id: '', assetType: 'distribution-main', workMethod: 'replace-hdd', diameterBand: 'le-8', terrain: 'urban', unit: 'ft' })
+    const parsed = parseHistoricalCsv(toCSV(rows), seed)
+    expect(parsed.errors).toEqual([])
+    const merge = planImport(seed.historicalCosts, parsed.rows, 'merge')
+    expect([merge.add.length, merge.update.length, merge.deactivate.length]).toEqual([1, 1, 0])
+    const replace = planImport(seed.historicalCosts, parsed.rows, 'replace')
+    expect(replace.deactivate.length).toBe(seed.historicalCosts.filter((h) => h.active).length - 2)
+    const s = produce(seed, (d) => applyImport(d, replace))
+    expect(s.historicalCosts.length).toBe(seed.historicalCosts.length + 1) // nothing deleted
+    expect(s.historicalCosts.filter((h) => h.active)).toHaveLength(3)
+  })
+
+  test('import reports bad rows', () => {
+    const rows = historicalCsvRows(seed.historicalCosts.slice(0, 1))
+    const bad = toCSV([{ ...rows[0], p10: 99999, mix: 'cat-contract:0.5' }])
+    const r = parseHistoricalCsv(bad, seed)
+    expect(r.rows).toHaveLength(0)
+    expect(r.errors[0]).toMatch(/P10 ≤ P50 ≤ P90/)
+    expect(r.errors[0]).toMatch(/100%/)
+    expect(parseHistoricalCsv('foo,bar\n1,2', seed).errors[0]).toMatch(/Missing column/)
+  })
+
+  test('validation: mix must total 100% and no duplicate active rows', () => {
+    const h = seed.historicalCosts[0]
+    expect(mixTotal(h.mix)).toBeCloseTo(100, 0)
+    expect(validateHistorical(h, seed.historicalCosts)).toEqual([])
+    expect(validateHistorical({ ...h, id: 'x' }, seed.historicalCosts).join()).toMatch(/Another active row/)
+    expect(validateHistorical({ ...h, mix: { 'cat-contract': 0.4 } }, seed.historicalCosts).join()).toMatch(/total 100%/)
+  })
+
+  test('derive from closed projects suggests blended values and skips projects already sourced', () => {
+    const sug = deriveSuggestions(seed)
+    expect(sug.length).toBeGreaterThan(0)
+    for (const x of sug) {
+      expect(x.points.length).toBeGreaterThan(0)
+      expect(x.suggested.p10).toBeLessThanOrEqual(x.suggested.p50)
+      expect(x.suggested.p50).toBeLessThanOrEqual(x.suggested.p90)
+      if (x.row) expect(x.suggested.n).toBe(x.row.n + x.points.length)
+    }
+    const upd = sug.find((x) => x.row)!
+    const s = produce(seed, (d) => { const h = d.historicalCosts.find((y) => y.id === upd.row!.id)!; h.sources = upd.suggested.sources })
+    expect(deriveSuggestions(s).some((x) => x.key === upd.key)).toBe(false)
+  })
+})
+
+===== FILE: src/views/estimating/quick/render.test.tsx =====
+import { renderToString } from 'react-dom/server'
+const mem: Record<string, string> = {}
+;(globalThis as any).localStorage = { getItem: (k: string) => mem[k] ?? null, setItem: (k: string, v: string) => { mem[k] = v }, removeItem: (k: string) => { delete mem[k] } }
+import { mutate, useStore } from '@/core/store'
+import { estimateTotals } from '@/core/engine/estimates'
+import { actOnWorkflow, tasksFor } from '@/core/engine/workflow'
+import { inputsFromProject } from '@/core/engine/quick'
+import { applyAdjustment, submitQuickRequest } from './lib'
+import Estimating from '../Estimating'
+import Estimates from '@/views/project/tabs/Estimates'
+import QuickEstimateSettings from '@/views/admin/QuickEstimateSettings'
+import { RecordSummary } from '@/views/inbox/records'
+import { QuickRequest } from './QuickForm'
+import { QuickEstimateView } from './QuickView'
+import { DeriveModal, HistDrawer, HistoricalCosts, ImportModal } from './Historical'
+
+// Server rendering reads the store's initial snapshot, so switch persona there too.
+const st = () => useStore.getState()
+const as = (id: string) => { useStore.setState({ currentUserId: id }); (useStore.getInitialState() as any).currentUserId = id }
+
+describe('Class 5 quick estimate views', () => {
+  test('request form renders dropdowns and a live result for a project and for a new need', () => {
+    as('u-pm1')
+    const p = st().projects.find((x) => x.code === 'PRJ-1005')!
+    const html = renderToString(<QuickRequest projectId={p.id} />)
+    for (const t of ['Asset type', 'Work method', 'Diameter band', 'Setting', 'Region (district)', 'Quantity (feet)', 'Spend midpoint year', 'Site cost drivers', 'Soil / rock', 'Permit complexity', 'Work-hour restrictions', 'What is it for', 'Send to estimating team', 'Forward-looking estimate', 'Factor model', 'Cost drivers', 'Base rate × quantity', '= Direct cost', 'Rate-table check', 'Generated basis of estimate', 'Draft wording — verify', 'Run Monte Carlo', 'AACE Class 5']) expect(html).toContain(t)
+    expect(html).not.toMatch(/disadvantaged/i)
+    const nn = renderToString(<QuickRequest allowPicker />)
+    expect(nn).toContain('New need — no project yet')
+    expect(nn).toContain('start a new project')
+    // unbanded asset hides the band
+    const c = st().projects.find((x) => x.code === 'PRJ-1023')!
+    expect(renderToString(<QuickRequest projectId={c.id} />)).not.toContain('Diameter band')
+  })
+
+  test('estimator sees the Adjust panel on an in-review quick estimate; others do not', () => {
+    const e = st().estimates.find((x) => x.method === 'quick' && x.status === 'in-review')!
+    const p = st().projects.find((x) => x.id === e.projectId)!
+    as('u-est1')
+    const html = renderToString(<QuickEstimateView estimate={e} project={p} />)
+    expect(html).toContain('Adjust (estimating team)')
+    expect(html).toContain('Override reason (required)')
+    expect(html).toContain(st().settings.factorModel.overrideReasons[0])
+    expect(html).toContain('Before → after')
+    for (const t of ['Rate-table check', 'Basis of estimate', 'Draft wording — verify', 'Run Monte Carlo', 'Site drivers']) expect(html).toContain(t)
+    expect(html).toMatch(/Cost drivers · factor model v(<!-- -->)?2/)
+    expect(html).toContain('Quick · Class 5')
+    as('u-pm1')
+    expect(renderToString(<QuickEstimateView estimate={e} project={p} />)).not.toContain('Adjust (estimating team)')
+  })
+
+  test('adjusted and approved estimate shows its adjustment history', () => {
+    as('u-me')
+    const e = st().estimates.find((x) => x.method === 'quick' && x.quick?.adjustment)!
+    const p = st().projects.find((x) => x.id === e.projectId)!
+    const html = renderToString(<QuickEstimateView estimate={e} project={p} />)
+    expect(html).toContain('Adjustment history')
+    expect(html).toContain('Omar Siddiqui')
+    expect(html).toContain('+12%')
+    expect(html).toContain('flood-control channel')
+  })
+
+  test('inbox record summary for a quick estimate task', () => {
+    as('u-est2')
+    const e = st().estimates.find((x) => x.method === 'quick' && x.status === 'in-review')!
+    const inst = st().workflows.find((w) => w.id === e.workflowInstanceId)!
+    const html = renderToString(<RecordSummary s={st()} inst={inst} />)
+    expect(html).toContain('Quick · Class 5')
+    expect(html).toContain('Adjust (estimating team)')
+    expect(html).toContain('What it is for')
+  })
+
+  test('project estimates tab marks quick estimates and offers the request action', () => {
+    as('u-me')
+    const p = st().projects.find((x) => x.code === 'PRJ-1012')!
+    const html = renderToString(<Estimates projectId={p.id} />)
+    expect(html).toContain('Quick · Class 5')
+    expect(html).toContain('Request Class 5 quick estimate')
+    expect(html).toContain('Cost drivers')
+    expect(html).toContain('Rate-table check')
+  })
+
+  test('historical cost table, drawer, import and derive render', () => {
+    as('u-est1')
+    const html = renderToString(<HistoricalCosts />)
+    for (const t of ['Historical cost table', 'Export CSV', 'Import CSV', 'Derive from closed projects', 'Add row', 'P50', 'Base yr', 'Sources']) expect(html).toContain(t)
+    const s = st()
+    const d = renderToString(<HistDrawer s={s} row={s.historicalCosts[0]} canEdit onClose={() => {}} />)
+    expect(d).toContain('Category mix')
+    expect(d).toMatch(/100\.0(<!-- -->)?%/)
+    expect(d).toContain('Deactivate row')
+    expect(renderToString(<ImportModal s={s} onClose={() => {}} />)).toContain('Replace')
+    const dv = renderToString(<DeriveModal s={s} onClose={() => {}} />)
+    expect(dv).toContain('PRJ-1009')
+    as('u-pm1')
+    expect(renderToString(<HistoricalCosts />)).not.toContain('Add row')
+  })
+
+  test('estimating module quick and historical tabs, and the settings page', () => {
+    as('u-est1')
+    mem['crosswalk:estimating:tab'] = 'quick'
+    const q = renderToString(<Estimating />)
+    expect(q).toContain('Request a Class 5 quick estimate')
+    expect(q).toContain('waiting on you')
+    mem['crosswalk:estimating:tab'] = 'historical'
+    expect(renderToString(<Estimating />)).toContain('Historical cost table')
+    as('u-me')
+    const set = renderToString(<QuickEstimateSettings />)
+    for (const t of ['Region factors', 'West', 'Class 5 contingency', 'How the quick estimate works', 'Open historical costs']) expect(set).toContain(t)
+  })
+
+  test('store walk: PM requests → estimator adjusts → approves; estimate approved with the adjustment recorded', () => {
+    as('u-pm2')
+    const p = st().projects.find((x) => x.code === 'PRJ-1014')!
+    let res: ReturnType<typeof submitQuickRequest> = { ok: false, message: '' }
+    mutate((d) => { res = submitQuickRequest(d, p.id, { inputs: inputsFromProject(d, p), note: 'Planning budget for the Gate 1 business case' }) })
+    expect(res.ok).toBe(true)
+    const task = tasksFor(st(), 'u-est1').find((t) => t.inst.id === res.instId)!
+    expect(task.node.id).toBe('est')
+    const before = estimateTotals(st().estimates.find((e) => e.id === res.estimateId)!).total
+    as('u-est1')
+    mutate((d) => applyAdjustment(d, res.estimateId!, { pct: -6, basis: 'p50', reason: 'Rural ROW already secured under an existing easement' }, 'u-est1'))
+    mutate((d) => actOnWorkflow(d, res.instId!, 'est', 'u-est1', 'approve', 'Adjusted −6%'))
+    const e = st().estimates.find((x) => x.id === res.estimateId)!
+    expect(e.status).toBe('approved')
+    expect(e.approvedById).toBe('u-est1')
+    expect(e.quick?.adjustment).toMatchObject({ pct: -6, byId: 'u-est1', fromTotal: before, toTotal: estimateTotals(e).total })
+    expect(st().audit.some((a) => a.entityId === e.id && a.action === 'adjust')).toBe(true)
+    expect(st().workflows.find((w) => w.id === res.instId)!.status).toBe('approved')
+  })
+})
+
+===== FILE: src/views/estimating/render-draft.test.tsx =====
+// SSR snapshots use the store's initial state, so seed the drafts through a mocked buildSeed.
+import { renderToString } from 'react-dom/server'
+const mem: Record<string, string> = {}
+;(globalThis as any).localStorage = { getItem: (k: string) => mem[k] ?? null, setItem: (k: string, v: string) => { mem[k] = v }, removeItem: () => {} }
+vi.mock('@/core/seed', async (orig) => {
+  const m: any = await orig()
+  const lib = await import('./lib')
+  return { ...m, buildSeed: () => {
+    const s = m.buildSeed()
+    const p1 = s.projects.find((x: any) => x.code === 'PRJ-1001')
+    s.estimates.push(lib.buildFromExisting(s, lib.latestEstimate(s, p1.id)!, 'u-me', { split: ['A', 'B'], toClass3: true }))
+    const p2 = s.projects.find((x: any) => x.code === 'PRJ-1023')
+    s.estimates.push(lib.buildParametric(s, p2, lib.defaultInputs(p2, s), 'u-me'))
+    const p3 = s.projects.find((x: any) => x.code === 'PRJ-1026')
+    s.estimates.push(lib.buildParametric(s, p3, lib.defaultInputs(p3, s), 'u-me'))
+    return s
+  } }
+})
+import Estimates from '@/views/project/tabs/Estimates'
+
+test('draft editor renders for line-item, station and valve drafts', () => {
+  for (const id of ['prj-1001', 'prj-1023', 'prj-1026']) {
+    const html = renderToString(<Estimates projectId={id} />)
+    expect(html).toContain('Submit for approval')
+    expect(html).toContain('+ From library')
+    expect(html).toContain('Locked pricing')
+  }
+})
+
+===== FILE: src/views/estimating/render.test.tsx =====
+import { renderToString } from 'react-dom/server'
+const mem: Record<string, string> = {}
+;(globalThis as any).localStorage = { getItem: (k: string) => mem[k] ?? null, setItem: (k: string, v: string) => { mem[k] = v }, removeItem: (k: string) => { delete mem[k] } }
+import { useStore } from '@/core/store'
+import Estimates from '@/views/project/tabs/Estimates'
+import Estimating from './Estimating'
+
+test('every project estimates tab renders', () => {
+  for (const p of useStore.getState().projects) {
+    const html = renderToString(<Estimates projectId={p.id} />)
+    expect(html.length).toBeGreaterThan(1000)
+  }
+})
+test('estimating home renders each tab', () => {
+  for (const t of ['register', 'library', 'accuracy', 'analogs']) {
+    mem['crosswalk:estimating:tab'] = t
+    const html = renderToString(<Estimating />)
+    expect(html).toContain('Estimating')
+  }
+})
+test('estimating administration renders every section', () => {
+  mem['crosswalk:estimating:tab'] = 'admin'
+  for (const sub of ['rates', 'reprice', 'regions', 'markups', 'units', 'scope', 'maturity', 'log']) {
+    mem['crosswalk:estimating:admin'] = sub
+    const html = renderToString(<Estimating />)
+    expect(html).toContain('Rate table')
+    if (sub === 'reprice') expect(html).toContain('Projects priced on an older rate table')
+    if (sub === 'markups') expect(html).toContain('contingency drawdown policy')
+  }
+})
+
+===== FILE: src/views/forecast/lib.test.ts =====
+import { buildSeed } from '@/core/seed'
+import { actualsThrough, budgetByFunction, eacOf, forecastMonths, spreadTotal } from '@/core/engine/wbs'
+import { sum } from '@/core/util'
+import {
+  applyPaste, applySpread, byYearOf, carryForward, clearRow, compareVersions, copyVersion, currentCycle, cycleOf, cycleRows,
+  diffSummary, distribute, fmtCell, gridCsvRows, isBlock, parseClipboard, parseMoney, rollup, rollupCsvRows, rollupFnTotal,
+  rollupYearTotal, rowTotal, scaleRow, setCell, setYearTotal, spreadRow, startCycle, versionCutoff, versionsOf,
+} from './lib'
+
+describe('cell entry', () => {
+  it('parses dollars, separators, suffixes and negatives', () => {
+    expect(parseMoney('1234')).toBe(1234)
+    expect(parseMoney('$1,234,567')).toBe(1234567)
+    expect(parseMoney('1.2M')).toBe(1200000)
+    expect(parseMoney('450k')).toBe(450000)
+    expect(parseMoney(' $2.5m ')).toBe(2500000)
+    expect(parseMoney('(5,000)')).toBe(-5000)
+    expect(parseMoney('-5k')).toBe(-5000)
+    expect(parseMoney('−7,500')).toBe(-7500)
+    expect(parseMoney('')).toBe(0)
+    expect(parseMoney('-')).toBe(0)
+    expect(parseMoney('abc')).toBeNull()
+    expect(parseMoney('1.2.3')).toBeNull()
+    expect(parseMoney('250', 1000)).toBe(250000)
+    expect(parseMoney('1.5M', 1000)).toBe(1500000)
+    expect(fmtCell(1234567)).toBe('1,234,567')
+    expect(fmtCell(0)).toBe('')
+  })
+  it('parses an Excel block', () => {
+    expect(parseClipboard('1\t2\t3\r\n4\t5\t6\r\n')).toEqual([['1', '2', '3'], ['4', '5', '6']])
+    expect(isBlock('1,000\n')).toBe(false)
+    expect(isBlock('1\t2')).toBe(true)
+    expect(isBlock('1\n2')).toBe(true)
+  })
+  it('pastes right and down, clipping at the grid edge and reporting bad cells', () => {
+    const rows = ['a', 'b'], cols = ['2027-01', '2027-02', '2027-03']
+    const r = applyPaste({}, rows, cols, 0, 1, parseClipboard('1,000\t$2k\t9\n3\tx\n5\t6'))
+    expect(r.spread.a).toEqual({ '2027-02': 1000, '2027-03': 2000 })
+    expect(r.spread.b).toEqual({ '2027-02': 3 })
+    expect(r.filled).toBe(3)
+    expect(r.rejected).toEqual(['x'])
+  })
+})
+
+describe('spread edits', () => {
+  const months = ['2026-11', '2026-12', '2027-01', '2027-02']
+  it('set/clear keeps zero cells out', () => {
+    let sp = setCell({}, 'f', '2026-11', 100)
+    sp = setCell(sp, 'f', '2026-12', 0)
+    expect(sp.f).toEqual({ '2026-11': 100 })
+    expect(clearRow(sp, 'f').f).toEqual({})
+  })
+  it('spreads an amount over a range and clears the rest of the row', () => {
+    const sp = spreadRow({ f: { '2026-11': 999, '2027-02': 5 } }, 'f', months, 1000, 'even', '2026-12', '2027-01')
+    expect(sp.f).toEqual({ '2026-12': 500, '2027-01': 500 })
+  })
+  it('scales a row to a new ETC keeping its shape', () => {
+    const sp = scaleRow({ f: { '2026-11': 100, '2027-01': 300 } }, 'f', months, 800, 'even')
+    expect(sp.f).toEqual({ '2026-11': 200, '2027-01': 600 })
+    const fresh = scaleRow({}, 'g', months, 1001, 'even')
+    expect(rowTotal(fresh, 'g')).toBe(1001)
+    expect(Object.keys(fresh.g)).toEqual(months)
+  })
+  it('distributes exactly', () => {
+    const d = distribute(1000, [1, 1, 1])
+    expect(sum(d)).toBe(1000)
+    expect(distribute(10, [0, 0])).toEqual([5, 5])
+  })
+  it('summarises a save for the audit trail', () => {
+    const fns = [{ id: 'f', code: '06', name: 'Construction' }]
+    const t = diffSummary(fns, { f: { '2026-11': 100 } }, { f: { '2026-11': 150, '2026-12': 50 } }, 0, 10)
+    expect(t).toContain('2 cells changed')
+    expect(t).toContain('06 Construction +$100')
+    expect(t).toContain('contingency held +$10')
+    expect(diffSummary(fns, {}, {}, 0, 0)).toBe('No changes to the spread')
+  })
+})
+
+describe('versions on the seed', () => {
+  const s = buildSeed()
+  const p = s.projects.find((x) => x.code === 'PRJ-1001')!
+  it('lists versions newest first and computes the cutoff', () => {
+    const vs = versionsOf(s, p.id)
+    expect(vs.length).toBeGreaterThanOrEqual(3)
+    expect(vs[0].date >= vs[1].date).toBe(true)
+    expect(versionCutoff(s, vs[0])).toBe(actualsThrough(s, p.id))
+  })
+  it('copies the latest version into a draft with the same EAC when nothing is stale', () => {
+    const src = versionsOf(s, p.id)[0]
+    const { forecast, moved } = copyVersion(s, p, src, { byId: 'u-me' })
+    expect(forecast.status).toBe('draft')
+    expect(forecast.locked).toBe(false)
+    expect(forecast.date).toBe(s.settings.asOf)
+    expect(moved).toBe(0)
+    expect(spreadTotal(forecast.spread)).toBe(spreadTotal(src.spread))
+    expect(forecast.eac).toBe(eacOf(s, p.id, forecast.spread, forecast.contingencyHeld))
+    expect(sum(Object.values(forecast.byYear))).toBe(forecast.eac)
+  })
+  it('carries ETC that fell into closed months forward', () => {
+    const src = versionsOf(s, p.id)[0]
+    const stale = { ...src.spread!, 'wbs-500': { ...src.spread!['wbs-500'], '2026-09': 1_000_000 } }
+    const all = carryForward(s, p, stale, '2026-08', 'all')
+    expect(all.moved).toBe(1_000_000)
+    expect(spreadTotal(all.spread)).toBe(spreadTotal(stale))
+    expect(Object.keys(all.spread['wbs-500']).every((m) => m > actualsThrough(s, p.id))).toBe(true)
+    const net = carryForward(s, p, stale, '2026-08', 'net')
+    expect(net.moved).toBeLessThan(1_000_000)
+  })
+  it('starts a first version from remaining budget when there is none', () => {
+    const { forecast } = copyVersion(s, p, undefined, { byId: 'u-me' })
+    const bud = budgetByFunction(s, p.id)
+    expect(spreadTotal(forecast.spread)).toBeGreaterThan(0)
+    expect(forecast.eac).toBeLessThanOrEqual(bud.total + 10)
+  })
+  it('applySpread recomputes EAC and calendar years', () => {
+    const d = buildSeed()
+    const f = versionsOf(d, p.id)[0]
+    const sp = setCell(f.spread!, 'wbs-500', forecastMonths(d, p)[0], 12_345)
+    applySpread(d, f, sp, 1000, 'n')
+    expect(f.eac).toBe(eacOf(d, p.id, sp, 1000))
+    expect(sum(Object.values(f.byYear))).toBe(f.eac)
+    expect(byYearOf(d, p.id, {}, 0)['2026']).toBeGreaterThan(0)
+  })
+  it('compares two versions by function and month', () => {
+    const [b, a] = versionsOf(s, p.id).filter((f) => f.status === 'approved')
+    const c = compareVersions(s, a, b)
+    expect(c.rows.length).toBe(s.settings.wbsFunctions.length)
+    expect(sum(c.months.map((m) => m.delta))).toBe(spreadTotal(b.spread) - spreadTotal(a.spread))
+    expect(c.movers.length).toBeLessThanOrEqual(5)
+  })
+  it('exports the grid with totals that tie to EAC', () => {
+    const f = versionsOf(s, p.id)[1]
+    const rows = gridCsvRows(s, p, f, forecastMonths(s, p))
+    const total = rows[rows.length - 1]
+    expect(total['WBS code']).toBe('TOTAL')
+    expect(total.EAC).toBe(f.eac)
+  })
+})
+
+describe('cycle and roll-up', () => {
+  it('assigns versions to cycles and reports status', () => {
+    const s = buildSeed()
+    expect(cycleOf('2026-10-26')).toBe('2026-11')
+    expect(cycleOf('2026-10-16')).toBe('2026-10')
+    expect(currentCycle(s)).toBe('2026-11')
+    const rows = cycleRows(s)
+    expect(rows.some((r) => r.status === 'in-review')).toBe(true)
+    expect(rows.some((r) => r.status === 'not-started')).toBe(true)
+  })
+  it('start cycle creates one draft per project without a version, once', () => {
+    const s = buildSeed()
+    const before = cycleRows(s).filter((r) => r.status === 'not-started').length
+    const n0 = s.forecasts.length
+    const r = startCycle(s, 'u-me')
+    expect(r.codes.length).toBe(before)
+    expect(s.forecasts.length).toBe(n0 + before)
+    expect(cycleRows(s).every((x) => x.status !== 'not-started')).toBe(true)
+    expect(startCycle(s, 'u-me').codes.length).toBe(0)
+  })
+  it('rolls up actuals + spread by function and year', () => {
+    const s = buildSeed()
+    const ps = s.projects.filter((p) => p.status === 'active')
+    const r = rollup(s, ps)
+    const total = sum(r.years.map((y) => rollupYearTotal(r, y)))
+    const eacs = sum(r.projects.map((x) => x.version.eac))
+    expect(Math.abs(total - eacs)).toBeLessThan(r.projects.length * 2 + 2)
+    expect(sum(r.fns.map((f) => rollupFnTotal(r, f.id))) + sum(Object.values(r.contingency))).toBe(total)
+    const csv = rollupCsvRows(r)
+    expect(csv[csv.length - 1]['WBS code']).toBe('TOTAL')
+  })
+})
+
+describe('year totals', () => {
+  it('sets a year total keeping shape, and pastes into collapsed years', () => {
+    const months = ['2026-11', '2026-12', '2027-01', '2027-02']
+    const sp = setYearTotal({ f: { '2027-01': 100, '2027-02': 300 } }, 'f', ['2027-01', '2027-02'], 1000)
+    expect(sp.f).toEqual({ '2027-01': 250, '2027-02': 750 })
+    const even = setYearTotal({}, 'g', ['2026-11', '2026-12'], 101)
+    expect(rowTotal(even, 'g')).toBe(101)
+    const r = applyPaste({}, ['f'], ['2026', '2027-01'], 0, 0, [['200', '5']], 1, months)
+    expect(r.spread.f).toEqual({ '2026-11': 100, '2026-12': 100, '2027-01': 5 })
+  })
+})
+
+===== FILE: src/views/forecast/lines.test.tsx =====
+// Line-item forecasting: profiles by WBS function, line-level versions, ETC/EAC by function, SAP drill-down.
+import React from 'react'
+import { renderToString } from 'react-dom/server'
+import { mutate, useStore } from '@/core/store'
+import { buildSeed } from '@/core/seed'
+import { actualsThrough, forecastMonths, spreadTotal } from '@/core/engine/wbs'
+import { budgetByLine, etcEacByFunction, linesOfFunction, rollupGrid } from '@/core/engine/lines'
+import { txnsFor } from '@/core/engine/sap'
+import { sum } from '@/core/util'
+import ForecastSpread from '../project/tabs/ForecastSpread'
+import ForecastCycle from './ForecastCycle'
+import {
+  applyFnProfile, applyLines, carryForwardLines, carryProfiles, copyVersion, etcEacAt, fnGroups, lineActuals, lineCsvRows, lineRefs, linesToSpread,
+  markAdjusted, portfolioEtcEac, portfolioEtcEacCsv, rowTotal, setCell, shapeOf, stripZeros, txnShare, versionCutoff, versionsOf, working,
+} from './lib'
+
+const render = (el: React.ReactElement) => { Object.assign((useStore as any).getInitialState(), useStore.getState()); return renderToString(el) }
+
+describe('line-level forecast helpers', () => {
+  const s = buildSeed()
+  const p = s.projects.find((x) => x.code === 'PRJ-1001')!
+  const v = versionsOf(s, p.id)[0]
+
+  it('the open November version carries the custom construction and restoration profiles', () => {
+    expect(v.lineSpread).toBeTruthy()
+    expect(v.profiles?.['wbs-500']?.profileId).toBe('prof-mobilize')
+    expect(v.profiles?.['wbs-500']?.adjusted).toBe(true)
+    expect(v.profiles?.['wbs-800']?.profileId).toBe('prof-closeout')
+  })
+  it('groups lines under the WBS functions in WBS order', () => {
+    const g = fnGroups(s, lineRefs(s))
+    expect(g.length).toBe(s.settings.wbsFunctions.length)
+    expect(g.find((x) => x.fn.id === 'wbs-300')!.lines.map((l) => l.code)).toEqual(['300.10', '300.20', '300.30'])
+  })
+  it('applies a profile to one function: total kept, lines phased, adjusted cleared', () => {
+    const lines = stripZeros(v.lineSpread)
+    const ids = linesOfFunction(s, 'wbs-500').map((l) => l.id)
+    const before = sum(ids.map((id) => rowTotal(lines, id)))
+    const ms = forecastMonths(s, p)
+    const r = applyFnProfile(s, p, lines, 'wbs-500', { profileId: 'bell', start: ms[1], end: ms[6] })
+    expect(sum(ids.map((id) => rowTotal(r.lines, id)))).toBe(before)
+    for (const id of ids) expect(Object.keys(r.lines[id]).every((m) => m >= ms[1] && m <= ms[6])).toBe(true)
+    expect(r.profile.adjusted).toBe(false)
+    // other functions untouched
+    expect(r.lines['fl-100']).toEqual(lines['fl-100'])
+    const adj = markAdjusted({ 'wbs-500': r.profile }, 'wbs-500')
+    expect(adj['wbs-500'].adjusted).toBe(true)
+    expect(markAdjusted({}, 'wbs-500')).toEqual({})
+  })
+  it('black-out months of a custom profile get no ETC', () => {
+    const ms = forecastMonths(s, p)
+    const r = applyFnProfile(s, p, stripZeros(v.lineSpread), 'wbs-500', { profileId: 'prof-moratorium', start: ms[0], end: ms[ms.length - 1] })
+    const row = r.lines['fl-500-30'] ?? {}
+    expect(Object.keys(row).some((m) => ['11', '12', '01'].includes(m.slice(5)))).toBe(false)
+    expect(shapeOf(s, 'prof-moratorium', ms).filter((x) => x === 0).length).toBeGreaterThan(0)
+  })
+  it('ETC / EAC by function ties to the stored EAC and the line grid', () => {
+    const t = etcEacAt(s, p, v, versionCutoff(s, v))
+    expect(t.totals.eac).toBe(v.eac)
+    expect(t.totals.etc).toBe(spreadTotal(v.lineSpread))
+    expect(sum(t.rows.map((r) => r.actual))).toBe(sum(s.costPeriods.filter((c) => c.projectId === p.id).map((c) => c.actual)))
+    for (const r of t.rows) expect(r.eac).toBe(sum(r.lines.map((l) => l.eac)))
+    expect(etcEacByFunction(s, p, v).totals.eac).toBe(t.totals.eac)
+  })
+  it('copies a version at line level with profiles carried over', () => {
+    const { forecast, moved } = copyVersion(s, p, v, { byId: 'u-me' })
+    expect(moved).toBe(0)
+    expect(spreadTotal(forecast.lineSpread)).toBe(spreadTotal(v.lineSpread))
+    expect(forecast.spread).toEqual(stripZeros(rollupGrid(s, forecast.lineSpread)))
+    expect(forecast.profiles?.['wbs-500']?.profileId).toBe('prof-mobilize')
+    expect(sum(Object.values(forecast.byYear))).toBe(forecast.eac)
+  })
+  it('carries stale line ETC forward and marks the function adjusted', () => {
+    const through = actualsThrough(s, p.id)
+    const lines = { ...stripZeros(v.lineSpread), 'fl-500-10': { ...stripZeros(v.lineSpread)['fl-500-10'], [through]: 500_000 } }
+    const r = carryForwardLines(s, p, lines, through, 'all')
+    expect(r.moved).toBe(500_000)
+    expect(r.movedBy['fl-500-10']).toBe(500_000)
+    expect(spreadTotal(r.spread)).toBe(spreadTotal(lines))
+    const pr = carryProfiles({ 'wbs-500': { profileId: 'scurve', start: '2020-01', end: '2020-02', adjusted: false } }, forecastMonths(s, p), new Set(['wbs-500']))
+    expect(pr['wbs-500'].start).toBe(forecastMonths(s, p)[0])
+    expect(pr['wbs-500'].adjusted).toBe(true)
+  })
+  it('writes lines back and keeps spread / EAC / years in step', () => {
+    const d = buildSeed()
+    const f = versionsOf(d, p.id)[0]
+    const m = forecastMonths(d, p)[0]
+    const lines = setCell(stripZeros(f.lineSpread), 'fl-500-20', m, rowTotal(f.lineSpread ?? {}, 'fl-500-20') + 0 + 77_000)
+    applyLines(d, f, lines, 1_000, 'n', { ...f.profiles })
+    expect(spreadTotal(f.spread)).toBe(spreadTotal(f.lineSpread))
+    expect(f.eac).toBe(sum(d.costPeriods.filter((c) => c.projectId === p.id).map((c) => c.actual)) + spreadTotal(lines) + 1_000)
+    expect(sum(Object.values(f.byYear))).toBe(f.eac)
+    expect(working(d, f, lines, 1_000, {}).eac).toBe(f.eac)
+    expect(linesToSpread(d, lines)['wbs-500']).toBeTruthy()
+  })
+  it('exports a line CSV whose total ties to EAC', () => {
+    const rows = lineCsvRows(s, p, v, forecastMonths(s, p))
+    const tot = rows[rows.length - 1]
+    expect(tot['WBS code']).toBe('TOTAL')
+    expect(tot.EAC).toBe(v.eac)
+    expect(rows.some((r) => r['Line code'] === '500.10')).toBe(true)
+    expect(rows.find((r) => r['WBS code'] === '500' && r['Line code'] === '')!.Profile).toContain('adjusted')
+  })
+  it('line actuals sum to the ERP actual and drill to SAP rows', () => {
+    const la = lineActuals(s, p.id)
+    expect(sum(Object.values(la))).toBe(sum(s.costPeriods.filter((c) => c.projectId === p.id).map((c) => c.actual)))
+    const cp = s.costPeriods.find((c) => c.projectId === p.id && c.period === '2026-09')!
+    expect(cp.source).toBe('sap')
+    const tx = txnsFor(s, p.id, { lineId: 'fl-500-10', period: '2026-09' })
+    expect(tx.length).toBeGreaterThan(0)
+    expect(Math.abs(sum(tx.map((t) => txnShare(s, t, { lineId: 'fl-500-10' }))) - (cp.byLine?.['fl-500-10'] ?? 0))).toBeLessThan(2)
+    const fnTx = txnsFor(s, p.id, { fnId: 'wbs-500', period: '2026-09' })
+    expect(Math.abs(sum(fnTx.map((t) => txnShare(s, t, { fnId: 'wbs-500' }))) - (cp.byFunction?.['wbs-500'] ?? 0))).toBeLessThan(3)
+  })
+  it('rolls ETC / EAC by function up across the portfolio', () => {
+    const ps = s.projects.filter((x) => x.status === 'active')
+    const r = portfolioEtcEac(s, ps)
+    const eacs = sum(r.projects.map((x) => etcEacAt(s, x.p, x.version, versionCutoff(s, x.version)).totals.eac))
+    expect(r.totals.eac).toBe(eacs)
+    expect(sum(r.rows.map((x) => x.eac)) + r.contingencyHeld).toBe(r.totals.eac)
+    const bud = sum(r.projects.map((x) => { const b = budgetByLine(s, x.p.id); return sum(Object.values(b.byLine)) + b.contingency }))
+    expect(r.totals.budget).toBe(bud)
+    expect(portfolioEtcEacCsv(r).pop()!['WBS code']).toBe('TOTAL')
+  })
+})
+
+describe('forecast tab at line level', () => {
+  beforeEach(() => { useStore.setState(buildSeed()) })
+  it('renders PRJ-1001 with the ETC/EAC headline, profiles and actual months', () => {
+    const h = render(<ForecastSpread projectId="prj-1001" />)
+    expect(h).toContain('ETC / EAC by WBS function')
+    expect(h).toContain('Mobilize, produce, demobilize')
+    expect(h).toContain('Closeout tail')
+    expect(h).toContain('adjusted')
+    expect(h).toContain('Contract construction')
+    expect(h).toContain('actual · SAP')
+    expect(h).toContain('SAP transactions for')
+  })
+  it('a draft is editable at line level and opens on line rows', () => {
+    const s0 = useStore.getState()
+    const p = s0.projects.find((x) => x.code === 'PRJ-1011')!
+    const { forecast } = copyVersion(s0, p, versionsOf(s0, p.id)[0], { byId: 'u-me', note: 'x' })
+    mutate((d) => { d.forecasts.push(forecast) })
+    const h = render(<ForecastSpread projectId={p.id} />)
+    expect(h).toContain('Submit for review')
+    expect(h).toContain('aria-label="500.10 Contract construction')
+    expect(h).toContain('Line tools for')
+  })
+  it('the cycle page shows the portfolio ETC / EAC by function', () => {
+    const h = render(<ForecastCycle />)
+    expect(h).toContain('ETC / EAC by WBS function — portfolio')
+    expect(h).toContain('Projects over')
+  })
+})
+
+===== FILE: src/views/forecast/render.test.tsx =====
+// SSR smoke + store flows for the forecast spread module (builder G).
+import React from 'react'
+import { renderToString } from 'react-dom/server'
+import { mutate, useStore } from '@/core/store'
+import { buildSeed } from '@/core/seed'
+import { actOnWorkflow, startWorkflow } from '@/core/engine/workflow'
+import { eacOf, forecastMonths } from '@/core/engine/wbs'
+import ForecastSpread from '../project/tabs/ForecastSpread'
+import ForecastCycle from './ForecastCycle'
+import WbsFunctions, { wbsIssues } from '../admin/WbsFunctions'
+import { forecastReportHtml } from './report'
+import { applySpread, copyVersion, cycleRows, setCell, startCycle, versionsOf } from './lib'
+
+// SSR reads zustand's initial-state object; copy live state into it so renders reflect mutations and persona switches.
+const render = (el: React.ReactElement) => { Object.assign((useStore as any).getInitialState(), useStore.getState()); return renderToString(el) }
+
+describe('forecast views render from seed', () => {
+  beforeAll(() => { useStore.setState(buildSeed()) })
+  it('renders the spread tab for every project', () => {
+    for (const p of useStore.getState().projects) {
+      let html = ''
+      try { html = render(<ForecastSpread projectId={p.id} />) } catch (e) { throw new Error(`${p.code}: ${(e as Error).message}`) }
+      expect(html.length).toBeGreaterThan(200)
+    }
+    const h = render(<ForecastSpread projectId="prj-1001" />)
+    expect(h).toContain('Spread by function and line item')
+    expect(h).toContain('ETC / EAC by WBS function')
+    expect(h).toContain('Contingency held')
+    expect(h).toContain('Compare versions')
+  })
+  it('renders cycle and configuration', () => {
+    const c = render(<ForecastCycle />)
+    expect(c).toContain('Forecast cycle')
+    expect(c).toContain('Portfolio roll-up')
+    expect(c).toContain('ETC / EAC by WBS function — portfolio')
+    expect(c).toContain('Not started')
+    const w = render(<WbsFunctions />)
+    expect(w).toContain('Cost category mapping')
+    expect(w).toContain('Construction')
+  })
+  it('builds the HTML report', () => {
+    const s = useStore.getState()
+    const p = s.projects.find((x) => x.code === 'PRJ-1001')!
+    expect(forecastReportHtml(s, p, versionsOf(s, p.id)[0])).toContain('ETC / EAC by WBS function and line item')
+  })
+})
+
+describe('forecast flows through the store', () => {
+  beforeEach(() => { useStore.setState(buildSeed()) })
+  it('new version → edit → save → submit → approve locks it', () => {
+    const s0 = useStore.getState()
+    const p = s0.projects.find((x) => x.code === 'PRJ-1011')!
+    const { forecast } = copyVersion(s0, p, versionsOf(s0, p.id)[0], { byId: 'u-me', note: 'test' })
+    mutate((d) => { d.forecasts.push(forecast) })
+    const m = forecastMonths(useStore.getState(), p)[0]
+    const sp = setCell(forecast.spread!, 'wbs-500', m, (forecast.spread!['wbs-500']?.[m] ?? 0) + 250_000)
+    mutate((d) => { const f = d.forecasts.find((x) => x.id === forecast.id)!; applySpread(d, f, sp, forecast.contingencyHeld ?? 0, 'Rock') }, { entity: 'forecast', entityId: forecast.id, action: 'update', summary: 'x' })
+    let f = useStore.getState().forecasts.find((x) => x.id === forecast.id)!
+    expect(f.eac).toBe(forecast.eac + 250_000)
+    expect(f.eac).toBe(eacOf(useStore.getState(), p.id, f.spread, f.contingencyHeld))
+    expect(render(<ForecastSpread projectId={p.id} />)).toContain('Submit for review')
+    mutate((d) => {
+      const inst = startWorkflow(d, 'forecast-review', { title: `${p.code} test`, recordType: 'forecast', recordId: forecast.id, projectId: p.id, data: { amount: f.eac, period: '2026-11', note: 'Rock' } })!
+      actOnWorkflow(d, inst.id, 'prep', 'u-me', 'submit')
+      while (d.workflows.find((w) => w.id === inst.id)!.status === 'running') {
+        const slot = d.workflows.find((w) => w.id === inst.id)!.active[0]
+        actOnWorkflow(d, inst.id, slot.nodeId, 'u-me', 'approve')
+      }
+    })
+    f = useStore.getState().forecasts.find((x) => x.id === forecast.id)!
+    expect(f.status).toBe('approved')
+    expect(f.locked).toBe(true)
+    expect(render(<ForecastSpread projectId={p.id} />)).toContain('Create new version from this')
+  })
+  it('start cycle opens drafts that the cycle view reports', () => {
+    mutate((d) => { startCycle(d, 'u-me') })
+    expect(cycleRows(useStore.getState()).some((r) => r.status === 'not-started')).toBe(false)
+    expect(render(<ForecastCycle />)).not.toContain('have no November 2026 forecast yet')
+  })
+  it('flags unmapped and double-mapped categories', () => {
+    const s = useStore.getState()
+    const fns = s.settings.wbsFunctions.map((f) => (f.code === '600' ? { ...f, categoryIds: [] } : f.code === '100' ? { ...f, categoryIds: [...f.categoryIds, 'cat-eng'] } : f))
+    const i = wbsIssues(fns, s.categories)
+    expect(i.unmapped.map((c) => c.id)).toEqual(['cat-commission'])
+    expect(i.multi.map((c) => c.id)).toEqual(['cat-eng'])
+    expect(wbsIssues(s.settings.wbsFunctions, s.categories).unmapped.length).toBe(0)
+  })
+})
+
+===== FILE: src/views/messages/messages.test.tsx =====
+import { renderToString as rts } from 'react-dom/server'
+import { getState, mutate, useStore } from '@/core/store'
+import { addDays } from '@/core/util'
+import { runReminders } from '@/core/engine/notify'
+import Messages from './Messages'
+import Inbox from '../inbox/Inbox'
+import WorkflowSettings from '../admin/WorkflowSettings'
+import Modules from '../admin/Modules'
+import SafetyHome from '../safety/SafetyHome'
+import App from '@/App'
+import { channelsFor, ensureDirect, ensureProjectChannel, markRead, parseMessagesView, sendMessage, unreadCount, unreadIn } from './lib'
+
+// zustand renders the initial state on the server; sync it with the live state first
+const renderToString = (el: React.ReactElement) => { Object.assign((useStore as any).getInitialState(), useStore.getState()); return rts(el) }
+
+beforeEach(() => { useStore.getState().reset(); useStore.getState().setUser('u-me') })
+
+test('messages helpers: deep links, unread, send and read', () => {
+  expect(parseMessagesView('messages-1042')).toEqual({ kind: 'project', projectId: 'prj-1042' })
+  expect(parseMessagesView('messages-dm-u-pc1')).toEqual({ kind: 'direct', personId: 'u-pc1' })
+  expect(parseMessagesView('messages')).toEqual({ kind: 'none' })
+  const s0 = getState()
+  expect(channelsFor(s0, 'u-me').length).toBeGreaterThan(1)
+  const before = unreadCount(s0, 'u-me')
+  expect(before).toBeGreaterThan(0)
+  const dm = s0.channels.find((c) => c.kind === 'direct')!
+  expect(unreadIn(s0, dm.id, 'u-me')).toBe(1)
+  mutate((d) => { markRead(d, dm.id, 'u-me') })
+  expect(unreadCount(getState(), 'u-me')).toBe(before - 1)
+  // reply goes to Rachel as unread + a notification
+  mutate((d) => { sendMessage(d, dm.id, 'u-me', 'Looking at it now.') })
+  expect(unreadIn(getState(), dm.id, 'u-pc1')).toBe(1)
+  expect(getState().notifications.some((n) => n.toId === 'u-pc1' && n.kind === 'message' && n.link === '#messages-dm-u-me')).toBe(true)
+  // a new DM and a new project channel
+  mutate((d) => { const c = ensureDirect(d, 'u-me', 'u-est1'); sendMessage(d, c.id, 'u-me', 'Class 5 for 1012?') })
+  expect(getState().channels.filter((c) => c.kind === 'direct' && c.memberIds.includes('u-est1'))).toHaveLength(1)
+  mutate((d) => { ensureProjectChannel(d, 'prj-1012', 'u-me'); ensureProjectChannel(d, 'prj-1012', 'u-me') })
+  const pc = getState().channels.filter((c) => c.projectId === 'prj-1012')
+  expect(pc).toHaveLength(1)
+  expect(pc[0].memberIds).toContain('u-me')
+})
+
+test('messages, my work, configuration and safety render from seed', () => {
+  const ch = getState().channels.find((c) => c.kind === 'project')!
+  const html = [
+    renderToString(<Messages view="messages" />),
+    renderToString(<Messages view={`messages-${ch.projectId!.replace(/\D/g, '')}`} />),
+    renderToString(<Messages view="messages-dm-u-pc1" />),
+    renderToString(<Messages view="messages-dm-u-vp" />),
+    renderToString(<WorkflowSettings />),
+    renderToString(<Modules />),
+    renderToString(<SafetyHome />),
+    renderToString(<App />),
+  ]
+  expect(html[1]).toContain('Project team')
+  expect(html[2]).toContain('Rachel Stein')
+  expect(html[5]).toContain('Phase 2')
+  expect(html[6]).not.toContain('Operator qualifications expiring')
+  expect(html[7]).toContain('Messages')
+  expect(html[7]).not.toContain('Field tailboard')
+  mutate((d) => { d.settings.features.opQual = true; d.settings.features.fieldTailboard = true })
+  expect(renderToString(<App />)).toContain('Field tailboard')
+})
+
+test('my work shows acting-for and escalation state', () => {
+  mutate((d) => { runReminders(d) })
+  // Alex is out of office; Rachel (not on Alex's steps) covers
+  mutate((d) => { d.people.find((p) => p.id === 'u-me')!.outOfOffice = { from: d.settings.asOf, to: addDays(d.settings.asOf, 5), delegateId: 'u-pc1' } })
+  useStore.getState().setUser('u-pc1')
+  const html = renderToString(<Inbox />)
+  expect(html).toContain('Acting for Avery Morgan')
+  // a manager with escalations sees the tab
+  useStore.getState().setUser('u-dir3')
+  expect(renderToString(<Inbox />)).toContain('Escalated to me')
+})
+
+===== FILE: src/views/planning/model.test.ts =====
+import { buildSeed } from '@/core/seed'
+import { candidates, rank, fit, suggestFit, capacity, newScenario, shifted } from './model'
+
+const s = buildSeed()
+const years = [2026, 2027, 2028, 2029, 2030]
+
+test('candidates exclude closed projects and carry risk reduced', () => {
+  const cs = candidates(s)
+  expect(cs.some((c) => c.project.status === 'closed')).toBe(false)
+  expect(cs.length).toBeGreaterThan(20)
+  expect(cs.every((c) => c.riskReduced >= 0)).toBe(true)
+  expect(cs.filter((c) => c.proposed).length).toBeGreaterThan(0)
+})
+
+test('rank normalizes to 100 and puts mandatory first', () => {
+  const sc = newScenario('t', '2026-10-28')
+  const r = rank(candidates(s), sc)
+  expect(Math.max(...r.map((x) => x.score))).toBe(100)
+  const firstOptional = r.findIndex((x) => !x.mandatory)
+  expect(r.slice(firstOptional).every((x) => !x.mandatory)).toBe(true)
+})
+
+test('shift moves only future years', () => {
+  expect(shifted({ '2026': 10, '2027': 20, '2028': 5 }, 1, 2026)).toEqual({ '2026': 10, '2028': 20, '2029': 5 })
+})
+
+test('fit and suggestFit reduce over-authorization', () => {
+  const cs = candidates(s)
+  const sc = newScenario('t', '2026-10-28')
+  // make a non-mandatory program tight
+  for (const id of Object.keys(sc.items)) delete sc.items[id]
+  const f0 = fit(s, cs, sc, years)
+  const { scenario, moves } = suggestFit(s, cs, sc, years)
+  const f1 = fit(s, cs, scenario, years)
+  console.log('over before', f0.overAmount, f0.overYears, 'after', f1.overAmount, f1.overYears, moves.slice(0, 5))
+  expect(f1.overAmount).toBeLessThanOrEqual(f0.overAmount)
+  const cap = capacity(cs, scenario, years, 2026)
+  expect(cap.districts.length).toBeGreaterThan(1)
+})
+
+===== FILE: src/views/portfolio/moduleA.test.tsx =====
+// Smoke + logic tests for builder A's module: every view renders from the seed for several personas
+// and projects, and the gate/lifecycle mutations behave as the UI promises.
+import React from 'react'
+import { renderToString } from 'react-dom/server'
+import { useStore, mutate } from '@/core/store'
+import { buildSeed } from '@/core/seed'
+import { decideGate, readiness } from '@/core/engine/gates'
+import { startWorkflow } from '@/core/engine/workflow'
+import Portfolio from './Portfolio'
+import Projects from '../projects/Projects'
+import NewProject from '../projects/NewProject'
+import Gates from '../gates/Gates'
+import Overview from '../project/tabs/Overview'
+import Lifecycle from '../project/tabs/Lifecycle'
+import { allInFigures, needsAttention, projectRow, safetyIndicators, stageDurations, yearFigures } from './lib'
+import { gatePacketHtml, statusPrompt, statusReportHtml } from './reports'
+
+// SSR reads zustand's initial-state object; copy live state into it so renders reflect mutations and persona switches.
+const render = (el: React.ReactElement) => { Object.assign((useStore as any).getInitialState(), useStore.getState()); return renderToString(el) }
+
+describe('module A views render from seed', () => {
+  beforeAll(() => { useStore.setState(buildSeed()) })
+  it('renders portfolio, register, wizard and gates', () => {
+    for (const C of [Portfolio, Projects, NewProject, Gates]) {
+      const html = render(<C />)
+      expect(html.length).toBeGreaterThan(1000)
+    }
+  })
+  it('renders overview and lifecycle for every project as PMO and as a sponsor', () => {
+    for (const user of ['u-me', 'u-dir1', 'u-pm1']) {
+      useStore.setState({ currentUserId: user })
+      for (const p of useStore.getState().projects) {
+        expect(render(<Overview projectId={p.id} />)).toContain('Scope statement')
+        expect(render(<Lifecycle projectId={p.id} />)).toContain('Gate history')
+      }
+    }
+  })
+})
+
+describe('module A derivations', () => {
+  const s = buildSeed()
+  it('rows, funding and attention tie to records', () => {
+    const rows = s.projects.map((p) => projectRow(s, p))
+    expect(rows.every((r) => Number.isFinite(r.budget) && Number.isFinite(r.eac))).toBe(true)
+    const ids = s.programs.map((p) => p.id)
+    const yr = yearFigures(s, s.projects, ids, 2026)
+    expect(yr.authorized).toBeGreaterThan(0)
+    expect(yr.actual).toBeGreaterThan(0)
+    const all = allInFigures(s, s.projects, ids)
+    expect(all.budget).toBeGreaterThan(yr.budget)
+    const att = needsAttention(s, s.projects)
+    expect(att.length).toBeGreaterThan(3)
+    expect(att.some((a) => a.kind.includes('811'))).toBe(true)
+    expect(safetyIndicators(s, s.projects).tb7.length).toBeGreaterThan(0)
+    expect(stageDurations(s).length).toBeGreaterThan(20)
+  })
+  it('builds packet, status report and prompt', () => {
+    const p = s.projects.find((x) => x.code === 'PRJ-1003')!
+    expect(gatePacketHtml(s, p)).toContain('Top 10 risks')
+    expect(statusReportHtml(s, p, 'We advanced design.')).toContain('We advanced design.')
+    expect(statusPrompt(s, p)).toContain('PRJ-1003')
+  })
+})
+
+describe('gate flow through the store', () => {
+  beforeEach(() => { useStore.setState(buildSeed()) })
+  it('go with conditions advances the stage, creates actions and a snapshot', () => {
+    const before = useStore.getState().projects.find((p) => p.id === 'prj-1006')!
+    mutate((d) => decideGate(d, 'prj-1006', 'go-with-conditions', ['u-dir1'], 'Test', [{ title: 'Do the thing', ownerId: 'u-pm1', due: '2026-12-01' }]))
+    const s = useStore.getState()
+    const after = s.projects.find((p) => p.id === 'prj-1006')!
+    expect(after.stageIndex).toBe(before.stageIndex + 1)
+    expect(s.actions.some((a) => a.title === 'Do the thing')).toBe(true)
+    expect(s.gateDecisions.filter((g) => g.projectId === 'prj-1006').length).toBe(1)
+    expect(render(<Lifecycle projectId="prj-1006" />)).toContain('Do the thing')
+  })
+  it('deliverable review workflow submits and waiver workflow starts', () => {
+    mutate((d) => {
+      const dl = d.deliverables.find((x) => x.projectId === 'prj-1006' && x.status !== 'accepted')!
+      startWorkflow(d, 'deliverable-review', { title: 't', recordType: 'deliverable', recordId: dl.id, projectId: 'prj-1006' })
+    })
+    const s = useStore.getState()
+    expect(s.deliverables.some((x) => x.projectId === 'prj-1006' && x.status === 'submitted')).toBe(true)
+    expect(readiness(s, s.projects.find((p) => p.id === 'prj-1006')!).pct).toBeGreaterThanOrEqual(0)
+  })
+})
+
+===== FILE: src/views/project/tabs/controls/trace.test.ts =====
+import { buildSeed } from '@/core/seed'
+import { assessEvidence, erpRecon, programYears, forecastByYear } from './trace'
+import { projectBinderHtml, evidenceRows, programBinderHtml } from './binder'
+import { position } from '@/core/engine/position'
+import { sum } from '@/core/util'
+
+const s = buildSeed()
+test('evidence assessment runs for every project and lists gaps', () => {
+  for (const p of s.projects) {
+    const a = assessEvidence(s, p.id)
+    expect(a.score).toBeGreaterThanOrEqual(0)
+    expect(a.score).toBeLessThanOrEqual(100)
+  }
+  const a = assessEvidence(s, 'prj-1001')
+})
+test('ERP recon ties to actual to date', () => {
+  for (const id of ['prj-1001', 'prj-1020', 'prj-1024']) {
+    const r = erpRecon(s, id)
+    expect(sum(r.rows.map((x) => x.actual)) + (r.unmapped?.amount ?? 0)).toBe(position(s, id).actualToDate)
+  }
+})
+test('forecast by year sums to EAC', () => {
+  for (const p of s.projects) {
+    const pos = position(s, p.id)
+    if (!pos.eac) continue
+    const f = forecastByYear(s, p.id)
+    expect(Math.abs(sum(Object.values(f)) - Math.max(pos.eac, pos.actualToDate))).toBeLessThan(5)
+  }
+})
+test('binders render', () => {
+  const h = projectBinderHtml(s, 'prj-1001')
+  expect(h).toContain('Reasonableness review package')
+  expect(evidenceRows(s, 'prj-1001').length).toBeGreaterThan(10)
+  const pids = s.projects.filter((p) => p.programId === 'prg-pse').map((p) => p.id)
+  expect(programBinderHtml(s, 'prg-pse', pids).length).toBeGreaterThan(10000)
+})
+
+===== FILE: src/views/project/tabs/finance/views.test.tsx =====
+// SSR smoke tests: the Finance tab, commitment detail, RFI / CCO form, the Overview scope statement and key facts,
+// the Changes tab and the inbox record summary render for seed projects and several personas.
+import React from 'react'
+import { renderToString } from 'react-dom/server'
+import { useStore, mutate } from '@/core/store'
+import { buildSeed } from '@/core/seed'
+import { notifyScheduler } from '@/core/engine/finance'
+import Finance from '../Finance'
+import Overview from '../Overview'
+import Changes from '../Changes'
+import ProjectInfo from '../ProjectInfo'
+import { CommitmentDetail } from './CommitmentDetail'
+import { CcoModal } from './CcoModal'
+import { RecordSummary, recordTab } from '../../../inbox/records'
+
+const render = (el: React.ReactElement) => { Object.assign((useStore as any).getInitialState(), useStore.getState()); return renderToString(el).replace(/<!-- -->/g, '') }
+
+describe('finance views render from seed', () => {
+  beforeAll(() => { useStore.setState(buildSeed()) })
+  it('renders the Finance tab for every project as PMO, a PM and the scheduler', () => {
+    for (const user of ['u-me', 'u-pm1', 'u-sch']) {
+      useStore.setState({ currentUserId: user })
+      for (const p of useStore.getState().projects) {
+        const html = render(<Finance projectId={p.id} />)
+        expect(html).toContain('Financial accounts')
+        expect(html).toContain('IO coverage by WBS function')
+        expect(html).toContain('Estimate line coverage')
+        expect(html).toContain('Commitments')
+      }
+    }
+  })
+  it('shows commitments with PO share and the CCO log for a construction-stage project', () => {
+    useStore.setState({ currentUserId: 'u-me' })
+    const s = useStore.getState()
+    const html = render(<Finance projectId="prj-1001" />)
+    const k = s.contracts.find((c) => c.projectId === 'prj-1001' && c.type === 'Construction')!
+    expect(html).toContain(k.poNumber!)
+    expect(html).toContain('RFI / change order log')
+    expect(html).toContain(s.projects.find((p) => p.id === 'prj-1001')!.finance!.woa!)
+  })
+  it('renders a commitment with its RFI / CCOs and the new CCO form', () => {
+    const s = useStore.getState()
+    const k = s.contracts.find((c) => s.commitmentChanges.some((x) => x.contractId === c.id && x.status === 'in-review'))!
+    const cc = s.commitmentChanges.find((x) => x.contractId === k.id && x.status === 'in-review')!
+    const html = render(<CommitmentDetail contractId={k.id} focusCco={cc.id} onClose={() => {}} onEdit={() => {}} onNewCco={() => {}} />)
+    expect(html).toContain(cc.code)
+    expect(html).toContain('Approved changes')
+    const form = render(<CcoModal projectId={k.projectId} seed={{ contractId: k.id }} onClose={() => {}} />)
+    expect(form).toContain('RFI / field condition')
+    expect(form).toContain('Routing (live from the workflow)')
+  })
+  it('renders the commitment-change record in the inbox', () => {
+    const s = useStore.getState()
+    const inst = s.workflows.find((w) => w.recordType === 'commitment-change' && w.status === 'running')!
+    expect(recordTab(inst)).toBe('finance')
+    const html = render(<RecordSummary s={s} inst={inst} />)
+    const cc = s.commitmentChanges.find((x) => x.id === inst.recordId)!
+    expect(html).toContain(cc.code)
+    expect(html).toContain('RFI / field condition')
+  })
+  it('Overview shows WOA, IOs and the capital / O&M split; Project info shows deliverable completeness', () => {
+    const s = useStore.getState()
+    const p = s.projects.find((x) => x.id === 'prj-1002')!
+    const html = render(<Overview projectId={p.id} />)
+    expect(html).toContain('Internal orders')
+    expect(html).toContain(p.finance!.ios[0].number)
+    expect(html).toContain('Capital / O&amp;M')
+    const info = render(<ProjectInfo projectId={p.id} />)
+    expect(info).toContain('Deliverable completeness')
+  })
+  it('Changes shows the commitments and scheduler columns and the design note', () => {
+    const s = useStore.getState()
+    const ch = s.changes.find((c) => c.scheduleImpactDays > 0 && c.contractIds?.length)!
+    mutate((d) => { notifyScheduler(d, ch.id) })
+    const html = render(<Changes projectId={ch.projectId} />)
+    expect(html).toContain('How a change reaches vendors and the schedule')
+    expect(html).toContain('Task sent')
+  })
+})
+
+===== FILE: src/views/project/tabs/info/lib.test.ts =====
+import { buildSeed } from '@/core/seed'
+import { infoValue, missingInfo, reviseInfo } from '@/core/engine/info'
+import { readiness } from '@/core/engine/gates'
+import { produce } from 'immer'
+import type { AppState } from '@/core/types'
+import { cleanProposals, currentValues, displayValue, draftPrompt, fieldStats, infoCsv, infoSheetHtml, infoText, keyFromLabel, requirement, revisionsFor, sectionsOf, validKey, valuesAsOf } from './lib'
+
+const seed = buildSeed()
+const revise = (s: AppState, pid: string, edits: Record<string, string>, note: string) => produce(s, (d) => { reviseInfo(d, pid, edits, note) })
+
+describe('revision numbering and reconstruction', () => {
+  it('numbers revisions oldest = 1 and returns newest first', () => {
+    const p = seed.projects[0]
+    const revs = revisionsFor(seed, p.id)
+    expect(revs.length).toBeGreaterThan(0)
+    expect(revs[0].rev).toBe(revs.length)
+    expect(revs[revs.length - 1].rev).toBe(1)
+    expect(revs[0].at >= revs[revs.length - 1].at).toBe(true)
+  })
+
+  it('reconstructs the record as it stood at each revision', () => {
+    const pid = 'prj-1006'
+    let s = seed
+    const before = currentValues(s, s.projects.find((p) => p.id === pid)!)
+    const base = revisionsFor(s, pid).length
+    s = revise(s, pid, { constraints: 'A', workWindows: 'Nights only' }, 'first')
+    s = revise(s, pid, { constraints: 'B' }, 'second')
+    s = revise(s, pid, { constraints: 'C', city: 'Springfield' }, 'third')
+    const p = s.projects.find((x) => x.id === pid)!
+    const cur = currentValues(s, p)
+    const revs = revisionsFor(s, pid)
+    expect(revs[0].rev).toBe(base + 3)
+    expect(cur.constraints).toBe('C')
+    expect(cur.city).toBe('Springfield')
+    expect(p.location.city).toBe('Springfield') // bound field written to the project
+    expect(valuesAsOf(cur, revs, base + 2).constraints).toBe('B')
+    expect(valuesAsOf(cur, revs, base + 2).city).toBe(before.city)
+    expect(valuesAsOf(cur, revs, base + 1).constraints).toBe('A')
+    expect(valuesAsOf(cur, revs, base + 1).workWindows).toBe('Nights only')
+    expect(valuesAsOf(cur, revs, base).constraints).toBe(before.constraints)
+    expect(valuesAsOf(cur, revs, base).workWindows).toBe(before.workWindows)
+    expect(valuesAsOf(cur, revs, base + 3)).toEqual(cur)
+    // audit written by the engine
+    expect(s.audit.filter((a) => a.entity === 'project-info' && a.entityId === pid).length).toBe(3)
+  })
+
+  it('ignores read-only fields and unchanged values', () => {
+    const s = revise(seed, 'prj-1006', { pm: 'Somebody', name: seed.projects.find((p) => p.id === 'prj-1006')!.name }, 'noop')
+    expect(s.infoRevisions.length).toBe(seed.infoRevisions.length)
+  })
+})
+
+describe('requirements', () => {
+  it('flags required fields by stage', () => {
+    const def = seed.settings.infoFields.find((f) => f.key === 'workOrder')!
+    expect(requirement(def, '', 3)).toBe('blocking')
+    expect(requirement(def, '', 1)).toBe('later')
+    expect(requirement(def, 'WOA-1', 3)).toBe('met')
+    expect(requirement(seed.settings.infoFields.find((f) => f.key === 'pm')!, '', 3)).toBeUndefined()
+  })
+
+  it('field stats agree with missingInfo / readiness', () => {
+    const active = seed.projects.filter((p) => p.status === 'active')
+    const blockedBy = new Set(seed.settings.infoFields.flatMap((f) => fieldStats(seed, f).blockedCodes))
+    const viaEngine = new Set(active.filter((p) => missingInfo(seed, p).length).map((p) => p.code))
+    expect(blockedBy).toEqual(viaEngine)
+    for (const code of viaEngine) {
+      const p = seed.projects.find((x) => x.code === code)!
+      expect(readiness(seed, p).missingInfo.length).toBeGreaterThan(0)
+    }
+  })
+})
+
+describe('exports', () => {
+  const p = seed.projects.find((x) => x.code === 'PRJ-1003')!
+  it('builds the formal sheet with header, every section and the revision log', () => {
+    const html = infoSheetHtml(seed, p)
+    const rev = revisionsFor(seed, p.id)[0].rev
+    expect(html).toContain(seed.settings.orgName)
+    expect(html).toContain('PRJ-1003')
+    expect(html).toContain(`Rev ${rev}`)
+    expect(html).toContain('Revision log')
+    for (const sec of seed.settings.infoSections) expect(html).toContain(sec.replace(/&/g, '&amp;'))
+    expect(html).not.toContain('<script')
+  })
+  it('escapes user values in the sheet', () => {
+    const s = revise(seed, p.id, { constraints: '<b>x</b> & "y"' }, 'escape test')
+    const html = infoSheetHtml(s, s.projects.find((x) => x.id === p.id)!)
+    expect(html).toContain('&lt;b&gt;x&lt;/b&gt; &amp; &quot;y&quot;')
+  })
+  it('CSV has one row per field and text has every label', () => {
+    const csv = infoCsv(seed, p)
+    expect(csv.split('\n')[0]).toBe('Section,Field,Value')
+    expect(csv.split('\n').length).toBeGreaterThanOrEqual(seed.settings.infoFields.length + 1)
+    const txt = infoText(seed, p)
+    for (const f of seed.settings.infoFields) expect(txt).toContain(f.label)
+  })
+  it('formats values by type', () => {
+    expect(displayValue({ key: 'x', label: 'x', section: 's', type: 'money' }, '1234567')).toBe('$1,234,567')
+    expect(displayValue({ key: 'x', label: 'x', section: 's', type: 'date' }, '2026-10-28')).toBe('Oct 28, 2026')
+    expect(displayValue({ key: 'x', label: 'x', section: 's', type: 'text' }, '  ')).toBe('')
+  })
+})
+
+describe('configuration helpers', () => {
+  it('groups fields by section order', () => {
+    const secs = sectionsOf(seed)
+    expect(secs.map((x) => x.name)).toEqual(seed.settings.infoSections)
+    expect(secs.reduce((a, x) => a + x.fields.length, 0)).toBe(seed.settings.infoFields.length)
+  })
+  it('derives unique valid keys', () => {
+    expect(keyFromLabel('Environmental lead', [])).toBe('environmentalLead')
+    expect(keyFromLabel('Environmental lead', ['environmentalLead'])).toBe('environmentalLead2')
+    expect(validKey(keyFromLabel('2nd crossing?', []))).toBe(true)
+    expect(validKey('bad key')).toBe(false)
+  })
+})
+
+describe('AI drafting', () => {
+  const p = seed.projects.find((x) => x.code === 'PRJ-1006')!
+  const defs = seed.settings.infoFields.filter((f) => ['alternatives', 'ceqaPath', 'hca', 'customersAffected'].includes(f.key))
+  it('prompt carries the project facts and the exact output format', () => {
+    const t = draftPrompt(seed, p, defs)
+    expect(t).toContain(p.code)
+    expect(t).toContain(p.scope.summary)
+    expect(t).toContain('"fields"')
+    expect(t).toContain('key "ceqaPath"')
+  })
+  it('keeps only valid proposals for requested fields', () => {
+    const out = cleanProposals({ fields: [
+      { key: 'alternatives', value: 'Replace; reroute', basis: 'scope' },
+      { key: 'ceqaPath', value: 'exempt', basis: '' },
+      { key: 'ceqaPath', value: 'EIR' },
+      { key: 'hca', value: 'true' },
+      { key: 'customersAffected', value: 'several' },
+      { key: 'name', value: 'Not requested' },
+    ] }, defs)
+    expect(out.map((x) => [x.key, x.value])).toEqual([['alternatives', 'Replace; reroute'], ['ceqaPath', 'Exempt'], ['hca', 'Yes']])
+    expect(cleanProposals(null, defs)).toEqual([])
+  })
+  it('infoValue reads system fields', () => {
+    const f = seed.settings.infoFields.find((x) => x.key === 'pm')!
+    expect(infoValue(p, f, seed)).toBeTruthy()
+  })
+})
+
+===== FILE: src/views/project/tabs/info/views.test.tsx =====
+// SSR smoke tests: the Project Information record and its configuration tab render for every seed
+// project and several personas, and a revision saved through the store shows up in both.
+import React from 'react'
+import { renderToString } from 'react-dom/server'
+import { useStore, mutate } from '@/core/store'
+import { buildSeed } from '@/core/seed'
+import { missingInfo, reviseInfo } from '@/core/engine/info'
+import ProjectInfo from '../ProjectInfo'
+import { CostDrivers } from './CostDrivers'
+import InfoFields from '../../../admin/InfoFields'
+
+const render = (el: React.ReactElement) => { Object.assign((useStore as any).getInitialState(), useStore.getState()); return renderToString(el) }
+
+describe('project information views render from seed', () => {
+  beforeAll(() => { useStore.setState(buildSeed()) })
+  it('renders the record for every project as PMO, a PM and a sponsor', () => {
+    for (const user of ['u-me', 'u-pm1', 'u-dir1']) {
+      useStore.setState({ currentUserId: user })
+      for (const p of useStore.getState().projects) {
+        const html = render(<ProjectInfo projectId={p.id} />)
+        expect(html).toContain('Deliverable completeness')
+        expect(html).toContain('Field completeness')
+        expect(html).toContain('Revision history')
+        expect(html).toContain('Linked records')
+        for (const sec of useStore.getState().settings.infoSections) expect(html).toContain(sec.replace(/&/g, '&amp;'))
+      }
+    }
+  })
+  it('shows the project cost drivers the factor model prices with, with no community attributes', () => {
+    useStore.setState({ currentUserId: 'u-me' })
+    const p = useStore.getState().projects[0]
+    expect(render(<ProjectInfo projectId={p.id} />)).toContain('Cost drivers')
+    const html = render(<CostDrivers p={p} canEdit />)
+    for (const t of ['Cost drivers', 'Soil / rock', 'Permit complexity', 'Work-hour restrictions', 'From the location record']) expect(html).toContain(t)
+    expect(html).not.toMatch(/disadvantaged|\bDAC\b/i)
+  })
+  it('shows the gate blocker for a project missing required fields', () => {
+    useStore.setState({ currentUserId: 'u-me' })
+    const s = useStore.getState()
+    const blocked = s.projects.find((p) => p.status === 'active' && missingInfo(s, p).length)
+    expect(blocked).toBeTruthy()
+    const html = render(<ProjectInfo projectId={blocked!.id} />).replace(/<!-- -->/g, '')
+    expect(html).toMatch(/required fields? empty — blocks Gate/)
+    for (const f of missingInfo(s, blocked!)) expect(html).toContain(f.label.replace(/&/g, '&amp;'))
+  })
+  it('renders the configuration tab', () => {
+    const html = render(<InfoFields />)
+    expect(html).toContain('Project information fields')
+    expect(html).toContain('Active projects blocked')
+    expect(html).toContain('problemStatement')
+  })
+})
+
+describe('revision through the store', () => {
+  beforeEach(() => { useStore.setState({ ...buildSeed(), currentUserId: 'u-me' }) })
+  it('a saved revision appears in the history with its reason and diff', () => {
+    mutate((d) => { reviseInfo(d, 'prj-1003', { constraints: 'Night work prohibited near hospital' }, 'Hospital district comments') })
+    const html = render(<ProjectInfo projectId="prj-1003" />)
+    expect(html).toContain('Hospital district comments')
+    expect(html).toContain('Night work prohibited near hospital')
+    expect(useStore.getState().audit.some((a) => a.entity === 'project-info' && a.entityId === 'prj-1003')).toBe(true)
+  })
+})
+
+===== FILE: src/views/regulatory/render.test.tsx =====
+import { renderToString } from 'react-dom/server'
+import { useStore } from '@/core/store'
+import Baselines from '../project/tabs/Baselines'
+import Cost from '../project/tabs/Cost'
+import Changes from '../project/tabs/Changes'
+import Evidence from '../project/tabs/Evidence'
+import Regulatory from './Regulatory'
+import { snapshotHtml } from '../project/tabs/Baselines'
+
+test('renders all views for all projects', () => {
+  const s = useStore.getState()
+  for (const p of s.projects) {
+    for (const C of [Baselines, Cost, Changes, Evidence]) {
+      try { renderToString(<C projectId={p.id} />) } catch (e) { throw new Error(`${p.code} ${C.name}: ${(e as Error).message}`) }
+    }
+  }
+  const h = renderToString(<Regulatory />)
+  expect(h).toContain('Rate case')
+  expect(snapshotHtml(s, s.snapshots[0])).toContain('Authority')
+})
+
+===== FILE: src/views/risk/lib.test.ts =====
+import { produce } from 'immer'
+import { buildSeed } from '@/core/seed'
+import { position } from '@/core/engine/position'
+import { startWorkflow, actOnWorkflow } from '@/core/engine/workflow'
+import { adequacy, burndown, contingencyBasis, lessonsLibrary, riskFromLibrary, runMonteCarlo, exposureSummary } from './lib'
+import { submitFirstForm } from './wf'
+import { indicators, jsspHtml, oqCoverage, planIssues, ticketLevel } from '../safety/lib'
+
+const s = buildSeed()
+
+describe('risk lib', () => {
+  it('runs Monte Carlo against the budget base and judges adequacy', () => {
+    const mc = runMonteCarlo(s, 'prj-1001', 2000)!
+    expect(mc.baseCost).toBe(position(s, 'prj-1001').baseBudget)
+    expect(mc.costP.P80).toBeGreaterThanOrEqual(mc.costP.P50)
+    const a = adequacy(contingencyBasis(s, 'prj-1001')!.contingency, mc)
+    expect(['adequate', 'p50-only', 'short', 'no-risk']).toContain(a.verdict)
+    expect(adequacy(0, { baseCost: 100, costP: { P10: 100, P50: 150, P80: 200, P90: 220 } }).verdict).toBe('short')
+    expect(adequacy(60, { baseCost: 100, costP: { P10: 100, P50: 150, P80: 200, P90: 220 } }).verdict).toBe('p50-only')
+    expect(adequacy(100, { baseCost: 100, costP: { P10: 100, P50: 150, P80: 200, P90: 220 } }).verdict).toBe('adequate')
+  })
+  it('falls back to the estimate for projects without a budget', () => {
+    const b = contingencyBasis(s, 'prj-1006')
+    expect(b?.source).toMatch(/estimate/)
+  })
+  it('builds a burn-down for construction projects', () => {
+    const bd = burndown(s, 'prj-1020')!
+    expect(bd.length).toBeGreaterThan(3)
+    expect(bd[bd.length - 1].remaining).toBe(position(s, 'prj-1020').contingencyRemaining)
+    expect(burndown(s, 'prj-1006')).toBeNull()
+  })
+  it('seeds library risks with a % of budget and a fresh code', () => {
+    const p = s.projects.find((x) => x.id === 'prj-1001')!
+    const r = riskFromLibrary(s, p, s.riskLibrary[0], 10_000_000)
+    expect(r.cost.ml).toBe(400_000)
+    expect(s.risks.some((x) => x.code === r.code)).toBe(false)
+  })
+  it('summarizes exposure and lessons', () => {
+    const e = exposureSummary(s.risks.filter((r) => r.projectId === 'prj-1001'), s.settings.asOf)
+    expect(e.active).toBeGreaterThan(0)
+    expect(lessonsLibrary(s).length).toBeGreaterThanOrEqual(s.lessons.length)
+  })
+  it('routes a contingency draw and lands it on approval', () => {
+    const pid = 'prj-1001'
+    const before = position(s, pid).contingencyRemaining
+    const risk = s.risks.find((r) => r.projectId === pid && r.kind === 'threat')!
+    let next = produce(s, (d) => {
+      d.contingencyDraws.push({ id: 'cd_t', projectId: pid, riskId: risk.id, amount: 100_000, date: d.settings.asOf, reason: 'test', status: 'in-review' })
+      const inst = startWorkflow(d, 'contingency-drawdown', { title: 't', recordType: 'contingency', recordId: 'cd_t', projectId: pid, data: { amount: 100_000 } })
+      submitFirstForm(d, inst?.id, 'go')
+    })
+    const inst = next.workflows.find((w) => w.recordId === 'cd_t')!
+    expect(inst.active[0].nodeId).toBe('pc')
+    for (let i = 0; i < 5; i++) {
+      next = produce(next, (d) => { const w = d.workflows.find((x) => x.id === inst.id)!; if (w.status === 'running') { const a = w.active[0]; actOnWorkflow(d, w.id, a.nodeId, a.assigneeIds[0], 'approve') } })
+    }
+    expect(next.contingencyDraws.find((x) => x.id === 'cd_t')!.status).toBe('approved')
+    expect(position(next, pid).contingencyRemaining).toBe(before - 100_000)
+  })
+})
+
+describe('safety lib', () => {
+  it('classifies ticket expiry', () => {
+    expect(ticketLevel('2026-10-27', '2026-10-28').level).toBe('bad')
+    expect(ticketLevel('2026-10-30', '2026-10-28').level).toBe('warn')
+    expect(ticketLevel('2026-11-20', '2026-10-28').level).toBe('ok')
+  })
+  it('checks plans, OQ coverage, indicators and prints', () => {
+    const plan = s.safetyPlans.find((x) => x.status === 'approved')!
+    expect(Array.isArray(planIssues(s, plan))).toBe(true)
+    expect(Array.isArray(oqCoverage(s, plan, s.settings.asOf))).toBe(true)
+    const ind = indicators(s, [plan.projectId])
+    expect(ind.plans).toBe(1)
+    expect(ind.tailboardRate).not.toBeNull()
+    const html = jsspHtml(s, plan)
+    expect(html).toContain('Job-Specific Safety Plan')
+    expect(html).toContain('Stop-work authority')
+  })
+})
+
+===== FILE: src/views/risk/render.test.tsx =====
+// Smoke test: every view in this module renders from the seed without throwing.
+import { renderToString } from 'react-dom/server'
+import { useStore } from '@/core/store'
+import Risk from '@/views/project/tabs/Risk'
+import Safety from '@/views/project/tabs/Safety'
+import RiskPortfolio from './RiskPortfolio'
+import SafetyHome from '@/views/safety/SafetyHome'
+import FieldMode from '@/views/safety/FieldMode'
+
+describe('risk & safety views render', () => {
+  const ids = ['prj-1001', 'prj-1003', 'prj-1006', 'prj-1020', 'prj-1024', 'prj-1009', 'prj-1030']
+  it.each(ids)('project %s', (id) => {
+    expect(renderToString(<Risk projectId={id} />)).toContain('Risk register')
+    expect(renderToString(<Safety projectId={id} />)).toContain('notice to proceed')
+  })
+  it('portfolio, safety home, field mode', () => {
+    expect(renderToString(<RiskPortfolio />)).toContain('Portfolio risk')
+    expect(renderToString(<SafetyHome />)).toContain('Construction safety')
+    expect(renderToString(<FieldMode />)).toContain('Tailboard')
+  })
+  it('field mode as contractor persona', () => {
+    useStore.getState().setUser('c-2')
+    expect(renderToString(<FieldMode />)).toContain('Stop-work authority')
+  })
+})
+
+===== FILE: src/views/workflows/lib.test.ts =====
+import { buildSeed } from '@/core/seed'
+import { blockingErrors, lanesOf, orderedNodes, processStats, trace, validate, signatureHash, outcomePaths } from './lib'
+
+const s = buildSeed()
+
+test('every seeded process passes publish validation', () => {
+  for (const d of s.workflowDefs) {
+    const errs = blockingErrors(validate(d))
+    expect(errs.map((e) => `${d.key}: ${e.label} ${e.detail ?? ''}`)).toEqual([])
+  }
+})
+
+test('trace resolves DOA by amount and conditions', () => {
+  const def = s.workflowDefs.find((d) => d.key === 'change-request')!
+  const p = s.projects.find((x) => x.team.projectControls)!
+  const small = trace(s, def, { amount: 100_000, scheduleImpactDays: 0 }, p.id, p.team.pm)
+  const big = trace(s, def, { amount: 12_000_000, scheduleImpactDays: 45 }, p.id, p.team.pm)
+  const appr = (t: ReturnType<typeof trace>) => t.find((x) => x.node.id === 'approve')!
+  expect(appr(small).people.every((x) => x.roles.includes('program-manager'))).toBe(true)
+  expect(appr(big).people.some((x) => x.roles.includes('exec'))).toBe(true)
+  expect(small.some((x) => x.node.id === 'sched')).toBe(false)
+  expect(big.some((x) => x.node.id === 'sched')).toBe(true)
+  const gate = s.workflowDefs.find((d) => d.key === 'gate-review')!
+  const g = trace(s, gate, {}, p.id, p.team.pm)
+  expect(g.map((x) => x.node.id)).toEqual(expect.arrayContaining(['pgm', 'pc', 'join', 'board', 'end']))
+  expect(g.filter((x) => x.node.id === 'join').length).toBe(1)
+})
+
+test('trace shows delegation', () => {
+  const s2 = buildSeed()
+  const p = s2.projects.find((x) => x.team.projectControls)!
+  const pc = s2.people.find((x) => x.id === p.team.projectControls)!
+  pc.outOfOffice = { from: '2026-10-01', to: '2026-11-30', delegateId: 'u-me' }
+  const def = s2.workflowDefs.find((d) => d.key === 'change-request')!
+  const t = trace(s2, def, { amount: 1 }, p.id, p.team.pm)
+  const imp = t.find((x) => x.node.id === 'impact')!
+  expect(imp.people.map((x) => x.id)).toEqual(['u-me'])
+  expect(imp.delegatedFrom[0].from.id).toBe(pc.id)
+})
+
+test('analytics and docs helpers', () => {
+  const st = processStats(s, 'change-request')
+  expect(st.total).toBeGreaterThan(5)
+  expect(st.steps.length).toBeGreaterThan(2)
+  console.log(st.name, st.avgCycleH, st.bottleneck?.label, st.steps.map((x) => `${x.label}:${x.n}:${x.avgH.toFixed(2)}`).join(' '))
+  const d = s.workflowDefs.find((x) => x.key === 'gate-review')!
+  console.log(lanesOf(s, d), orderedNodes(d).map((n) => n.id).join(','))
+  console.log(outcomePaths(d, d.nodes.find((n) => n.id === 'board')!))
+  expect(signatureHash(['a', 'b'])).toHaveLength(16)
+})
+
+===== FILE: src/views/workflows/render.test.tsx =====
+import { renderToString } from 'react-dom/server'
+import { useStore } from '@/core/store'
+import Catalog from './Catalog'
+import Designer from './Designer'
+import Inbox from '../inbox/Inbox'
+import Activity from '../project/tabs/Activity'
+import { TestMode } from './TestMode'
+import { SopView } from './SopView'
+import { VersionsPanel } from './Versions'
+import { sopHtml, manualHtml } from './sop'
+import { defaultTestProject, defaultValues } from './lib'
+
+test('views render from seed', () => {
+  const s = useStore.getState()
+  const html = [
+    renderToString(<Catalog />),
+    renderToString(<Inbox />),
+    renderToString(<Activity projectId="prj-1001" />),
+    ...s.workflowDefs.map((d) => renderToString(<Designer id={d.key} />)),
+    renderToString(<Designer id="nope" />),
+  ]
+  for (const d of s.workflowDefs) {
+    const pv = { projectId: defaultTestProject(s), requesterId: s.currentUserId, data: defaultValues(d) }
+    html.push(renderToString(<TestMode s={s} def={d} preview={pv} setPreview={() => {}} />))
+    html.push(renderToString(<SopView s={s} def={d} onDownload={() => {}} />))
+    html.push(renderToString(<VersionsPanel s={s} defKey={d.key} current={d} onOpen={() => {}} />))
+    expect(sopHtml(s, d).length).toBeGreaterThan(3000)
+  }
+  expect(manualHtml(s, s.workflowDefs).length).toBeGreaterThan(20000)
+  console.log(html.map((h) => h.length).join(' '))
+  // persona switch: VP inbox
+  useStore.getState().setUser('u-vp')
+  console.log('vp inbox', renderToString(<Inbox />).length)
+  useStore.getState().setUser('u-pc1')
+  console.log('pc inbox', renderToString(<Inbox />).length)
+})
