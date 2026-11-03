@@ -1,0 +1,116 @@
+WBS Element,Cost Element,Cost Element Name,Fiscal Year,Period,Posting Date,Document Number,Reference Document,Purchasing Document,Vendor,Name,Value in Obj. Currency,Object Currency,Text
+C.PSE.1002,5800110,Project management services,2026,9,09/04/2026,4900500835,INV-00835,451801002,300180,Wrenwood Project Controls Co.,"36,855.19",USD,PRJ-1002 project management services
+C.PSE.1002,5800110,Project management services,2026,9,09/18/2026,4900500836,INV-00836,450501002,300050,Cobalt Mesa Engineering Co.,"23,169.81",USD,PRJ-1002 project management services
+C.PSE.1002,5400110,Outside engineering services,2026,9,09/06/2026,4900500837,INV-00837,451701002,300170,Tidewell Design Co.,"3,486.60",USD,PRJ-1002 outside engineering services
+C.PSE.1002,5310110,Material — line pipe,2026,9,09/23/2026,4900500839,INV-00839,450801002,300080,Foxtail Pipe & Supply Co.,"3,530.00",USD,PRJ-1002 material
+C.PSE.1002,5320110,Material — valves,2026,9,09/03/2026,4900500840,INV-00840,450901002,300090,Ironbark Valve Supply Co.,"2,029.00",USD,PRJ-1002 material
+C.PSE.1002,5610110,Test water & temporary bypass,2026,9,09/14/2026,4900500841,INV-00841,450701002,300070,Driftwood Hydrotest Co.,"40,616.58",USD,PRJ-1002 test water & temporary bypass
+C.PSE.1002,5610110,Test water & temporary bypass,2026,9,09/18/2026,4900500842,INV-00842,450701002,300070,Driftwood Hydrotest Co.,"41,723.42",USD,PRJ-1002 test water & temporary bypass
+C.PSE.1002,5200110,Contract services — construction,2026,9,09/09/2026,4900500843,INV-00843,451001002,300100,Kestrel Ridge Pipeline Co.,"137,524.48",USD,PRJ-1002 contract services
+C.PSE.1002,5200110,Contract services — construction,2026,9,09/05/2026,4900500844,INV-00844,451001002,300100,Kestrel Ridge Pipeline Co.,"116,722.52",USD,PRJ-1002 contract services
+C.PSE.1002,5700110,Paving & restoration,2026,9,09/05/2026,4900500845,INV-00845,450101002,300010,Bluejay Paving Co.,"35,501.15",USD,PRJ-1002 paving & restoration
+C.PSE.1002,5700110,Paving & restoration,2026,9,09/21/2026,4900500846,INV-00846,450101002,300010,Bluejay Paving Co.,"36,236.85",USD,PRJ-1002 paving & restoration
+C.PSE.1002,5100110,Company labor — straight time,2026,9,09/23/2026,4900500847,,,,,"65,258.11",USD,PRJ-1002 company labor
+C.PSE.1002,5100110,Company labor — straight time,2026,9,09/15/2026,4900500848,,,,,"56,667.89",USD,PRJ-1002 company labor
+C.PSE.1002,5510110,Environmental consultants,2026,9,09/03/2026,4900500849,INV-00849,451401002,300140,Quillfeather Environmental Co.,"2,096.00",USD,PRJ-1002 environmental consultants
+C.PSE.1002,5900110,A&G overhead settlement,2026,9,09/28/2026,4900500850,,,,,"52,743.87",USD,Period-end settlement
+C.PSE.1002,5900120,Payroll taxes & benefits loader,2026,9,09/28/2026,4900500851,,,,,"32,544.09",USD,Period-end settlement
+C.PSE.1002,5900130,AFUDC,2026,9,09/28/2026,4900500852,,,,,"26,933.04",USD,Period-end settlement
+C.PSE.1002.02,5100110,Company labor — straight time,2026,9,09/04/2026,4900500838,,,,,"2,324.40",USD,PRJ-1002 company labor
+C.PSE.1003,5800110,Project management services,2026,9,09/20/2026,4900500853,INV-00853,450501003,300050,Cobalt Mesa Engineering Co.,"3,369.00",USD,PRJ-1003 project management services
+C.PSE.1003,5400110,Outside engineering services,2026,9,09/12/2026,4900500854,INV-00854,451701003,300170,Tidewell Design Co.,"1,843.80",USD,PRJ-1003 outside engineering services
+C.PSE.1003,5310110,Material — line pipe,2026,9,09/14/2026,4900500856,INV-00856,450901003,300090,Ironbark Valve Supply Co.,"4,921.00",USD,PRJ-1003 material
+C.PSE.1003,5320110,Material — valves,2026,9,09/10/2026,4900500857,INV-00857,450901003,300090,Ironbark Valve Supply Co.,"5,227.00",USD,PRJ-1003 material
+C.PSE.1003,5610110,Test water & temporary bypass,2026,9,09/24/2026,4900500858,INV-00858,450701003,300070,Driftwood Hydrotest Co.,"1,191.00",USD,PRJ-1003 test water & temporary bypass
+C.PSE.1003,5200110,Contract services — construction,2026,9,09/12/2026,4900500859,INV-00859,451301003,300130,Pinecone Builders Co.,"50,580.00",USD,PRJ-1003 contract services
+C.PSE.1003,5710110,Traffic control services,2026,9,09/17/2026,4900500860,INV-00860,450301003,300030,Cactus Wren Traffic Co.,"2,255.00",USD,PRJ-1003 traffic control services
+C.PSE.1003,5700110,Paving & restoration,2026,9,09/07/2026,4900500861,INV-00861,450101003,300010,Bluejay Paving Co.,"7,232.00",USD,PRJ-1003 paving & restoration
+C.PSE.1003,5600110,Inspection services — NDE,2026,9,09/23/2026,4900500862,INV-00862,451101003,300110,Larkspur Inspection Co.,"2,212.00",USD,PRJ-1003 inspection services
+C.PSE.1003,5620110,Commissioning services,2026,9,09/17/2026,4900500863,INV-00863,450601003,300060,Copperhawk Compression Co.,32.00,USD,PRJ-1003 commissioning services
+C.PSE.1003,5100110,Company labor — straight time,2026,9,09/15/2026,4900500864,,,,,"6,168.00",USD,PRJ-1003 company labor
+C.PSE.1003,5810110,Project support services,2026,9,09/04/2026,4900500865,INV-00865,451801003,300180,Wrenwood Project Controls Co.,"2,065.00",USD,PRJ-1003 project support services
+C.PSE.1003,5510110,Environmental consultants,2026,9,09/15/2026,4900500866,INV-00866,451401003,300140,Quillfeather Environmental Co.,"1,008.00",USD,PRJ-1003 environmental consultants
+C.PSE.1003,5500110,Easements & rights of entry,2026,9,09/07/2026,4900500867,INV-00867,451601003,300160,Saltgrass Title Co.,"1,440.00",USD,PRJ-1003 easements & rights of entry
+C.PSE.1003,5530110,Permit fees,2026,9,09/08/2026,4900500868,INV-00868,450401003,300040,Arroyo Valley Permit Services Co.,216.00,USD,PRJ-1003 permit fees
+C.PSE.1003,5900110,A&G overhead settlement,2026,9,09/28/2026,4900500869,,,,,"8,413.47",USD,Period-end settlement
+C.PSE.1003,5900120,Payroll taxes & benefits loader,2026,9,09/28/2026,4900500870,,,,,"5,191.29",USD,Period-end settlement
+C.PSE.1003,5900130,AFUDC,2026,9,09/28/2026,4900500871,,,,,"4,296.24",USD,Period-end settlement
+C.PSE.1003.02,5100110,Company labor — straight time,2026,9,09/26/2026,4900500855,,,,,"1,229.20",USD,PRJ-1003 company labor
+C.PSE.1004,5800110,Project management services,2026,9,09/14/2026,4900500872,INV-00872,450501004,300050,Cobalt Mesa Engineering Co.,"4,965.00",USD,PRJ-1004 project management services
+C.PSE.1004,5400110,Outside engineering services,2026,9,09/05/2026,4900500873,INV-00873,451701004,300170,Tidewell Design Co.,163.20,USD,PRJ-1004 outside engineering services
+C.PSE.1004,5310110,Material — line pipe,2026,9,09/13/2026,4900500875,INV-00875,450801004,300080,Foxtail Pipe & Supply Co.,194.00,USD,PRJ-1004 material
+C.PSE.1004,5320110,Material — valves,2026,9,09/21/2026,4900500876,INV-00876,450901004,300090,Ironbark Valve Supply Co.,179.00,USD,PRJ-1004 material
+C.PSE.1004,5610110,Test water & temporary bypass,2026,9,09/10/2026,4900500877,INV-00877,450701004,300070,Driftwood Hydrotest Co.,"1,914.00",USD,PRJ-1004 test water & temporary bypass
+C.PSE.1004,5200110,Contract services — construction,2026,9,09/24/2026,4900500878,INV-00878,451001004,300100,Kestrel Ridge Pipeline Co.,"7,655.00",USD,PRJ-1004 contract services
+C.PSE.1004,5700110,Paving & restoration,2026,9,09/14/2026,4900500879,INV-00879,450101004,300010,Bluejay Paving Co.,"1,615.00",USD,PRJ-1004 paving & restoration
+C.PSE.1004,5100110,Company labor — straight time,2026,9,09/25/2026,4900500880,,,,,"3,254.00",USD,PRJ-1004 company labor
+C.PSE.1004,5510110,Environmental consultants,2026,9,09/08/2026,4900500881,INV-00881,451501004,300150,Sagebrush Biological Co.,81.00,USD,PRJ-1004 environmental consultants
+C.PSE.1004,5900110,A&G overhead settlement,2026,9,09/28/2026,4900500882,,,,,"5,327.92",USD,Period-end settlement
+C.PSE.1004,5900120,Payroll taxes & benefits loader,2026,9,09/28/2026,4900500883,,,,,"3,287.44",USD,Period-end settlement
+C.PSE.1004,5900130,AFUDC,2026,9,09/28/2026,4900500884,,,,,"2,720.64",USD,Period-end settlement
+C.PSE.1004.02,5100110,Company labor — straight time,2026,9,09/10/2026,4900500874,,,,,108.80,USD,PRJ-1004 company labor
+C.TIM.1010,5800110,Project management services,2026,9,09/03/2026,4900500940,INV-00940,450501010,300050,Cobalt Mesa Engineering Co.,"5,940.00",USD,PRJ-1010 project management services
+C.TIM.1010,5400110,Outside engineering services,2026,9,09/24/2026,4900500941,INV-00941,451701010,300170,Tidewell Design Co.,"4,554.60",USD,PRJ-1010 outside engineering services
+C.TIM.1010,5310110,Material — line pipe,2026,9,09/17/2026,4900500943,INV-00943,450801010,300080,Foxtail Pipe & Supply Co.,"4,912.00",USD,PRJ-1010 material
+C.TIM.1010,5320110,Material — valves,2026,9,09/03/2026,4900500944,INV-00944,450901010,300090,Ironbark Valve Supply Co.,"3,606.00",USD,PRJ-1010 material
+C.TIM.1010,5610110,Test water & temporary bypass,2026,9,09/27/2026,4900500945,INV-00945,450701010,300070,Driftwood Hydrotest Co.,747.00,USD,PRJ-1010 test water & temporary bypass
+C.TIM.1010,5200110,Contract services — construction,2026,9,09/22/2026,4900500946,INV-00946,451301010,300130,Pinecone Builders Co.,"2,201.00",USD,PRJ-1010 contract services
+C.TIM.1010,5700110,Paving & restoration,2026,9,09/23/2026,4900500947,INV-00947,450101010,300010,Bluejay Paving Co.,609.00,USD,PRJ-1010 paving & restoration
+C.TIM.1010,5100110,Company labor — straight time,2026,9,09/12/2026,4900500948,,,,,"1,218.00",USD,PRJ-1010 company labor
+C.TIM.1010,5510110,Environmental consultants,2026,9,09/23/2026,4900500949,INV-00949,451401010,300140,Quillfeather Environmental Co.,"2,456.00",USD,PRJ-1010 environmental consultants
+C.TIM.1010,5900110,A&G overhead settlement,2026,9,09/28/2026,4900500950,,,,,"5,179.87",USD,Period-end settlement
+C.TIM.1010,5900120,Payroll taxes & benefits loader,2026,9,09/28/2026,4900500951,,,,,"3,196.09",USD,Period-end settlement
+C.TIM.1010,5900130,AFUDC,2026,9,09/28/2026,4900500952,,,,,"2,645.04",USD,Period-end settlement
+C.TIM.1010.02,5100110,Company labor — straight time,2026,9,09/22/2026,4900500942,,,,,"3,036.40",USD,PRJ-1010 company labor
+C.TIM.1011,5800110,Project management services,2026,9,09/09/2026,4900500953,INV-00953,451801011,300180,Wrenwood Project Controls Co.,"48,010.38",USD,PRJ-1011 project management services
+C.TIM.1011,5800110,Project management services,2026,9,09/23/2026,4900500954,INV-00954,451801011,300180,Wrenwood Project Controls Co.,"53,052.62",USD,PRJ-1011 project management services
+C.TIM.1011,5400110,Outside engineering services,2026,9,09/18/2026,4900500955,INV-00955,450501011,300050,Cobalt Mesa Engineering Co.,"6,510.00",USD,PRJ-1011 outside engineering services
+C.TIM.1011,5310110,Material — line pipe,2026,9,09/21/2026,4900500957,INV-00957,450801011,300080,Foxtail Pipe & Supply Co.,"29,643.00",USD,PRJ-1011 material
+C.TIM.1011,5320110,Material — valves,2026,9,09/04/2026,4900500958,INV-00958,450901011,300090,Ironbark Valve Supply Co.,"8,621.00",USD,PRJ-1011 material
+C.TIM.1011,5610110,Test water & temporary bypass,2026,9,09/23/2026,4900500959,INV-00959,450701011,300070,Driftwood Hydrotest Co.,"31,326.00",USD,PRJ-1011 test water & temporary bypass
+C.TIM.1011,5200110,Contract services — construction,2026,9,09/17/2026,4900500960,INV-00960,451001011,300100,Kestrel Ridge Pipeline Co.,"648,776.65",USD,PRJ-1011 contract services
+C.TIM.1011,5200110,Contract services — construction,2026,9,09/11/2026,4900500961,INV-00961,451001011,300100,Kestrel Ridge Pipeline Co.,"795,929.35",USD,PRJ-1011 contract services
+C.TIM.1011,5710110,Traffic control services,2026,9,09/23/2026,4900500962,INV-00962,450301011,300030,Cactus Wren Traffic Co.,"27,955.80",USD,PRJ-1011 traffic control services
+C.TIM.1011,5710110,Traffic control services,2026,9,09/25/2026,4900500963,INV-00963,450301011,300030,Cactus Wren Traffic Co.,"32,862.20",USD,PRJ-1011 traffic control services
+C.TIM.1011,5700110,Paving & restoration,2026,9,09/03/2026,4900500964,INV-00964,450101011,300010,Bluejay Paving Co.,"111,343.19",USD,PRJ-1011 paving & restoration
+C.TIM.1011,5700110,Paving & restoration,2026,9,09/21/2026,4900500965,INV-00965,450101011,300010,Bluejay Paving Co.,"73,162.81",USD,PRJ-1011 paving & restoration
+C.TIM.1011,5600110,Inspection services — NDE,2026,9,09/21/2026,4900500966,INV-00966,451101011,300110,Larkspur Inspection Co.,"27,896.02",USD,PRJ-1011 inspection services
+C.TIM.1011,5600110,Inspection services — NDE,2026,9,09/23/2026,4900500967,INV-00967,451101011,300110,Larkspur Inspection Co.,"33,162.98",USD,PRJ-1011 inspection services
+C.TIM.1011,5620110,Commissioning services,2026,9,09/11/2026,4900500968,INV-00968,450601011,300060,Copperhawk Compression Co.,"7,649.00",USD,PRJ-1011 commissioning services
+C.TIM.1011,5100110,Company labor — straight time,2026,9,09/20/2026,4900500969,,,,,"79,889.45",USD,PRJ-1011 company labor
+C.TIM.1011,5100110,Company labor — straight time,2026,9,09/11/2026,4900500970,,,,,"83,550.55",USD,PRJ-1011 company labor
+C.TIM.1011,5810110,Project support services,2026,9,09/15/2026,4900500971,INV-00971,451801011,300180,Wrenwood Project Controls Co.,"31,241.62",USD,PRJ-1011 project support services
+C.TIM.1011,5810110,Project support services,2026,9,09/26/2026,4900500972,INV-00972,451801011,300180,Wrenwood Project Controls Co.,"28,859.38",USD,PRJ-1011 project support services
+C.TIM.1011,5510110,Environmental consultants,2026,9,09/13/2026,4900500973,INV-00973,451401011,300140,Quillfeather Environmental Co.,"3,171.00",USD,PRJ-1011 environmental consultants
+C.TIM.1011,5500110,Easements & rights of entry,2026,9,09/20/2026,4900500974,INV-00974,451601011,300160,Saltgrass Title Co.,"4,863.00",USD,PRJ-1011 easements & rights of entry
+C.TIM.1011,5530110,Permit fees,2026,9,09/12/2026,4900500975,INV-00975,450401011,300040,Arroyo Valley Permit Services Co.,742.00,USD,PRJ-1011 permit fees
+C.TIM.1011,5900110,A&G overhead settlement,2026,9,09/28/2026,4900500976,,,,,"253,480.40",USD,Period-end settlement
+C.TIM.1011,5900120,Payroll taxes & benefits loader,2026,9,09/28/2026,4900500977,,,,,"156,402.80",USD,Period-end settlement
+C.TIM.1011,5900130,AFUDC,2026,9,09/28/2026,4900500978,,,,,"129,436.80",USD,Period-end settlement
+C.TIM.1011.02,5100110,Company labor — straight time,2026,9,09/16/2026,4900500956,,,,,"4,340.00",USD,PRJ-1011 company labor
+C.TIM.1013,5800110,Project management services,2026,9,09/19/2026,4900500979,INV-00979,450501013,300050,Cobalt Mesa Engineering Co.,"4,159.00",USD,PRJ-1013 project management services
+C.TIM.1013,5400110,Outside engineering services,2026,9,09/14/2026,4900500980,INV-00980,451701013,300170,Tidewell Design Co.,"4,906.80",USD,PRJ-1013 outside engineering services
+C.TIM.1013,5310110,Material — line pipe,2026,9,09/07/2026,4900500982,INV-00982,450801013,300080,Foxtail Pipe & Supply Co.,"13,097.00",USD,PRJ-1013 material
+C.TIM.1013,5320110,Material — valves,2026,9,09/24/2026,4900500983,INV-00983,450901013,300090,Ironbark Valve Supply Co.,"20,059.00",USD,PRJ-1013 material
+C.TIM.1013,5610110,Test water & temporary bypass,2026,9,09/19/2026,4900500984,INV-00984,450701013,300070,Driftwood Hydrotest Co.,523.00,USD,PRJ-1013 test water & temporary bypass
+C.TIM.1013,5200110,Contract services — construction,2026,9,09/10/2026,4900500985,INV-00985,451301013,300130,Pinecone Builders Co.,"15,311.00",USD,PRJ-1013 contract services
+C.TIM.1013,5710110,Traffic control services,2026,9,09/07/2026,4900500986,INV-00986,450301013,300030,Cactus Wren Traffic Co.,990.00,USD,PRJ-1013 traffic control services
+C.TIM.1013,5700110,Paving & restoration,2026,9,09/13/2026,4900500987,INV-00987,450101013,300010,Bluejay Paving Co.,"3,174.00",USD,PRJ-1013 paving & restoration
+C.TIM.1013,5600110,Inspection services — NDE,2026,9,09/26/2026,4900500988,INV-00988,451101013,300110,Larkspur Inspection Co.,971.00,USD,PRJ-1013 inspection services
+C.TIM.1013,5620110,Commissioning services,2026,9,09/05/2026,4900500989,INV-00989,450601013,300060,Copperhawk Compression Co.,18.00,USD,PRJ-1013 commissioning services
+C.TIM.1013,5100110,Company labor — straight time,2026,9,09/19/2026,4900500990,,,,,"2,707.00",USD,PRJ-1013 company labor
+C.TIM.1013,5810110,Project support services,2026,9,09/04/2026,4900500991,INV-00991,451801013,300180,Wrenwood Project Controls Co.,"2,549.00",USD,PRJ-1013 project support services
+C.TIM.1013,5510110,Environmental consultants,2026,9,09/21/2026,4900500992,INV-00992,451501013,300150,Sagebrush Biological Co.,"2,684.00",USD,PRJ-1013 environmental consultants
+C.TIM.1013,5500110,Easements & rights of entry,2026,9,09/04/2026,4900500993,INV-00993,451601013,300160,Saltgrass Title Co.,"3,834.00",USD,PRJ-1013 easements & rights of entry
+C.TIM.1013,5530110,Permit fees,2026,9,09/15/2026,4900500994,INV-00994,450401013,300040,Arroyo Valley Permit Services Co.,575.00,USD,PRJ-1013 permit fees
+C.TIM.1013,5900110,A&G overhead settlement,2026,9,09/28/2026,4900500995,,,,,"9,208.24",USD,Period-end settlement
+C.TIM.1013,5900120,Payroll taxes & benefits loader,2026,9,09/28/2026,4900500996,,,,,"5,681.68",USD,Period-end settlement
+C.TIM.1013,5900130,AFUDC,2026,9,09/28/2026,4900500997,,,,,"4,702.08",USD,Period-end settlement
+C.TIM.1013.02,5100110,Company labor — straight time,2026,9,09/20/2026,4900500981,,,,,"3,271.20",USD,PRJ-1013 company labor
+C.PSE.1002,5450110,Software subscriptions,2026,9,09/15/2026,4900590001,INV-77120,,300990,Mapleleaf Field Software Co.,"12,480.00",USD,Field data collection licenses
+C.PSE.1002,1400110,Inventory transfer — pipe stock,2026,9,09/21/2026,4900590002,,,,,"86,400.00",USD,Pipe transferred from storeroom (balance sheet)
+C.PSE.1003,5200110,Contract services — construction,2026,9,09/10/2026,4900590010,INV-55012,45991003,300995,Pinecone Builders Co.,"23,450.00",USD,Pay app 5 — duplicate entry
+C.PSE.1003,5200110,Contract services — construction,2026,9,09/12/2026,4900590011,4900590010,45991003,300995,Pinecone Builders Co.,"23,450.00-",USD,Reversal of 4900590010 — duplicate invoice
+C.PSE.1004,5200110,Contract services — construction,2026,9,09/30/2026,4900590020,CM-3301,45981004,300996,Kestrel Ridge Pipeline Co.,"15,000.00-",USD,"Credit memo, backcharge for damaged coating"
+C.PSE.9999,5200110,Contract services — construction,2026,9,09/18/2026,4900590030,INV-55107,,300996,Kestrel Ridge Pipeline Co.,"48,210.55",USD,Pay app 7 — WBS keyed incorrectly
+,,,,,,,,,,,"3,839,008.55",USD,*

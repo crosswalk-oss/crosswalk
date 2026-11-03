@@ -1,0 +1,80 @@
+/* Crosswalk — capital project delivery for gas utilities.
+   Layout: steel side rail + working canvas; dense tables, tabular figures, pipeline-marker amber reserved for "needs action".
+   Tokens are RGB triplets so Tailwind can apply alpha (bg-ink/5). */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ground: 241 243 246;
+  --surface: 255 255 255;
+  --sunken: 233 236 240;
+  --line: 214 220 227;
+  --ink: 20 27 36;
+  --muted: 79 90 105;
+  --faint: 126 136 150;
+  --steel: 24 33 45;
+  --steelink: 205 214 225;
+  --marker: 240 176 0;
+  --markerink: 28 22 4;
+  --link: 20 92 170;
+  --good: 27 128 72;
+  --warn: 184 110 0;
+  --bad: 192 40 40;
+  --info: 44 106 178;
+  --font-display: 'Archivo', 'Arial Narrow', system-ui, sans-serif;
+  --font-body: 'Public Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-data: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ground: 13 17 23; --surface: 21 27 35; --sunken: 16 21 28; --line: 42 51 63; --ink: 228 233 239; --muted: 158 169 183; --faint: 110 121 136;
+    --steel: 9 12 17; --steelink: 196 205 216; --marker: 246 194 50; --markerink: 28 22 4; --link: 112 172 242; --good: 74 186 120; --warn: 236 170 56; --bad: 240 100 100; --info: 112 162 230;
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --ground: 13 17 23; --surface: 21 27 35; --sunken: 16 21 28; --line: 42 51 63; --ink: 228 233 239; --muted: 158 169 183; --faint: 110 121 136;
+  --steel: 9 12 17; --steelink: 196 205 216; --marker: 246 194 50; --markerink: 28 22 4; --link: 112 172 242; --good: 74 186 120; --warn: 236 170 56; --bad: 240 100 100; --info: 112 162 230;
+  color-scheme: dark;
+}
+
+html, body, #root { height: 100%; }
+body {
+  background: rgb(var(--ground));
+  color: rgb(var(--ink));
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+body::before { content: ''; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 60; background: rgb(var(--steel)); }
+h1, h2, h3, h4 { font-family: var(--font-display); text-wrap: balance; letter-spacing: -0.01em; }
+.font-display { font-stretch: 87%; }
+.num, td.num, .tabular { font-variant-numeric: tabular-nums; }
+.eyebrow { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; color: rgb(var(--muted)); }
+:focus-visible { outline: 2px solid rgb(var(--link)); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+@layer components {
+/* Tables */
+.tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+.tbl th { position: sticky; top: 0; z-index: 1; background: rgb(var(--sunken)); color: rgb(var(--muted)); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; text-align: left; padding: 7px 10px; border-bottom: 1px solid rgb(var(--line)); white-space: nowrap; }
+.tbl td { padding: 7px 10px; border-bottom: 1px solid rgb(var(--line) / 0.7); vertical-align: top; }
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl tbody tr:hover td { background: rgb(var(--sunken) / 0.55); }
+.tbl td.num, .tbl th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tbl tr.clickable { cursor: pointer; }
+
+/* Form controls */
+.inp { width: 100%; background: rgb(var(--surface)); border: 1px solid rgb(var(--line)); border-radius: 5px; padding: 6px 9px; font-size: 13px; color: rgb(var(--ink)); }
+.inp:focus { outline: 2px solid rgb(var(--link) / 0.5); outline-offset: 0; border-color: rgb(var(--link)); }
+.inp:disabled { background: rgb(var(--sunken)); color: rgb(var(--muted)); }
+select.inp { padding-right: 26px; }
+textarea.inp { min-height: 72px; resize: vertical; }
+
+}
+.scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.mark-stripe { background-image: repeating-linear-gradient(135deg, rgb(var(--marker)) 0 8px, rgb(var(--steel)) 8px 16px); }
+@keyframes fadein { from { opacity: 0.4; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+.fadein { animation: fadein 160ms ease-out; }
