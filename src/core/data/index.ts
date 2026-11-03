@@ -1,15 +1,17 @@
-// The one data-access instance the app uses. Swap the implementation here (rule 17) — e.g. a Postgres-backed
-// client of the app's own API — without touching any screen or the engine.
-import { browserDataAccess } from './browser'
+// The one data-access instance the app uses (rule 17): the shared Postgres-backed API. Swap the
+// implementation here without touching any screen or the engine.
+import { sharedDataAccess } from './server'
 import type { DataAccess } from './types'
 
-export type { DataAccess } from './types'
-export const data: DataAccess = browserDataAccess()
+export type { DataAccess, RemoteChange, RemoteState, CommitResult } from './types'
+export { gzipBase64, gunzipBase64 } from './server'
+export const data: DataAccess = sharedDataAccess()
 
-/** UI preferences through the data-access interface. */
+/** UI preferences through the data-access interface (kept in this browser only). */
 export const prefs = {
   getRaw: (key: string) => data.getPref(key),
   setRaw: (key: string, value: string) => data.setPref(key, value),
+  remove: (key: string) => data.removePref(key),
   get<T>(key: string, fallback: T): T {
     const v = data.getPref(key)
     if (v == null) return fallback
