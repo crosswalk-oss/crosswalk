@@ -12,7 +12,7 @@ Open-source capital project delivery for gas utilities. It covers:
 
 Every dollar, date and scope change traces back to an approved decision and its evidence.
 
-**Live demo: [crosswalk-oss.github.io/crosswalk](https://crosswalk-oss.github.io/crosswalk/)**, which rebuilds on every push to `main`.
+**Live demo: [crosswalk-demo.pages.dev](https://crosswalk-demo.pages.dev)**, with a shared database. It redeploys on every push to `main`.
 
 > **All data in this repository is fictional.** The demo runs a made-up utility, **Arroyo Valley Gas**:
 > 30 projects on five programs, with lines named AV-11 to AV-28 and vendors such as "Delta Pipeline Co.".
@@ -21,15 +21,16 @@ Every dollar, date and scope change traces back to an approved decision and its 
 
 ## Try it
 
-- **No install:** run `npm run build` once (or take the file from a release) and open `dist/index.html` in any
-  browser. It is one self-contained file that makes no network calls.
-- **Fastest:** download [`Crosswalk.html`](Crosswalk.html) from this repository and double-click it. It is the
-  latest build, the whole app in one file.
-- **Run locally:**
+- **Hosted demo:** everyone shares one dataset in a Postgres database. Anyone with the link can look around;
+  changes need the edit passcode and are saved for everyone, with every change kept in the database's history.
+- **Offline copy:** download [`Crosswalk.html`](Crosswalk.html) and double-click it. It is the whole app in one
+  file and makes no network calls. It isn't connected to the database, so changes there are not saved.
+- **Run locally with the database:**
 
   ```bash
   npm install
-  npm run dev          # http://localhost:5173
+  npm run build && npm run serve:local   # http://localhost:8788, edit passcode "local", in-memory Postgres
+  npm run dev                            # UI only, hot reload, not saved
   ```
 
 ### A five-minute demo path
@@ -75,15 +76,25 @@ npm run sample:sap       # regenerate the fictional SAP sample extract
 
 ## Host the public demo (free)
 
-The demo is one static file with no server, so any static host works. `index.html` carries a strict
-Content-Security-Policy (`connect-src 'self'`), so the browser itself blocks any outside call wherever it is hosted.
+The demo runs on **Cloudflare Pages** (the page plus `/api` functions, free and commercial use allowed) with
+**Neon** Postgres (free tier). `.github/workflows/deploy.yml` does everything on each push to `main`: typecheck,
+tests, license check, build, SQL migrations, then deploy. It needs four repository secrets:
 
-- **GitHub Pages:** free for public repositories. In the repository, open Settings → Pages → Source and
-  choose **GitHub Actions**. `.github/workflows/pages.yml` then typechecks, tests, builds and publishes on every
-  push to `main`.
-- **Cloudflare Pages:** free, and works with a private repository. Connect the repository, set the build
-  command to `npm run build` and the output directory to `dist`. `public/_headers` adds the security headers.
-- **Vercel:** `vercel.json` is included, but the free Hobby plan is for personal, non-commercial use only.
+| Secret | Where it comes from |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare → My Profile → API Tokens → a token with **Cloudflare Pages: Edit** |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard → the account ID on the right |
+| `DATABASE_URL` | Neon → your project → Connection string |
+| `EDIT_PASSCODE` | Any phrase you choose; people type it to edit |
+
+Without the secrets the workflow only runs the checks. How the data is stored:
+
+- A "generation" starts from a full snapshot.
+- Every edit is appended as an ordered change (immer patches).
+- Database triggers refuse any update or delete (`migrations/001_shared_state.sql`).
+- "Reset demo data" starts a new generation. Nothing is ever deleted.
+- Secret settings (AI key, map tokens) and the persona you act as never leave the browser.
+- On the shared demo, file uploads and pasted extracts are turned off. Only the bundled fictional samples load.
 
 The public demo is for fictional data only:
 
@@ -116,7 +127,11 @@ Hosting real data belongs inside an organization's managed cloud, after its arch
 src/core/types.ts          domain model (read it first)
 src/core/engine/*.ts       pure functions, no UI/storage/network imports; every change ships with vitest tests
 src/core/seed/             fictional reference data + history replayed through the engine
-src/core/data/             the one data-access interface (browser localStorage now; Postgres later)
+src/core/data/             the one data-access interface: the app's own API (Postgres); UI preferences stay in the browser
+src/core/sync.ts           loads the shared data, sends each change, merges others' edits, re-applies on conflicts
+src/server/                the API: plain (request) => response handler, SQL repository, migration runner
+functions/api/             Cloudflare Pages adapter for the API handler
+migrations/                plain SQL migrations (append-only tables)
 src/core/auth/             swappable OIDC-style interface: id, name, groups → Crosswalk roles
 src/core/store.ts          zustand + immer; every write goes through update(fn, audit); the audit log is append-only
 src/views/                 one folder per module
@@ -125,10 +140,10 @@ samples/                   fictional sample files (SAP extract)
 
 The planned production path (see [AGENT_RULES.md](AGENT_RULES.md) §5):
 
-- a static front end plus serverless `(request) => response` handlers (Vercel functions, then AWS Lambda)
+- a static front end plus serverless `(request) => response` handlers (Cloudflare Pages functions now, AWS Lambda later)
 - Postgres through plain SQL migrations
 - OIDC sign-in
-- infrastructure in Terraform
+- infrastructure in Terraform (today the deploy is scripted in GitHub Actions; Terraform is still to do)
 - no containers or VMs
 
 ## Contributing
