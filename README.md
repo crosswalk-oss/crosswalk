@@ -12,6 +12,8 @@ Open-source capital project delivery for gas utilities. It covers:
 
 Every dollar, date and scope change traces back to an approved decision and its evidence.
 
+**Live demo: [crosswalk-oss.github.io/crosswalk](https://crosswalk-oss.github.io/crosswalk/)**, which rebuilds on every push to `main`.
+
 > **All data in this repository is fictional.** The demo runs a made-up utility, **Arroyo Valley Gas**:
 > 30 projects on five programs, with lines named AV-11 to AV-28 and vendors such as "Delta Pipeline Co.".
 > No real company's projects, costs, people, vendors or systems are included, and none may be added.
