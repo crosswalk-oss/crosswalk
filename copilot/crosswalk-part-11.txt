@@ -13,14 +13,15 @@ FILES IN THIS PART:
   src/views/workflows/TestMode.tsx
   src/views/workflows/Versions.tsx
   .github/workflows/deploy.yml
-  functions/api/[[path]].ts
   migrations/001_shared_state.sql
   public/_headers
   samples/sap-actuals-fictional.csv
   scripts/check-licenses.mjs
   scripts/copilot-txt.mjs
+  scripts/embed-page.mjs
   scripts/local-server.ts
   scripts/migrate.mjs
+  server/function.ts
   src/server/api.ts
   src/server/migrate.ts
   src/server/repo.ts
@@ -2036,14 +2037,14 @@ export function VersionsPanel({ s, defKey, current, onOpen }: { s: AppState; def
 }
 
 ===== FILE: .github/workflows/deploy.yml =====
-# Test, then deploy to Cloudflare Pages (site + /api functions) with the database on Neon Postgres.
-# Every push to main: typecheck, tests, license check, build, apply SQL migrations, deploy.
+# Test, then deploy the demo as one Neon Function (page + API) next to its Neon Postgres database.
+# Every push to main: typecheck, tests, license check, build, then `neon deploy`. Migrations run on the
+# function's first API request (plain SQL from migrations/, applied once each).
 #
 # Repository secrets (Settings → Secrets and variables → Actions):
-#   CLOUDFLARE_API_TOKEN   token with "Cloudflare Pages: Edit"
-#   CLOUDFLARE_ACCOUNT_ID  your Cloudflare account id
-#   DATABASE_URL           Neon connection string (postgresql://…)
-#   EDIT_PASSCODE          the passcode people type to edit the shared demo
+#   NEON_API_KEY      Neon → Account settings → API keys
+#   NEON_PROJECT_ID   the Neon project id (e.g. cold-term-78724510)
+#   EDIT_PASSCODE     the passcode people type to edit the shared demo
 # Until those are set, the workflow only runs the checks.
 name: Deploy
 on:
@@ -2056,9 +2057,6 @@ permissions:
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: true
-env:
-  PROJECT: crosswalk-demo
-  WRANGLER: wrangler@4.151.0
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -2069,31 +2067,27 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run build
+      - run: node scripts/embed-page.mjs   # the function bundles the built page, so typecheck after it
       - run: npm run typecheck
       - run: npm test
       - run: npm run licenses
-      - run: npm run build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist
   deploy:
     needs: check
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
       EDIT_PASSCODE: ${{ secrets.EDIT_PASSCODE }}
     steps:
       - name: Secrets present?
         id: ready
         run: |
-          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ] && [ -n "$DATABASE_URL" ] && [ -n "$EDIT_PASSCODE" ]; then
+          if [ -n "$NEON_API_KEY" ] && [ -n "$NEON_PROJECT_ID" ] && [ -n "$EDIT_PASSCODE" ]; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::Deploy skipped: add CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, DATABASE_URL and EDIT_PASSCODE as repository secrets."
+            echo "::notice::Deploy skipped: add NEON_API_KEY, NEON_PROJECT_ID and EDIT_PASSCODE as repository secrets."
           fi
       - if: steps.ready.outputs.ok == 'true'
         uses: actions/checkout@v4
@@ -2103,42 +2097,10 @@ jobs:
           node-version: 22
           cache: npm
       - if: steps.ready.outputs.ok == 'true'
-        run: npm ci
-      - if: steps.ready.outputs.ok == 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist
-      - name: Apply database migrations
+        run: npm ci && npm run build && node scripts/embed-page.mjs
+      - name: Deploy to Neon
         if: steps.ready.outputs.ok == 'true'
-        run: npm run migrate
-      - name: Create the Pages project (first run only)
-        if: steps.ready.outputs.ok == 'true'
-        run: npx --yes "$WRANGLER" pages project create "$PROJECT" --production-branch main || true
-      - name: Set the server's secrets
-        if: steps.ready.outputs.ok == 'true'
-        run: |
-          printf '%s' "$DATABASE_URL" | npx --yes "$WRANGLER" pages secret put DATABASE_URL --project-name "$PROJECT"
-          printf '%s' "$EDIT_PASSCODE" | npx --yes "$WRANGLER" pages secret put EDIT_PASSCODE --project-name "$PROJECT"
-      - name: Deploy site and API
-        if: steps.ready.outputs.ok == 'true'
-        run: npx --yes "$WRANGLER" pages deploy dist --project-name "$PROJECT" --branch main --commit-dirty=true
-
-===== FILE: functions/api/[[path]].ts =====
-// Cloudflare Pages Functions adapter: every /api/* request goes to the plain handler in src/server/api.ts.
-// Configuration comes from the Pages project's secrets: DATABASE_URL (Neon) and EDIT_PASSCODE.
-import { neon } from '@neondatabase/serverless'
-import { handle } from '../../src/server/api'
-import { sqlRepo } from '../../src/server/repo'
-
-interface Env { DATABASE_URL?: string; EDIT_PASSCODE?: string }
-
-export const onRequest = async (ctx: { request: Request; env: Env }): Promise<Response> => {
-  if (!ctx.env.DATABASE_URL) return new Response(JSON.stringify({ error: 'DATABASE_URL is not configured' }), { status: 503, headers: { 'content-type': 'application/json' } })
-  const sql = neon(ctx.env.DATABASE_URL)
-  const repo = sqlRepo(async (text, params) => (await sql.query(text, params ?? [])) as Record<string, unknown>[])
-  return handle(ctx.request, { repo, passcode: ctx.env.EDIT_PASSCODE ?? '' })
-}
+        run: npx --yes neon@8.17.1 deploy --project-id "$NEON_PROJECT_ID" --no-env-pull --yes
 
 ===== FILE: migrations/001_shared_state.sql =====
 -- Shared state for the hosted demo (AGENT_RULES §5: plain SQL migrations, Postgres only).
@@ -2404,6 +2366,19 @@ groups.forEach((g, i) => fs.writeFileSync(`copilot/crosswalk-part-${String(i + 1
 fs.writeFileSync('copilot/README.txt', index.join('\n'))
 console.log(index.join('\n'))
 
+===== FILE: scripts/embed-page.mjs =====
+// Bundle the built page and the SQL migrations into the Neon Function (server/*.generated.ts, gitignored).
+// Run after `npm run build`; `npm run deploy` does both.
+import fs from 'node:fs'
+import path from 'node:path'
+
+const page = fs.readFileSync('dist/index.html', 'utf8')
+fs.writeFileSync('server/page.generated.ts', `// Generated by scripts/embed-page.mjs from dist/index.html. Do not edit.\nexport default ${JSON.stringify(page)}\n`)
+const dir = path.resolve('migrations')
+const migrations = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort().map((name) => ({ name, sql: fs.readFileSync(path.join(dir, name), 'utf8') }))
+fs.writeFileSync('server/migrations.generated.ts', `// Generated by scripts/embed-page.mjs from migrations/*.sql. Do not edit.\nexport default ${JSON.stringify(migrations, null, 1)}\n`)
+console.log(`embedded page (${(page.length / 1024).toFixed(0)} KB) and ${migrations.length} migration(s)`)
+
 ===== FILE: scripts/local-server.ts =====
 // Run the built app with its API and an in-memory Postgres (PGlite), like the hosted demo but on your machine:
 //   npm run build && npm run serve:local        → http://localhost:8788  (edit passcode: "local")
@@ -2467,6 +2442,66 @@ try {
   console.log('migrations up to date')
 } finally {
   await pool.end()
+}
+
+===== FILE: server/function.ts =====
+// Neon Function: serves the Crosswalk page and its API from one HTTPS URL, next to the Postgres database.
+// The API is the plain (request) => response handler in src/server/api.ts (AGENT_RULES rule 18).
+// Neon injects DATABASE_URL / DATABASE_URL_UNPOOLED; EDIT_PASSCODE comes from neon.ts.
+import { gzipSync } from 'node:zlib'
+import { Pool } from '@neondatabase/serverless'
+import { attachDatabasePool } from '@neon/functions'
+import { handle } from '../src/server/api'
+import { migrate } from '../src/server/migrate'
+import { sqlRepo, type Exec } from '../src/server/repo'
+import page from './page.generated'
+import migrations from './migrations.generated'
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5 })
+attachDatabasePool(pool as never)
+const exec: Exec = async (sql, params) => (await pool.query(sql, params as unknown[])).rows as Record<string, unknown>[]
+const repo = sqlRepo(exec)
+
+// Apply any new SQL migrations once per isolate, over a direct (unpooled) connection.
+let schemaReady: Promise<unknown> | null = null
+function ensureSchema() {
+  schemaReady ??= (async () => {
+    const direct = new Pool({ connectionString: process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL, max: 1 })
+    try {
+      const run: Exec = async (sql, params) => (await direct.query(sql, params as unknown[])).rows as Record<string, unknown>[]
+      await migrate(run, (sql) => direct.query(sql), migrations)
+    } finally { await direct.end() }
+  })().catch((e) => { schemaReady = null; throw e })
+  return schemaReady
+}
+
+const pageGz = gzipSync(Buffer.from(page, 'utf8'))
+const SECURITY = {
+  'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'",
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'no-referrer',
+}
+
+export default {
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+    if (url.pathname.startsWith('/api/')) {
+      try { await ensureSchema() } catch (e) {
+        console.error('crosswalk migrations', e)
+        return new Response(JSON.stringify({ error: 'Database is not ready' }), { status: 503, headers: { 'content-type': 'application/json' } })
+      }
+      const res = await handle(request, { repo, passcode: process.env.EDIT_PASSCODE ?? '' })
+      for (const [k, v] of Object.entries(SECURITY)) res.headers.set(k, v)
+      return res
+    }
+    if ((request.method === 'GET' || request.method === 'HEAD') && (url.pathname === '/' || url.pathname === '/index.html')) {
+      const gzip = /\bgzip\b/.test(request.headers.get('accept-encoding') ?? '')
+      const headers: Record<string, string> = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache', vary: 'accept-encoding', ...SECURITY }
+      if (gzip) headers['content-encoding'] = 'gzip'
+      return new Response(request.method === 'HEAD' ? null : gzip ? pageGz : page, { headers })
+    }
+    return new Response('Not found', { status: 404, headers: SECURITY })
+  },
 }
 
 ===== FILE: src/server/api.ts =====
