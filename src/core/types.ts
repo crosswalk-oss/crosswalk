@@ -1098,6 +1098,7 @@ export interface ParametricMonteCarlo {
 }
 export interface ParametricRecord {
   inputs: ParametricInputs
+  requestedRisks: Record<string, RiskLevel> // the PM's ratings as sent (estimator changes are compared to these)
   rateTableVersion: number
   rateDirect: Money // rate-table direct cost at P50 (region-adjusted), before risk allowances
   rateSpread: { p10: Money; p90: Money } // the same lines at the rows' P10 and P90

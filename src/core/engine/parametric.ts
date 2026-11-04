@@ -248,9 +248,9 @@ export function parametricBoe(r: ParametricResult, adjustment?: { pct: number; r
 }
 
 // ───────────────────────────── Saved estimates
-function record(s: AppState, r: ParametricResult, prev?: ParametricRecord['adjustment']): ParametricRecord {
+function record(s: AppState, r: ParametricResult, prev?: ParametricRecord['adjustment'], requested?: Record<string, RiskLevel>): ParametricRecord {
   return {
-    inputs: JSON.parse(JSON.stringify(r.inputs)), rateTableVersion: s.settings.estimating.rateTableVersion, rateDirect: r.rateDirect, rateSpread: r.rateSpread,
+    inputs: JSON.parse(JSON.stringify(r.inputs)), requestedRisks: { ...(requested ?? r.inputs.risks) }, rateTableVersion: s.settings.estimating.rateTableVersion, rateDirect: r.rateDirect, rateSpread: r.rateSpread,
     risks: r.risks.map((x) => ({ id: x.id, name: x.name, level: x.level, pct: x.mode, amount: x.amount })), base: r.base,
     mc: { iterations: r.mc.iterations, seed: r.mc.seed, p: r.mc.p, mean: r.mc.mean }, contingencyPct: r.contingencyPct, adjustment: prev,
   }
@@ -312,7 +312,7 @@ export function adjustParametricEstimate(d: AppState, estimateId: string, o: { r
   const reason = o.note?.trim() ? `${o.reason} — ${o.note.trim()}` : o.reason
   const adjustment = { pct: o.pct, reason, byId, at: nowISO(), fromTotal: before, toTotal: after, changed }
   e.basis = parametricBoe(r, { pct: o.pct, reason, changed })
-  e.parametric = record(d, r, adjustment)
+  e.parametric = record(d, r, adjustment, e.parametric.requestedRisks ?? prevRisks)
   e.quick = { ...e.quick, direct: r.direct, range: { low: r.low, high: r.high }, adjustment: { pct: o.pct, reason, byId, at: adjustment.at, fromTotal: before, toTotal: after } }
   d.audit.push({ id: uid('aud'), at: adjustment.at, actorId: byId, entity: 'estimate', entityId: e.id, projectId: e.projectId, action: 'adjust', summary: `Estimator adjusted Class 5 parametric estimate${changed.length ? ` (${changed.join('; ')})` : ''} ${o.pct >= 0 ? '+' : ''}${o.pct}%: $${(before / 1e6).toFixed(2)}M → $${(after / 1e6).toFixed(2)}M — ${reason}` })
 }
