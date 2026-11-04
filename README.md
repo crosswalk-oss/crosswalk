@@ -12,7 +12,7 @@ Open-source capital project delivery for gas utilities. It covers:
 
 Every dollar, date and scope change traces back to an approved decision and its evidence.
 
-**Live demo:** link coming once the first deploy is live.
+**Live demo: [Crosswalk on Neon](https://br-round-queen-beb383xn-crosswalk.compute.c-9.us-east-2.aws.neon.tech/)**, a shared database where viewing is open and editing needs the passcode.
 
 > **All data in this repository is fictional.** The demo runs a made-up utility, **Arroyo Valley Gas**:
 > 30 projects on five programs, with lines named AV-11 to AV-28 and vendors such as "Delta Pipeline Co.".
