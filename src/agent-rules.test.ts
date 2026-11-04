@@ -8,6 +8,7 @@ import { buildSeed } from './core/seed'
 import { computeQuick, inputsFromProject } from './core/engine/quick'
 import { estimateTotals, parametricLines } from './core/engine/estimates'
 import { auditIntact, useStore } from './core/store'
+import { parametricInputsFromProject, priceParametric, riskItemsOf, validateRiskItems } from './core/engine/parametric'
 import { DRIVER_KEYS, backtest, createFactorEstimate, factorInputsFromProject, priceFactor, publishedModel, validateModel } from './core/engine/factorModel'
 
 const ROOT = path.resolve(__dirname, '..')
@@ -123,6 +124,25 @@ describe('Rule 13–15: fairness in the estimating model', () => {
     }
     const all = (s: typeof S) => s.factorModels.map((m) => backtest(s, m).mape)
     expect(all(produce(S, (d) => { for (const p of d.projects) p.location.dac = !p.location.dac }))).toEqual(all(S))
+  })
+})
+
+describe('Rule 13–15: Class 5 parametric request (rate table + risk items)', () => {
+  it('risk items are physical, legal or logistical, and estimates ignore location.dac', () => {
+    expect(validateRiskItems(riskItemsOf(S))).toEqual([])
+    for (const p of S.projects.filter((x) => x.asset.lengthFt > 0).slice(0, 8)) {
+      const flipped = produce(S, (d) => { const q = d.projects.find((x) => x.id === p.id)!; q.location.dac = !q.location.dac })
+      const q2 = flipped.projects.find((x) => x.id === p.id)!
+      const a = priceParametric(S, parametricInputsFromProject(S, p), p), b = priceParametric(flipped, parametricInputsFromProject(flipped, q2), q2)
+      expect([b?.total, b?.mc.p.P10, b?.mc.p.P90], p.code).toEqual([a?.total, a?.mc.p.P10, a?.mc.p.P90])
+    }
+  })
+  it('every estimate shows its drivers itemized: rate rows, each rated risk allowance, and the Monte Carlo tornado', () => {
+    const p = S.projects.find((x) => x.asset.lengthFt > 1000 && priceParametric(S, parametricInputsFromProject(S, x), x))!
+    const r = priceParametric(S, { ...parametricInputsFromProject(S, p), risks: { ...parametricInputsFromProject(S, p).risks, soil: 'high' } }, p)!
+    expect(r.rateLines.length).toBeGreaterThan(0)
+    expect(r.riskLines.some((l) => /Soil/.test(l.description))).toBe(true)
+    expect(r.mc.tornado.length).toBeGreaterThan(1)
   })
 })
 

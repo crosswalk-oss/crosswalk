@@ -6,6 +6,7 @@ import { CATEGORIES, CONTRACTORS, DOA, HAZARDS, INFO_FIELDS, INFO_SECTIONS, PEOP
 import { applyProfile, defaultLineSpread, linesOfFunction, rollupGrid, syncForecast, toLines, splitExact } from '../engine/lines'
 import { postImport, stageImport, resolveTxn, type SapRow } from '../engine/sap'
 import { createFactorEstimate, adjustFactorEstimate, factorInputsFromProject } from '../engine/factorModel'
+import { adjustParametricEstimate, createParametricEstimate, parametricInputsFromProject } from '../engine/parametric'
 import { FACTOR_SETTINGS, buildBacktestProjects, buildFactorModels, factorModelAudit, seedProjectDrivers } from './factorModel'
 import { defaultSpread, toFunctions, spreadByYear as spreadYears } from '../engine/wbs'
 import { infoValue } from '../engine/info'
@@ -589,10 +590,13 @@ function seedLiveWorkflows(s: AppState, R: ReturnType<typeof rng>) {
       if (inst) advance(s, inst.id, R.int(1, 3))
     }
   }
-  // Class 5 quick estimates for new projects: requested by the PM from the historical cost table, reviewed by an estimator
+  // Class 5 requests for new projects: the PM enters length, location and risk ratings (priced from the rate table
+  // with a Monte Carlo); an estimator reviews. Assets the rate table cannot price by length use the factor model.
   active.filter((p) => p.stageIndex === 0).forEach((p, i) => {
     pin(s, addDays(AS_OF, -R.int(3, 12)))
-    const e = createFactorEstimate(s, p.id, factorInputsFromProject(s, p), R.pick(['Screening number for the TY2028 GRC forecast', 'Planning budget for Gate 1 business case', 'Portfolio plan placeholder — replace when route is selected']), p.team.pm)
+    const note = R.pick(['Screening number for the TY2028 GRC forecast', 'Planning budget for Gate 1 business case', 'Portfolio plan placeholder — replace when route is selected'])
+    const pin_ = parametricInputsFromProject(s, p)
+    const e = (pin_.lengthFt > 0 ? createParametricEstimate(s, p.id, pin_, note, p.team.pm) : undefined) ?? createFactorEstimate(s, p.id, factorInputsFromProject(s, p), note, p.team.pm)
     if (!e) return
     const inst = startWorkflow(s, 'class5-review', { title: `${p.code} Class 5 quick estimate`, recordType: 'estimate', recordId: e.id, projectId: p.id, data: { amount: estimateTotals(e).total, note: e.quick!.requestNote }, startedById: p.team.pm })
     if (!inst) return
@@ -600,10 +604,11 @@ function seedLiveWorkflows(s: AppState, R: ReturnType<typeof rng>) {
     if (i === 0) {
       // one already reviewed: adjusted by an estimator with a reason, then approved
       const est = 'u-est1'
-      adjustFactorEstimate(s, e.id, { pct: 12, reason: 'Site condition the drivers do not capture', note: 'Two HDD crossings under the flood-control channel are not represented in the historical population.' }, est)
+      if (e.parametric) adjustParametricEstimate(s, e.id, { risks: { crossings: 'high' }, pct: 0, reason: 'Site condition the drivers do not capture', note: 'Two drills under the flood-control channel; crossings re-rated high.' }, est)
+      else adjustFactorEstimate(s, e.id, { pct: 12, reason: 'Site condition the drivers do not capture', note: 'Two HDD crossings under the flood-control channel are not represented in the historical population.' }, est)
       const live = s.workflows.find((w) => w.id === inst.id)
       const slot = live?.active[0]
-      if (live && slot) actOnWorkflow(s, live.id, slot.nodeId, est, 'approve', 'Adjusted +12% for the channel crossings; otherwise in line with history.')
+      if (live && slot) actOnWorkflow(s, live.id, slot.nodeId, est, 'approve', e.parametric ? 'Crossings re-rated high for the channel drills; otherwise in line with the rate table.' : 'Adjusted +12% for the channel crossings; otherwise in line with history.')
     }
   })
   // gate review packets waiting at PMO quality check
