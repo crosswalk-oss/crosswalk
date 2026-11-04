@@ -102,7 +102,7 @@ export function QuickEstimateView({ estimate: e, project, onCopy, inbox }: { est
       {!inbox && e.status === 'approved' && <Callout tone="good" title="Approved — estimate of record">Approved by {personName(s, e.approvedById)}{q.adjustment ? ` after a ${q.adjustment.pct > 0 ? '+' : ''}${q.adjustment.pct}% adjustment` : ' as requested'}. It becomes the planning budget at the Gate 1 decision. Mature it to Class 3 with a new line-item version.</Callout>}
       {!inbox && e.status === 'draft' && <Callout tone="warn" title={lastReturn?.action === 'recall' ? 'Recalled by the requester' : 'Returned by the estimating team'}>{lastReturn?.comment ? <>“{lastReturn.comment}” — {personName(s, lastReturn.actorId)}, {fmtDateTime(lastReturn.at)}. </> : null}Revise the inputs and resubmit.</Callout>}
 
-      {e.parametric ? <ParametricDetail s={s} e={e} inbox={inbox} requestPanel={requestPanel} /> : e.factor ? <FactorDetail s={s} e={e} inbox={inbox} requestPanel={requestPanel} /> : <div className={cx('grid grid-cols-1 gap-3', !inbox && 'xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]')}>
+      {e.parametric ? <ParametricDetail s={s} e={e} inbox={inbox} requestPanel={requestPanel} editing={adjustable} /> : e.factor ? <FactorDetail s={s} e={e} inbox={inbox} requestPanel={requestPanel} /> : <div className={cx('grid grid-cols-1 gap-3', !inbox && 'xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]')}>
         <div className="flex min-w-0 flex-col gap-3">
           {inbox ? <QuickHeadline total={t.total} low={q.range.low} high={q.range.high} perUnit={q.inputs.qty ? t.total / q.inputs.qty : 0} unit={q.inputs.unit} size="md" /> : requestPanel}
           {inbox && <div className="rounded border border-line bg-sunken/40 px-3 py-2 text-[13px]"><div className="eyebrow mb-0.5">What it is for</div>{q.requestNote || <span className="text-muted">Not stated</span>}<div className="mt-1 text-[11.5px] text-muted">{ASSET_LABEL[q.inputs.assetType]} · {METHOD_LABEL[q.inputs.workMethod]}{isBanded(q.inputs.assetType) ? ` · ${bandLabel(q.inputs.diameterBand)}` : ''} · {q.inputs.qty.toLocaleString('en-US')} {UNIT_LABEL[q.inputs.unit]} · {TERRAIN_LABEL[q.inputs.terrain].toLowerCase()} · {q.inputs.district} · {q.inputs.midpointYear} midpoint{q.needBy ? ` · needed by ${fmtDate(q.needBy)}` : ''}</div></div>}
@@ -339,7 +339,7 @@ export function QuickReviewSummary({ estimateId }: { estimateId: string }) {
 }
 
 /** Saved parametric pricing (repriced live from the stored inputs so the Monte Carlo charts show): ratings, result, BOE, model check. */
-function ParametricDetail({ s, e, inbox, requestPanel }: { s: AppState; e: Estimate; inbox?: boolean; requestPanel: React.ReactNode }) {
+function ParametricDetail({ s, e, inbox, requestPanel, editing }: { s: AppState; e: Estimate; inbox?: boolean; requestPanel: React.ReactNode; editing?: boolean }) {
   const par = e.parametric!
   const r = previewParametric(s, e, par.inputs.risks, par.adjustment?.pct ?? 0)
   const p = s.projects.find((x) => x.id === e.projectId)
@@ -357,14 +357,14 @@ function ParametricDetail({ s, e, inbox, requestPanel }: { s: AppState; e: Estim
     <div className="flex flex-col gap-3">
       <ParametricHeadline r={r} size="md" />
       <div className="rounded border border-line bg-sunken/40 px-3 py-2 text-[13px]"><div className="eyebrow mb-0.5">What it is for</div>{e.quick?.requestNote || <span className="text-muted">Not stated</span>}<div className="mt-1 text-[11.5px] text-muted">{par.inputs.lengthFt.toLocaleString('en-US')} ft · {par.inputs.diameterIn}" {ASSET_LABEL[par.inputs.assetType].toLowerCase()} · {METHOD_LABEL[par.inputs.workMethod].toLowerCase()} · {par.inputs.region} · {par.inputs.midpointYear} midpoint{e.quick?.needBy ? ` · needed by ${fmtDate(e.quick.needBy)}` : ''}</div></div>
-      {ratings}
+      {!editing && ratings}
       <details className="rounded border border-line px-3 py-2"><summary className="cursor-pointer text-[12.5px] font-semibold">Build-up, Monte Carlo and basis of estimate</summary><div className="mt-2 flex flex-col gap-3"><ParametricResultView r={r} compact />{modelCheck}<BoeText basis={e.basis} /></div></details>
     </div>
   )
   return (
     <div className="flex flex-col gap-3">
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-        <div className="flex min-w-0 flex-col gap-3">{requestPanel}<Panel title="Risk ratings">{ratings}</Panel></div>
+        <div className="flex min-w-0 flex-col gap-3">{requestPanel}{!editing && <Panel title="Risk ratings">{ratings}</Panel>}</div>
         <Panel className="min-w-0" title="Estimate" subtitle={`${e.status === 'approved' ? 'As approved' : 'As priced'} from the rate table and risk ratings, funded at P80`}>
           <div className="flex flex-col gap-3"><ParametricHeadline r={r} size="md" /><ParametricBuildUp r={r} /><RateRows r={r} /></div>
         </Panel>

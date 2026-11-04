@@ -36,7 +36,7 @@ describe('Class 5 quick estimate views', () => {
     const p = st().projects.find((x) => x.id === e.projectId)!
     as('u-est1')
     const html = renderToString(<QuickEstimateView estimate={e} project={p} />)
-    for (const t of ['Review and adjust (estimating team)', 'Adjustment % of direct', 'Reason (required)', st().settings.factorModel.overrideReasons[0], 'Before → after (P80)', 'Risk ratings', 'Monte Carlo', 'Basis of estimate', 'Model check (estimating team)', 'Length of pipe']) expect(html).toContain(t)
+    for (const t of ['Review and adjust (estimating team)', 'Adjustment % of direct', 'Reason (required)', st().settings.factorModel.overrideReasons[0], 'Before → after (P80)', 'Soil &amp; rock conditions', 'Monte Carlo', 'Basis of estimate', 'Model check (estimating team)', 'Length of pipe']) expect(html).toContain(t)
     as(e.createdById)
     const pm = renderToString(<QuickEstimateView estimate={e} project={p} />)
     expect(pm).not.toContain('Review and adjust (estimating team)')
@@ -62,7 +62,7 @@ describe('Class 5 quick estimate views', () => {
     expect(html).toContain('Quick · Class 5')
     expect(html).toContain('Review and adjust (estimating team)')
     expect(html).toContain('What it is for')
-    expect(html).toContain('Risk ratings')
+    expect(html).toContain('Traffic control &amp; lane closures')
   })
 
   test('project estimates tab marks quick estimates and offers the request action', () => {
@@ -71,7 +71,7 @@ describe('Class 5 quick estimate views', () => {
     const html = renderToString(<Estimates projectId={p.id} />)
     expect(html).toContain('Quick · Class 5')
     expect(html).toContain('Request Class 5 quick estimate')
-    expect(html).toContain('Risk ratings')
+    expect(html).toContain('Traffic control &amp; lane closures')
     expect(html).toContain('Monte Carlo')
   })
 
