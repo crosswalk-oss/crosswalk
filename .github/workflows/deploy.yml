@@ -1,11 +1,11 @@
-# Test, then deploy to Cloudflare Pages (site + /api functions) with the database on Neon Postgres.
-# Every push to main: typecheck, tests, license check, build, apply SQL migrations, deploy.
+# Test, then deploy the demo as one Neon Function (page + API) next to its Neon Postgres database.
+# Every push to main: typecheck, tests, license check, build, then `neon deploy`. Migrations run on the
+# function's first API request (plain SQL from migrations/, applied once each).
 #
 # Repository secrets (Settings → Secrets and variables → Actions):
-#   CLOUDFLARE_API_TOKEN   token with "Cloudflare Pages: Edit"
-#   CLOUDFLARE_ACCOUNT_ID  your Cloudflare account id
-#   DATABASE_URL           Neon connection string (postgresql://…)
-#   EDIT_PASSCODE          the passcode people type to edit the shared demo
+#   NEON_API_KEY      Neon → Account settings → API keys
+#   NEON_PROJECT_ID   the Neon project id (e.g. cold-term-78724510)
+#   EDIT_PASSCODE     the passcode people type to edit the shared demo
 # Until those are set, the workflow only runs the checks.
 name: Deploy
 on:
@@ -18,9 +18,6 @@ permissions:
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: true
-env:
-  PROJECT: crosswalk-demo
-  WRANGLER: wrangler@4.151.0
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -31,31 +28,27 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run build
+      - run: node scripts/embed-page.mjs   # the function bundles the built page, so typecheck after it
       - run: npm run typecheck
       - run: npm test
       - run: npm run licenses
-      - run: npm run build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist
   deploy:
     needs: check
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
       EDIT_PASSCODE: ${{ secrets.EDIT_PASSCODE }}
     steps:
       - name: Secrets present?
         id: ready
         run: |
-          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ] && [ -n "$DATABASE_URL" ] && [ -n "$EDIT_PASSCODE" ]; then
+          if [ -n "$NEON_API_KEY" ] && [ -n "$NEON_PROJECT_ID" ] && [ -n "$EDIT_PASSCODE" ]; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::Deploy skipped: add CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, DATABASE_URL and EDIT_PASSCODE as repository secrets."
+            echo "::notice::Deploy skipped: add NEON_API_KEY, NEON_PROJECT_ID and EDIT_PASSCODE as repository secrets."
           fi
       - if: steps.ready.outputs.ok == 'true'
         uses: actions/checkout@v4
@@ -65,23 +58,7 @@ jobs:
           node-version: 22
           cache: npm
       - if: steps.ready.outputs.ok == 'true'
-        run: npm ci
-      - if: steps.ready.outputs.ok == 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist
-      - name: Apply database migrations
+        run: npm ci && npm run build && node scripts/embed-page.mjs
+      - name: Deploy to Neon
         if: steps.ready.outputs.ok == 'true'
-        run: npm run migrate
-      - name: Create the Pages project (first run only)
-        if: steps.ready.outputs.ok == 'true'
-        run: npx --yes "$WRANGLER" pages project create "$PROJECT" --production-branch main || true
-      - name: Set the server's secrets
-        if: steps.ready.outputs.ok == 'true'
-        run: |
-          printf '%s' "$DATABASE_URL" | npx --yes "$WRANGLER" pages secret put DATABASE_URL --project-name "$PROJECT"
-          printf '%s' "$EDIT_PASSCODE" | npx --yes "$WRANGLER" pages secret put EDIT_PASSCODE --project-name "$PROJECT"
-      - name: Deploy site and API
-        if: steps.ready.outputs.ok == 'true'
-        run: npx --yes "$WRANGLER" pages deploy dist --project-name "$PROJECT" --branch main --commit-dirty=true
+        run: npx --yes neon@8.17.1 deploy --project-id "$NEON_PROJECT_ID" --no-env-pull --yes

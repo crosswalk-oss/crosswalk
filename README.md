@@ -12,7 +12,7 @@ Open-source capital project delivery for gas utilities. It covers:
 
 Every dollar, date and scope change traces back to an approved decision and its evidence.
 
-**Live demo: [crosswalk-demo.pages.dev](https://crosswalk-demo.pages.dev)**, with a shared database. It redeploys on every push to `main`.
+**Live demo:** link coming once the first deploy is live.
 
 > **All data in this repository is fictional.** The demo runs a made-up utility, **Arroyo Valley Gas**:
 > 30 projects on five programs, with lines named AV-11 to AV-28 and vendors such as "Delta Pipeline Co.".
@@ -76,22 +76,24 @@ npm run sample:sap       # regenerate the fictional SAP sample extract
 
 ## Host the public demo (free)
 
-The demo runs on **Cloudflare Pages** (the page plus `/api` functions, free and commercial use allowed) with
-**Neon** Postgres (free tier). `.github/workflows/deploy.yml` does everything on each push to `main`: typecheck,
-tests, license check, build, SQL migrations, then deploy. It needs four repository secrets:
+The demo is one **Neon Function** that serves the page and the API, sitting next to its **Neon Postgres**
+database. It runs on Neon's free plan, with one account. `neon.ts` declares the function, and
+`.github/workflows/deploy.yml` runs the checks and `neon deploy` on each push to `main`. That needs three
+repository secrets:
 
 | Secret | Where it comes from |
 | --- | --- |
-| `CLOUDFLARE_API_TOKEN` | Cloudflare → My Profile → API Tokens → a token with **Cloudflare Pages: Edit** |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard → the account ID on the right |
-| `DATABASE_URL` | Neon → your project → Connection string |
+| `NEON_API_KEY` | Neon → Account settings → API keys |
+| `NEON_PROJECT_ID` | Neon → your project → Settings |
 | `EDIT_PASSCODE` | Any phrase you choose; people type it to edit |
 
-Without the secrets the workflow only runs the checks. How the data is stored:
+Deploy by hand with `EDIT_PASSCODE` in `.env.local` and `npm run deploy`. Without the secrets, the workflow
+only runs the checks. How the data is stored:
 
 - A "generation" starts from a full snapshot.
 - Every edit is appended as an ordered change (immer patches).
 - Database triggers refuse any update or delete (`migrations/001_shared_state.sql`).
+- The function applies new migrations on its first request.
 - "Reset demo data" starts a new generation. Nothing is ever deleted.
 - Secret settings (AI key, map tokens) and the persona you act as never leave the browser.
 - On the shared demo, file uploads and pasted extracts are turned off. Only the bundled fictional samples load.
@@ -130,7 +132,7 @@ src/core/seed/             fictional reference data + history replayed through t
 src/core/data/             the one data-access interface: the app's own API (Postgres); UI preferences stay in the browser
 src/core/sync.ts           loads the shared data, sends each change, merges others' edits, re-applies on conflicts
 src/server/                the API: plain (request) => response handler, SQL repository, migration runner
-functions/api/             Cloudflare Pages adapter for the API handler
+server/function.ts         the Neon Function: serves the page and the API (neon.ts declares it)
 migrations/                plain SQL migrations (append-only tables)
 src/core/auth/             swappable OIDC-style interface: id, name, groups → Crosswalk roles
 src/core/store.ts          zustand + immer; every write goes through update(fn, audit); the audit log is append-only
@@ -140,10 +142,10 @@ samples/                   fictional sample files (SAP extract)
 
 The planned production path (see [AGENT_RULES.md](AGENT_RULES.md) §5):
 
-- a static front end plus serverless `(request) => response` handlers (Cloudflare Pages functions now, AWS Lambda later)
+- a static front end plus serverless `(request) => response` handlers (a Neon Function now, AWS Lambda later)
 - Postgres through plain SQL migrations
 - OIDC sign-in
-- infrastructure in Terraform (today the deploy is scripted in GitHub Actions; Terraform is still to do)
+- infrastructure in Terraform (today `neon.ts` declares the Neon side; Terraform for the rest is still to do)
 - no containers or VMs
 
 ## Contributing

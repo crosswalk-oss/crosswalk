@@ -28,6 +28,7 @@
   },
   "include": [
     "src",
-    "functions"
+    "server",
+    "neon.ts"
   ]
 }
