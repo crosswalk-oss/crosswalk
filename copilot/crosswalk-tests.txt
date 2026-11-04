@@ -12,6 +12,7 @@ FILES IN THIS PART:
   src/core/engine/finance.test.ts
   src/core/engine/lines-sap-quick.test.ts
   src/core/engine/notify.test.ts
+  src/core/engine/parametric.test.ts
   src/core/engine/reconcile.test.ts
   src/core/sync.test.ts
   src/server/api.test.ts
@@ -52,6 +53,7 @@ import { buildSeed } from './core/seed'
 import { computeQuick, inputsFromProject } from './core/engine/quick'
 import { estimateTotals, parametricLines } from './core/engine/estimates'
 import { auditIntact, useStore } from './core/store'
+import { parametricInputsFromProject, priceParametric, riskItemsOf, validateRiskItems } from './core/engine/parametric'
 import { DRIVER_KEYS, backtest, createFactorEstimate, factorInputsFromProject, priceFactor, publishedModel, validateModel } from './core/engine/factorModel'
 
 const ROOT = path.resolve(__dirname, '..')
@@ -167,6 +169,25 @@ describe('Rule 13–15: fairness in the estimating model', () => {
     }
     const all = (s: typeof S) => s.factorModels.map((m) => backtest(s, m).mape)
     expect(all(produce(S, (d) => { for (const p of d.projects) p.location.dac = !p.location.dac }))).toEqual(all(S))
+  })
+})
+
+describe('Rule 13–15: Class 5 parametric request (rate table + risk items)', () => {
+  it('risk items are physical, legal or logistical, and estimates ignore location.dac', () => {
+    expect(validateRiskItems(riskItemsOf(S))).toEqual([])
+    for (const p of S.projects.filter((x) => x.asset.lengthFt > 0).slice(0, 8)) {
+      const flipped = produce(S, (d) => { const q = d.projects.find((x) => x.id === p.id)!; q.location.dac = !q.location.dac })
+      const q2 = flipped.projects.find((x) => x.id === p.id)!
+      const a = priceParametric(S, parametricInputsFromProject(S, p), p), b = priceParametric(flipped, parametricInputsFromProject(flipped, q2), q2)
+      expect([b?.total, b?.mc.p.P10, b?.mc.p.P90], p.code).toEqual([a?.total, a?.mc.p.P10, a?.mc.p.P90])
+    }
+  })
+  it('every estimate shows its drivers itemized: rate rows, each rated risk allowance, and the Monte Carlo tornado', () => {
+    const p = S.projects.find((x) => x.asset.lengthFt > 1000 && priceParametric(S, parametricInputsFromProject(S, x), x))!
+    const r = priceParametric(S, { ...parametricInputsFromProject(S, p), risks: { ...parametricInputsFromProject(S, p).risks, soil: 'high' } }, p)!
+    expect(r.rateLines.length).toBeGreaterThan(0)
+    expect(r.riskLines.some((l) => /Soil/.test(l.description))).toBe(true)
+    expect(r.mc.tornado.length).toBeGreaterThan(1)
   })
 })
 
@@ -848,6 +869,7 @@ import { applyProfile, budgetByLine, etcEacByFunction, linesOfFunction, profileW
 import { matchRule, parseSapExtract, postImport, projectForWbs, readDelimited, remap, resolveTxn, sampleExtract, stageImport } from './sap'
 import { adjustQuickEstimate, computeQuick, createQuickEstimate, findHistorical, inputsFromProject } from './quick'
 import { estimateTotals } from './estimates'
+import { createFactorEstimate, factorInputsFromProject } from './factorModel'
 import { activeBudget } from './position'
 import { latestForecast } from './wbs'
 
@@ -979,8 +1001,11 @@ describe('Class 5 quick estimate', () => {
     expect(Math.abs(estimateTotals(e).total - r.total)).toBeLessThanOrEqual(2)
   })
   it('estimator adjustment is recorded with before/after', () => {
-    const e0 = S.estimates.find((e) => e.projectId === p.id && e.method === 'quick')!
-    const next = produce(S, (d) => { adjustQuickEstimate(d, e0.id, { pct: -10, reason: 'Shorter route than the population' }, 'u-est2') })
+    // a factor-model quick estimate (seeded requests are now parametric)
+    let id = ''
+    const S1 = produce(S, (d) => { id = createFactorEstimate(d, p.id, factorInputsFromProject(d, d.projects.find((x) => x.id === p.id)!), 'x', 'u-pm1')!.id })
+    const e0 = S1.estimates.find((e) => e.id === id)!
+    const next = produce(S1, (d) => { adjustQuickEstimate(d, e0.id, { pct: -10, reason: 'Shorter route than the population' }, 'u-est2') })
     const e = next.estimates.find((x) => x.id === e0.id)!
     expect(e.quick!.adjustment!.pct).toBe(-10)
     expect(e.quick!.adjustment!.toTotal).toBeLessThan(e.quick!.adjustment!.fromTotal)
@@ -1112,6 +1137,138 @@ describe('out-of-office delegation of steps assigned before the absence', () => 
     const del = pid === 'u-pmo2' ? 'u-me' : 'u-pmo2'
     const s = produce(base, (d) => { d.people.find((x) => x.id === pid)!.outOfOffice = { from: addDays(asOf, 5), to: addDays(asOf, 9), delegateId: del } })
     expect(tasksFor(s, del).some((x) => x.actingFor === pid)).toBe(false)
+  })
+})
+
+===== FILE: src/core/engine/parametric.test.ts =====
+import { produce } from 'immer'
+import { buildSeed } from '../seed'
+import { estimateTotals } from './estimates'
+import { DEFAULT_RISK_ITEMS, adjustParametricEstimate, createParametricEstimate, monteCarloParametric, parametricInputsFromProject, priceParametric, riskItemsOf, risksFromProject, validateRiskItems } from './parametric'
+import type { ParametricInputs, RiskLevel } from '../types'
+
+const S = buildSeed()
+const pipe = S.projects.find((p) => p.asset.lengthFt > 1000 && priceParametric(S, parametricInputsFromProject(S, p), p))!
+const base = (): ParametricInputs => ({ ...parametricInputsFromProject(S, pipe), risks: Object.fromEntries(riskItemsOf(S).map((r) => [r.id, 'low' as RiskLevel])) })
+
+describe('Class 5 parametric pricing', () => {
+  it('prices from the rate table automatically: lines × length, region applied, totals tie out', () => {
+    const r = priceParametric(S, base(), pipe)!
+    expect(r.rateLines.length).toBeGreaterThan(0)
+    expect(r.rateLines.every((l) => l.rateId)).toBe(true)
+    expect(r.rateDirect).toBe(Math.round(r.rateLines.reduce((a, l) => a + l.qty * l.unitCost, 0)))
+    expect(r.riskLines).toHaveLength(0) // all low → no allowances
+    expect(r.base).toBe(r.direct + r.tax + r.loaderAmount + r.escalation)
+    expect(r.total).toBe(r.base + r.contingency)
+    expect(r.perFoot).toBeCloseTo(r.total / r.inputs.lengthFt, 6)
+    const longer = priceParametric(S, { ...base(), lengthFt: base().lengthFt * 2 }, pipe)!
+    expect(longer.rateDirect / r.rateDirect).toBeGreaterThan(1.5)
+  })
+  it('a region with a higher factor costs more', () => {
+    const f = S.settings.estimating.regionFactors
+    const [cheap, dear] = Object.keys(f).sort((a, b) => f[a] - f[b]).filter((k, i, a) => i === 0 || i === a.length - 1)
+    expect(priceParametric(S, { ...base(), region: dear }, pipe)!.rateDirect).toBeGreaterThan(priceParametric(S, { ...base(), region: cheap }, pipe)!.rateDirect)
+  })
+  it('each risk item rated higher adds an itemized allowance and raises the point estimate', () => {
+    const low = priceParametric(S, base(), pipe)!
+    const med = priceParametric(S, { ...base(), risks: { ...base().risks, traffic: 'medium' } }, pipe)!
+    const high = priceParametric(S, { ...base(), risks: { ...base().risks, traffic: 'high' } }, pipe)!
+    expect(med.riskLines.map((l) => l.categoryId)).toEqual(['cat-traffic'])
+    expect(med.risks.find((x) => x.id === 'traffic')!.amount).toBe(Math.round(low.rateDirect * 0.05))
+    expect(high.base).toBeGreaterThan(med.base)
+    expect(med.base).toBeGreaterThan(low.base)
+  })
+  it('estimator % adjustment is its own line and scales the result', () => {
+    const r = priceParametric(S, base(), pipe, { adjustPct: 10 })!
+    expect(r.adjustmentLine?.unitCost).toBe(Math.round(priceParametric(S, base(), pipe)!.direct * 0.1))
+    expect(r.total).toBeGreaterThan(priceParametric(S, base(), pipe)!.total)
+  })
+})
+
+describe('Monte Carlo', () => {
+  it('is deterministic for a seed, with ordered percentiles; the estimate is funded at P80', () => {
+    const a = priceParametric(S, { ...base(), risks: { ...base().risks, soil: 'high', permits: 'medium' } }, pipe)!
+    const b = priceParametric(S, { ...base(), risks: { ...base().risks, soil: 'high', permits: 'medium' } }, pipe)!
+    expect(a.mc.p).toEqual(b.mc.p)
+    expect(a.mc.p.P10).toBeLessThanOrEqual(a.mc.p.P50)
+    expect(a.mc.p.P50).toBeLessThanOrEqual(a.mc.p.P80)
+    expect(a.mc.p.P80).toBeLessThanOrEqual(a.mc.p.P90)
+    expect(Math.abs(a.total - a.mc.p.P80) / a.mc.p.P80).toBeLessThan(0.002)
+    expect(a.contingency).toBeGreaterThanOrEqual(0)
+    expect(a.mc.histogram.reduce((s, h) => s + h.n, 0)).toBe(a.mc.iterations)
+  })
+  it('P50 sits at or a little above the most-likely figure (cost risk skews up)', () => {
+    const r = priceParametric(S, { ...base(), risks: { ...base().risks, traffic: 'medium', crossings: 'medium' } }, pipe)!
+    expect(r.mc.p.P50).toBeGreaterThanOrEqual(r.base * 0.98)
+    expect(r.mc.p.P50 / r.base - 1).toBeLessThan(0.15)
+  })
+  it('raising an item to high moves P80 up and widens the range', () => {
+    const lo = priceParametric(S, base(), pipe)!
+    const hi = priceParametric(S, { ...base(), risks: { ...base().risks, soil: 'high' } }, pipe)!
+    expect(hi.mc.p.P80).toBeGreaterThan(lo.mc.p.P80)
+    expect(hi.mc.p.P90 - hi.mc.p.P10).toBeGreaterThan(lo.mc.p.P90 - lo.mc.p.P10)
+  })
+  it('the tornado is sorted by swing and names the rated items', () => {
+    const r = priceParametric(S, { ...base(), risks: { ...base().risks, soil: 'high', workhours: 'medium' } }, pipe)!
+    const sw = r.mc.tornado.map((t) => t.swing)
+    expect(sw).toEqual([...sw].sort((a, b) => b - a))
+    expect(r.mc.tornado.some((t) => t.id === 'soil')).toBe(true)
+    expect(r.mc.tornado.some((t) => t.id === 'rate-table')).toBe(true)
+  })
+  it('handles a degenerate rate spread without NaN', () => {
+    const mc = monteCarloParametric({ rateP10: 100, rateP50: 100, rateP90: 100, risks: [], markup: 1.2, rateDirect: 100 }, 1000, 3)
+    expect(mc.p.P10).toBe(120)
+    expect(mc.p.P90).toBe(120)
+  })
+})
+
+describe('Risk items: fair and administrable', () => {
+  it('the default items are physical, legal or logistical and validate', () => {
+    expect(validateRiskItems(DEFAULT_RISK_ITEMS)).toEqual([])
+    expect(validateRiskItems([{ ...DEFAULT_RISK_ITEMS[0], id: 'x', name: 'Disadvantaged community', help: '' }]).join()).toMatch(/physical, legal or logistical/)
+    expect(validateRiskItems([{ ...DEFAULT_RISK_ITEMS[0], id: 'y', levels: { ...DEFAULT_RISK_ITEMS[0].levels, low: { label: 'x', min: 5, mode: 1, max: 2 } } }]).join()).toMatch(/min ≤ most likely ≤ max/)
+  })
+  it('pre-fills ratings from the project drivers', () => {
+    const urban = S.projects.find((p) => p.location.terrain === 'urban')!
+    expect(risksFromProject(S, urban).restoration).toBe('high')
+    expect(Object.keys(risksFromProject(S, urban)).sort()).toEqual(riskItemsOf(S).map((r) => r.id).sort())
+  })
+  it('estimates are identical whether or not the project is flagged as a disadvantaged community', () => {
+    for (const p of S.projects.filter((x) => x.asset.lengthFt > 0).slice(0, 10)) {
+      const flipped = produce(S, (d) => { const q = d.projects.find((x) => x.id === p.id)!; q.location.dac = !q.location.dac })
+      const q2 = flipped.projects.find((x) => x.id === p.id)!
+      const a = priceParametric(S, parametricInputsFromProject(S, p), p), b = priceParametric(flipped, parametricInputsFromProject(flipped, q2), q2)
+      expect(b?.total).toBe(a?.total)
+      expect(b?.mc.p).toEqual(a?.mc.p)
+      expect(JSON.stringify(parametricInputsFromProject(S, p))).not.toMatch(/dac/)
+    }
+  })
+})
+
+describe('Saved estimates and estimator review', () => {
+  it('a PM request creates a priced draft; totals match the pricing; audited', () => {
+    const i = { ...base(), risks: { ...base().risks, traffic: 'high' as RiskLevel } }
+    let id = ''
+    const s2 = produce(S, (d) => { id = createParametricEstimate(d, pipe.id, i, 'Planning budget', 'u-pm1')!.id })
+    const e = s2.estimates.find((x) => x.id === id)!
+    const r = priceParametric(S, i, pipe)!
+    expect(estimateTotals(e).total).toBe(r.total)
+    expect(e.parametric?.mc.p).toEqual(r.mc.p)
+    expect(e.contingency).toMatchObject({ method: 'risk-based', confidence: 'P80' })
+    expect(e.basis?.contingencyRationale).toMatch(/Monte Carlo/)
+    expect(s2.audit.at(-1)?.summary).toMatch(/parametric estimate/)
+  })
+  it('the estimator can change ratings and apply a %; before/after and the reason are kept', () => {
+    let id = ''
+    let s2 = produce(S, (d) => { id = createParametricEstimate(d, pipe.id, base(), 'x', 'u-pm1')!.id })
+    const before = estimateTotals(s2.estimates.find((x) => x.id === id)!).total
+    s2 = produce(s2, (d) => adjustParametricEstimate(d, id, { risks: { soil: 'high' }, pct: 5, reason: 'Geotech shows rock' }, 'u-est1'))
+    const e = s2.estimates.find((x) => x.id === id)!
+    expect(e.parametric?.inputs.risks.soil).toBe('high')
+    expect(e.parametric?.adjustment).toMatchObject({ pct: 5, fromTotal: before, byId: 'u-est1' })
+    expect(e.parametric?.adjustment?.changed.join()).toMatch(/Soil & rock conditions low → high/)
+    expect(estimateTotals(e).total).toBeGreaterThan(before)
+    expect(s2.audit.at(-1)).toMatchObject({ action: 'adjust', actorId: 'u-est1' })
   })
 })
 
@@ -1918,6 +2075,7 @@ import { produce } from 'immer'
 import type { AppState } from '@/core/types'
 import { buildSeed } from '@/core/seed'
 import { estimateTotals } from '@/core/engine/estimates'
+import { createFactorEstimate, factorInputsFromProject } from '@/core/engine/factorModel'
 import { computeQuick, findHistorical, inputsFromProject } from '@/core/engine/quick'
 import { actOnWorkflow, recallWorkflow, tasksFor } from '@/core/engine/workflow'
 import { toCSV } from '@/core/download'
@@ -2008,15 +2166,18 @@ describe('quick estimate lib', () => {
   })
 
   test('adjusting reprices on the model version it was created with, even after a newer one is published', () => {
-    const e = seed.estimates.find((x) => x.method === 'quick' && x.status === 'in-review')!
+    const fp = seed.projects.find((x) => x.code === 'PRJ-1014')!
+    let fid = ''
+    const seedF = produce(seed, (d) => { fid = createFactorEstimate(d, fp.id, factorInputsFromProject(d, d.projects.find((x) => x.id === fp.id)!), 'x', 'u-pm1')!.id })
+    const e = seedF.estimates.find((x) => x.id === fid)!
     expect(e.factor?.modelVersion).toBe(2)
     // publish the draft v3: v2 retired
-    const s = produce(seed, (d) => { for (const m of d.factorModels) m.status = m.version === 3 ? 'published' : m.status === 'published' ? 'retired' : m.status })
+    const s = produce(seedF, (d) => { for (const m of d.factorModels) m.status = m.version === 3 ? 'published' : m.status === 'published' ? 'retired' : m.status })
     const s2 = produce(s, (d) => applyAdjustment(d, e.id, { pct: 0, basis: 'p90', reason: 'Known market or vendor pricing' }, 'u-est1'))
     const e2 = s2.estimates.find((x) => x.id === e.id)!
     expect(e2.factor?.modelVersion).toBe(2)
     expect(estimateTotals(e2).total).toBeGreaterThan(estimateTotals(e).total)
-    expect(estimateTotals(e2).total).toBe(previewAdjust(seed, e, 'p90', 0)!.total)
+    expect(estimateTotals(e2).total).toBe(previewAdjust(seedF, e, 'p90', 0)!.total)
     expect(e2.basis.assumptions.join(' ')).toMatch(/priced at P90: Known market or vendor pricing/)
   })
 
@@ -2147,34 +2308,28 @@ const st = () => useStore.getState()
 const as = (id: string) => { useStore.setState({ currentUserId: id }); (useStore.getInitialState() as any).currentUserId = id }
 
 describe('Class 5 quick estimate views', () => {
-  test('request form renders dropdowns and a live result for a project and for a new need', () => {
+  test('PM request: length, location and Low / Medium / High risk ratings; live parametric result with Monte Carlo; no adjust controls', () => {
     as('u-pm1')
     const p = st().projects.find((x) => x.code === 'PRJ-1005')!
     const html = renderToString(<QuickRequest projectId={p.id} />)
-    for (const t of ['Asset type', 'Work method', 'Diameter band', 'Setting', 'Region (district)', 'Quantity (feet)', 'Spend midpoint year', 'Site cost drivers', 'Soil / rock', 'Permit complexity', 'Work-hour restrictions', 'What is it for', 'Send to estimating team', 'Forward-looking estimate', 'Factor model', 'Cost drivers', 'Base rate × quantity', '= Direct cost', 'Rate-table check', 'Generated basis of estimate', 'Draft wording — verify', 'Run Monte Carlo', 'AACE Class 5']) expect(html).toContain(t)
+    for (const t of ['Length of pipe (feet)', 'Location (region)', 'Pipe and work', 'Risks that drive the estimate', 'Traffic control &amp; lane closures', 'Soil &amp; rock conditions', 'Road, rail &amp; water crossings', 'Low risk', 'Medium risk', 'High risk', 'What is it for', 'Send to estimating team', 'Forward-looking estimate', 'Monte Carlo', 'P80', 'Tornado', 'How the number is built', 'Rate table', 'Risk-based contingency', 'AACE Class 5']) expect(html).toContain(t)
+    for (const t of ['Adjustment %', 'Override reason', 'Site cost drivers', 'Diameter band']) expect(html).not.toContain(t)
     expect(html).not.toMatch(/disadvantaged/i)
     const nn = renderToString(<QuickRequest allowPicker />)
     expect(nn).toContain('New need — no project yet')
     expect(nn).toContain('start a new project')
-    // unbanded asset hides the band
-    const c = st().projects.find((x) => x.code === 'PRJ-1023')!
-    expect(renderToString(<QuickRequest projectId={c.id} />)).not.toContain('Diameter band')
   })
 
-  test('estimator sees the Adjust panel on an in-review quick estimate; others do not', () => {
-    const e = st().estimates.find((x) => x.method === 'quick' && x.status === 'in-review')!
+  test('estimator sees the review panel (re-rate risks, ±%, reason) on an in-review request; the requester does not', () => {
+    const e = st().estimates.find((x) => x.method === 'quick' && x.status === 'in-review' && x.parametric)!
     const p = st().projects.find((x) => x.id === e.projectId)!
     as('u-est1')
     const html = renderToString(<QuickEstimateView estimate={e} project={p} />)
-    expect(html).toContain('Adjust (estimating team)')
-    expect(html).toContain('Override reason (required)')
-    expect(html).toContain(st().settings.factorModel.overrideReasons[0])
-    expect(html).toContain('Before → after')
-    for (const t of ['Rate-table check', 'Basis of estimate', 'Draft wording — verify', 'Run Monte Carlo', 'Site drivers']) expect(html).toContain(t)
-    expect(html).toMatch(/Cost drivers · factor model v(<!-- -->)?2/)
-    expect(html).toContain('Quick · Class 5')
-    as('u-pm1')
-    expect(renderToString(<QuickEstimateView estimate={e} project={p} />)).not.toContain('Adjust (estimating team)')
+    for (const t of ['Review and adjust (estimating team)', 'Adjustment % of direct', 'Reason (required)', st().settings.factorModel.overrideReasons[0], 'Before → after (P80)', 'Soil &amp; rock conditions', 'Monte Carlo', 'Basis of estimate', 'Model check (estimating team)', 'Length of pipe']) expect(html).toContain(t)
+    as(e.createdById)
+    const pm = renderToString(<QuickEstimateView estimate={e} project={p} />)
+    expect(pm).not.toContain('Review and adjust (estimating team)')
+    expect(pm).toContain('The requester cannot change the number after sending it.')
   })
 
   test('adjusted and approved estimate shows its adjustment history', () => {
@@ -2184,18 +2339,19 @@ describe('Class 5 quick estimate views', () => {
     const html = renderToString(<QuickEstimateView estimate={e} project={p} />)
     expect(html).toContain('Adjustment history')
     expect(html).toContain('Omar Siddiqui')
-    expect(html).toContain('+12%')
     expect(html).toContain('flood-control channel')
+    expect(html).toMatch(/was (<!-- -->)?low risk/)
   })
 
   test('inbox record summary for a quick estimate task', () => {
     as('u-est2')
-    const e = st().estimates.find((x) => x.method === 'quick' && x.status === 'in-review')!
+    const e = st().estimates.find((x) => x.method === 'quick' && x.status === 'in-review' && x.parametric)!
     const inst = st().workflows.find((w) => w.id === e.workflowInstanceId)!
     const html = renderToString(<RecordSummary s={st()} inst={inst} />)
     expect(html).toContain('Quick · Class 5')
-    expect(html).toContain('Adjust (estimating team)')
+    expect(html).toContain('Review and adjust (estimating team)')
     expect(html).toContain('What it is for')
+    expect(html).toContain('Traffic control &amp; lane closures')
   })
 
   test('project estimates tab marks quick estimates and offers the request action', () => {
@@ -2204,8 +2360,8 @@ describe('Class 5 quick estimate views', () => {
     const html = renderToString(<Estimates projectId={p.id} />)
     expect(html).toContain('Quick · Class 5')
     expect(html).toContain('Request Class 5 quick estimate')
-    expect(html).toContain('Cost drivers')
-    expect(html).toContain('Rate-table check')
+    expect(html).toContain('Traffic control &amp; lane closures')
+    expect(html).toContain('Monte Carlo')
   })
 
   test('historical cost table, drawer, import and derive render', () => {

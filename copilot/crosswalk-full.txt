@@ -33,6 +33,7 @@ FILES IN THIS PART:
   src/core/engine/info.ts
   src/core/engine/lines.ts
   src/core/engine/notify.ts
+  src/core/engine/parametric.ts
   src/core/engine/position.ts
   src/core/engine/quick.ts
   src/core/engine/reconcile.ts
@@ -91,6 +92,7 @@ FILES IN THIS PART:
   src/views/estimating/admin/Lists.tsx
   src/views/estimating/admin/RateTable.tsx
   src/views/estimating/admin/Reprice.tsx
+  src/views/estimating/admin/RiskItems.tsx
   src/views/estimating/admin/shared.tsx
   src/views/estimating/admin/Tables.tsx
   src/views/estimating/boe.ts
@@ -102,6 +104,7 @@ FILES IN THIS PART:
   src/views/estimating/quick/factorParts.tsx
   src/views/estimating/quick/Historical.tsx
   src/views/estimating/quick/lib.ts
+  src/views/estimating/quick/parametricParts.tsx
   src/views/estimating/quick/parts.tsx
   src/views/estimating/quick/QuickForm.tsx
   src/views/estimating/quick/QuickTab.tsx
@@ -1228,6 +1231,7 @@ export interface Estimate {
   method: 'parametric' | 'line-item' | 'quick'
   quick?: QuickEstimate // Class 5 quick estimate from the historical cost table
   factor?: FactorEstimateRecord // set when the quick estimate was priced with the Class 5 factor model
+  parametric?: ParametricRecord // set when the quick estimate was priced from the rate table + risk items (PM request)
   createdAt: ISODateTime
   createdById: ID
   approvedAt?: ISODateTime
@@ -1973,6 +1977,47 @@ export interface EstimatingConfig {
   maturityItems: { key: string; label: string; forClass: AaceClass; hint: string }[]
   rateTableVersion: number
   rateTableHistory: { version: number; at: ISODateTime; byId: ID; note: string }[]
+  /** Risk items a PM rates Low/Medium/High on a Class 5 request (defaults in engine/parametric.ts when absent). */
+  riskItems?: RiskItemDef[]
+}
+
+// ───────────────────────────── Class 5 parametric request (rate table + risk items + Monte Carlo)
+export type RiskLevel = 'low' | 'medium' | 'high'
+/** Cost impact of a risk item at one level: triangular % of rate-table direct cost, and what the level means. */
+export interface RiskImpact { label: string; min: number; mode: number; max: number }
+/** A physical, legal or logistical risk to the cost of pipeline work (never a demographic or wealth attribute). */
+export interface RiskItemDef { id: string; name: string; help: string; levels: Record<RiskLevel, RiskImpact> }
+/** What a PM enters: the pipe and work from the project record, length, location, and a level per risk item. */
+export interface ParametricInputs {
+  assetType: AssetType
+  workMethod: WorkMethod
+  diameterIn: number
+  lengthFt: number
+  region: string
+  midpointYear: number
+  risks: Record<string, RiskLevel>
+  taxPct?: number // used only when there is no project (else the project's county split)
+}
+export interface ParametricMonteCarlo {
+  iterations: number
+  seed: number
+  p: { P10: Money; P50: Money; P80: Money; P90: Money }
+  mean: Money
+  histogram: { x: number; n: number }[]
+  scurve: { pct: number; value: Money }[]
+  tornado: { id: string; label: string; low: Money; high: Money; swing: Money; share: number }[]
+}
+export interface ParametricRecord {
+  inputs: ParametricInputs
+  requestedRisks: Record<string, RiskLevel> // the PM's ratings as sent (estimator changes are compared to these)
+  rateTableVersion: number
+  rateDirect: Money // rate-table direct cost at P50 (region-adjusted), before risk allowances
+  rateSpread: { p10: Money; p90: Money } // the same lines at the rows' P10 and P90
+  risks: { id: string; name: string; level: RiskLevel; pct: number; amount: Money }[] // most-likely allowance per item
+  base: Money // deterministic total before contingency
+  mc: Omit<ParametricMonteCarlo, 'histogram' | 'scurve' | 'tornado'>
+  contingencyPct: number // risk-based: P80 − base, as % of base
+  adjustment?: { pct: number; reason: string; byId: ID; at: ISODateTime; fromTotal: Money; toTotal: Money; changed: string[] }
 }
 
 /** Optional AI assist via the organization's approved LLM gateway (OpenAI-compatible chat completions). Off by default. */
@@ -4592,6 +4637,326 @@ export function openEscalations(s: AppState, managerId?: ID) {
   return out.sort((a, b) => b.at.localeCompare(a.at))
 }
 
+===== FILE: src/core/engine/parametric.ts =====
+// Class 5 parametric request: what a PM enters (length, location, a Low/Medium/High rating per risk item, with the
+// pipe and work method from the project record) priced automatically from the rate table, plus a seeded Monte Carlo.
+//
+//   rate-table direct  = Σ rate rows (region row, else base row × region factor) × quantity      (parametricLines)
+//   risk allowances    = rate-table direct × most-likely % of each rated risk item                 (one line per item)
+//   base               = direct + sales tax + loaders + escalation (rate basis year → spend midpoint)
+//   Monte Carlo        = rate-table cost ~ triangular(P10, P50, P90 of the rows); each risk item ~ triangular(min, mode, max) %
+//   contingency        = P80 − base (risk-based), so the estimate of record is the P80; range shown is P10–P90
+//
+// Risk items are physical, legal or logistical conditions only (AGENT_RULES 13–14): never demographic or wealth inputs.
+import type { AppState, Estimate, EstimateLine, ParametricInputs, ParametricMonteCarlo, ParametricRecord, Project, RiskItemDef, RiskLevel } from '../types'
+import { nowISO, rng, sum, triangular, uid } from '../util'
+import { estimateTotals, parametricLines, regionalUnitCost } from './estimates'
+import { basisYearOf, currentLoaders, escalationPctFor, salesTaxFor, spendMidpoint } from './estimatingAdmin'
+import { siteOf, taxForDistrict } from './factorModel'
+
+export const RISK_LEVELS: RiskLevel[] = ['low', 'medium', 'high']
+export const RISK_LEVEL_LABEL: Record<RiskLevel, string> = { low: 'Low risk', medium: 'Medium risk', high: 'High risk' }
+
+const lvl = (label: string, min: number, mode: number, max: number) => ({ label, min, mode, max })
+/**
+ * Default risk items for gas pipeline work. Impacts are triangular % of rate-table direct cost (min, most likely, max).
+ * VERIFY: every item, level description and % impact is an illustrative planning value for the fictional utility; the
+ * estimating team sets the real table in Estimating → Administration.
+ */
+export const DEFAULT_RISK_ITEMS: RiskItemDef[] = [
+  { id: 'traffic', name: 'Traffic control & lane closures', help: 'How much traffic control the street and agency will require.', levels: { low: lvl('Residential or rural street, flagging only', 0, 0, 2), medium: lvl('Arterial lane closures with a traffic control plan', 2, 5, 9), high: lvl('Major arterial or near a freeway: detours, night closures', 6, 12, 22) } },
+  { id: 'permits', name: 'Permitting & agency coordination', help: 'Agencies whose approval the work needs.', levels: { low: lvl('Single city or county encroachment permit', 0, 0, 2), medium: lvl('Several agencies, state highway or railroad', 2, 4, 8), high: lvl('Environmental document, coastal or federal waters permit', 5, 10, 20) } },
+  { id: 'soil', name: 'Soil & rock conditions', help: 'What the trench or bore will hit.', levels: { low: lvl('Normal soil', 0, 0, 2), medium: lvl('Cobble or caliche', 2, 5, 9), high: lvl('Rock or hard dig: rock wheel or blasting', 6, 12, 25) } },
+  { id: 'crossings', name: 'Road, rail & water crossings', help: 'Bores and drills along the route.', levels: { low: lvl('None, or a single bore', 0, 0, 2), medium: lvl('Two to five bores', 2, 5, 10), high: lvl('Six or more, or a drill under rail or water', 6, 12, 25) } },
+  { id: 'utilities', name: 'Existing utility conflicts', help: 'Other underground facilities in the corridor.', levels: { low: lvl('Open corridor', 0, 0, 2), medium: lvl('Some potholing, crossing other utilities', 1, 4, 8), high: lvl('Congested corridor, relocations needed', 5, 10, 20) } },
+  { id: 'groundwater', name: 'Groundwater & dewatering', help: 'Water expected in the excavation.', levels: { low: lvl('None expected', 0, 0, 1), medium: lvl('Seasonal or partial dewatering', 1, 3, 6), high: lvl('Continuous dewatering, treat or haul the water', 4, 8, 15) } },
+  { id: 'environmental', name: 'Environmental & cultural resources', help: 'Monitoring or protection the site needs.', levels: { low: lvl('None known', 0, 0, 1), medium: lvl('Biological or cultural monitoring', 1, 3, 6), high: lvl('Sensitive habitat, contaminated soil or tribal monitoring', 4, 8, 18) } },
+  { id: 'workhours', name: 'Work-hour restrictions', help: 'When crews are allowed to work.', levels: { low: lvl('Standard day shift', 0, 0, 1), medium: lvl('Restricted hours', 2, 4, 7), high: lvl('Night work only', 5, 10, 18) } },
+  { id: 'tieins', name: 'Tie-ins & service transfers', help: 'Connections to the live system and customer services.', levels: { low: lvl('Few tie-ins, no customer outages', 0, 0, 2), medium: lvl('Several tie-ins, some service transfers', 1, 3, 6), high: lvl('Complex tie-ins, hot taps, many service transfers', 4, 8, 15) } },
+  { id: 'access', name: 'Site access & right-of-way', help: 'Getting crews, equipment and rights to the work.', levels: { low: lvl('Public right-of-way, easy access', 0, 0, 1), medium: lvl('Temporary construction easements', 1, 3, 6), high: lvl('New permanent easements or remote access', 4, 8, 16) } },
+  { id: 'restoration', name: 'Paving & restoration', help: 'What the street or site must be restored to.', levels: { low: lvl('Dirt or landscape', 0, 0, 1), medium: lvl('Standard trench paving', 1, 3, 6), high: lvl('Full-lane grind and overlay, concrete, or moratorium street', 3, 7, 14) } },
+]
+
+/** Estimate category each risk allowance is booked to. */
+const RISK_CATEGORY: Record<string, string> = { traffic: 'cat-traffic', permits: 'cat-permit-fees', environmental: 'cat-env', access: 'cat-land', restoration: 'cat-restore' }
+const riskCategory = (id: string) => RISK_CATEGORY[id] ?? 'cat-contract'
+
+export const riskItemsOf = (s: Pick<AppState, 'settings'>): RiskItemDef[] => (s.settings.estimating.riskItems?.length ? s.settings.estimating.riskItems : DEFAULT_RISK_ITEMS)
+
+/** Validation for the administration table. */
+export function validateRiskItems(items: RiskItemDef[]): string[] {
+  const out: string[] = []
+  const ids = new Set<string>()
+  for (const it of items) {
+    if (!it.id || ids.has(it.id)) out.push(`Duplicate or missing id: "${it.id}"`)
+    ids.add(it.id)
+    if (!it.name.trim()) out.push(`${it.id}: name is required`)
+    for (const k of RISK_LEVELS) {
+      const l = it.levels[k]
+      if (!(l.min <= l.mode && l.mode <= l.max)) out.push(`${it.name}, ${RISK_LEVEL_LABEL[k]}: needs min ≤ most likely ≤ max`)
+      if (l.min < -50 || l.max > 200) out.push(`${it.name}, ${RISK_LEVEL_LABEL[k]}: impact outside −50% to +200%`)
+    }
+    if (/\bdac\b|disadvantag|income|wealth|race|ethnic|demograph|home.?value|zip/i.test(`${it.id} ${it.name} ${it.help}`)) out.push(`${it.name}: risk items must be physical, legal or logistical conditions`)
+  }
+  return out
+}
+
+// ───────────────────────────── Inputs from a project
+const fromDriver = <T extends string>(v: T | undefined, map: Partial<Record<T, RiskLevel>>): RiskLevel => (v && map[v]) || 'low'
+
+/** Risk levels pre-filled from the project's cost drivers (physical, legal and logistical fields only). */
+export function risksFromProject(s: Pick<AppState, 'settings'>, p?: Project): Record<string, RiskLevel> {
+  const out: Record<string, RiskLevel> = Object.fromEntries(riskItemsOf(s).map((r) => [r.id, 'low' as RiskLevel]))
+  if (!p) return out
+  const d = siteOf(p)
+  const set = (id: string, v: RiskLevel) => { if (id in out) out[id] = v }
+  set('traffic', fromDriver(d.traffic, { moderate: 'medium', heavy: 'high' }))
+  set('permits', fromDriver(d.permitComplexity, { discretionary: 'medium', major: 'high' }))
+  set('soil', fromDriver(d.soil, { cobble: 'medium', rock: 'high' }))
+  set('crossings', d.crossings >= 6 ? 'high' : d.crossings >= 2 ? 'medium' : 'low')
+  set('workhours', fromDriver(d.workHours, { restricted: 'medium', night: 'high' }))
+  set('access', fromDriver(d.remoteness, { regional: 'medium', remote: 'high' }))
+  set('environmental', d.hca ? 'medium' : 'low')
+  set('utilities', p.location.terrain === 'urban' ? 'medium' : 'low')
+  set('restoration', p.location.terrain === 'urban' ? 'high' : p.location.terrain === 'suburban' ? 'medium' : 'low')
+  return out
+}
+
+/** A PM's starting inputs for a project (or defaults for a new need). */
+export function parametricInputsFromProject(s: AppState, p?: Project): ParametricInputs {
+  const y = Number(s.settings.asOf.slice(0, 4))
+  return {
+    assetType: p?.asset.type ?? 'distribution-main',
+    workMethod: p?.workMethod ?? 'replace-open-trench',
+    diameterIn: p?.asset.diameterIn ?? 8,
+    lengthFt: p?.asset.lengthFt ?? 0,
+    region: p?.location.district ?? s.settings.estimating.regions[0] ?? 'East',
+    midpointYear: p ? spendMidpoint(s, p) : y + 2,
+    risks: risksFromProject(s, p),
+  }
+}
+
+// ───────────────────────────── Pricing
+export interface ParametricOpts { adjustPct?: number; iterations?: number; seed?: number }
+export interface ParametricRiskLine { id: string; name: string; level: RiskLevel; levelLabel: string; min: number; mode: number; max: number; amount: number }
+export interface ParametricResult {
+  inputs: ParametricInputs
+  rateLines: EstimateLine[]
+  riskLines: EstimateLine[]
+  adjustmentLine?: EstimateLine
+  lines: EstimateLine[]
+  rateDirect: number
+  rateSpread: { p10: number; p90: number }
+  risks: ParametricRiskLine[]
+  riskPct: number
+  adjustPct: number
+  direct: number // rate-table direct + risk allowances + adjustment
+  salesTax: NonNullable<Estimate['salesTax']>
+  tax: number
+  loaders: { name: string; pct: number }[]
+  loaderAmount: number
+  escalationPct: number
+  escalation: number
+  basisYear: number
+  base: number // before contingency
+  mc: ParametricMonteCarlo
+  contingency: number
+  contingencyPct: number
+  total: number // = base + contingency (≈ P80)
+  low: number // P10
+  high: number // P90
+  perFoot: number
+}
+
+/** A project-shaped object the rate-table lookup can price (pipe, method, region, setting). */
+function pricingProject(i: ParametricInputs, p?: Project): Project {
+  return { asset: { type: i.assetType, diameterIn: i.diameterIn, lengthFt: i.lengthFt }, workMethod: i.workMethod, location: { district: i.region, terrain: p?.location.terrain ?? 'suburban' }, scope: { quantities: [] } } as unknown as Project
+}
+
+/** Price a parametric request. Pure. Undefined when the rate table has no rows for this asset and work method. */
+export function priceParametric(s: AppState, i: ParametricInputs, p?: Project, o: ParametricOpts = {}): ParametricResult | undefined {
+  const opts = { region: i.region, regionFactors: s.settings.estimating.regionFactors }
+  const rateLines = parametricLines(pricingProject(i, p), s.rates, opts, { lengthFt: i.lengthFt, sites: 1 }).map((l) => ({ ...l, workPackage: 'Rate table' }))
+  if (!rateLines.length || !i.lengthFt) return
+  const lineAt = (l: EstimateLine, k: 'p10' | 'p90') => {
+    const r = s.rates.find((x) => x.id === l.rateId)
+    if (!r) return l.qty * l.unitCost
+    return l.qty * r[k] * regionalUnitCost(r, opts).factor
+  }
+  const rateDirect = Math.round(sum(rateLines.map((l) => l.qty * l.unitCost)))
+  const rateSpread = { p10: Math.round(sum(rateLines.map((l) => lineAt(l, 'p10')))), p90: Math.round(sum(rateLines.map((l) => lineAt(l, 'p90')))) }
+
+  const risks: ParametricRiskLine[] = riskItemsOf(s).map((it) => {
+    const level = i.risks[it.id] ?? 'low'
+    const x = it.levels[level]
+    return { id: it.id, name: it.name, level, levelLabel: x.label, min: x.min, mode: x.mode, max: x.max, amount: Math.round(rateDirect * x.mode / 100) }
+  })
+  const riskLines: EstimateLine[] = risks.filter((r) => r.amount).map((r) => ({
+    id: uid('ln'), categoryId: riskCategory(r.id), workPackage: 'Risk allowances', description: `${r.name}: ${RISK_LEVEL_LABEL[r.level].toLowerCase()} allowance (${r.mode}% of rate-table direct)`,
+    qty: 1, unit: 'LS', unitCost: r.amount, source: 'judgment' as const, confidence: 'low' as const,
+  }))
+  const riskPct = sum(risks.map((r) => r.mode))
+  const adjustPct = o.adjustPct ?? 0
+  const preAdj = rateDirect + sum(riskLines.map((l) => l.unitCost))
+  const adjustmentLine: EstimateLine | undefined = adjustPct ? { id: uid('ln'), categoryId: 'cat-contract', workPackage: 'Estimator adjustment', description: `Estimator adjustment ${adjustPct > 0 ? '+' : ''}${adjustPct}% of direct cost`, qty: 1, unit: 'LS', unitCost: Math.round(preAdj * adjustPct / 100), source: 'judgment', confidence: 'low' } : undefined
+  const lines = [...rateLines, ...riskLines, ...(adjustmentLine ? [adjustmentLine] : [])]
+
+  const salesTax = p ? salesTaxFor(s, p) : { pct: i.taxPct ?? taxForDistrict(s, i.region), counties: [], categoryIds: [...s.settings.estimating.taxableCategoryIds] }
+  const loaders = currentLoaders(s)
+  const basisYear = basisYearOf(s, rateLines)
+  const escalationPct = escalationPctFor(s, basisYear, i.midpointYear)
+  const t = estimateTotals({ lines, loaders, escalationPct, contingency: { method: 'deterministic', pct: 0 }, cls: 5, salesTax })
+  const direct = t.lines
+
+  // Everything after direct cost (tax on taxable rows, loaders, escalation) scales with direct cost.
+  const markup = direct ? t.base / direct : 1
+  const adjF = 1 + adjustPct / 100
+  const iterations = o.iterations ?? s.settings.factorModel?.iterations ?? 5000
+  const mc = monteCarloParametric({ rateP10: rateSpread.p10, rateP50: rateDirect, rateP90: rateSpread.p90, risks, markup: markup * adjF, rateDirect }, iterations, o.seed ?? 17)
+  // VERIFY: risk-based Class 5 contingency = P80 of the Monte Carlo less the deterministic base (never negative), so the
+  // estimate of record sits at P80; the range shown is the Monte Carlo P10–P90.
+  const contingency = Math.max(0, mc.p.P80 - t.base)
+  const contingencyPct = t.base ? Math.round((contingency / t.base) * 1000) / 10 : 0
+  const total = estimateTotals({ lines, loaders, escalationPct, contingency: { method: 'risk-based', pct: contingencyPct }, cls: 5, salesTax }).total
+  return {
+    inputs: i, rateLines, riskLines, adjustmentLine, lines, rateDirect, rateSpread, risks, riskPct, adjustPct, direct,
+    salesTax, tax: t.tax, loaders, loaderAmount: t.loaders, escalationPct, escalation: t.escalation, basisYear, base: t.base,
+    mc, contingency: total - t.base, contingencyPct, total, low: Math.min(mc.p.P10, total), high: Math.max(mc.p.P90, total), perFoot: i.lengthFt ? total / i.lengthFt : 0,
+  }
+}
+
+interface McInput { rateP10: number; rateP50: number; rateP90: number; risks: Pick<ParametricRiskLine, 'id' | 'name' | 'min' | 'mode' | 'max' | 'level'>[]; markup: number; rateDirect: number }
+
+/**
+ * Seeded Monte Carlo of the parametric estimate. Rate-table cost ~ triangular(P10, P50, P90 of the rows); each risk item
+ * at its rated level ~ triangular(min, most likely, max) % of rate-table direct, independent; tax, loaders, escalation
+ * and any estimator adjustment scale each draw. Pure: the same inputs and seed give the same answer.
+ * VERIFY: independence between risk items and the triangular shapes are modelling assumptions for the estimating team.
+ */
+export function monteCarloParametric(x: McInput, iterations = 5000, seed = 17): ParametricMonteCarlo {
+  const R = rng(seed)
+  const lo10 = Math.min(x.rateP10, x.rateP50), hi90 = Math.max(x.rateP90, x.rateP50)
+  const active = x.risks.filter((r) => r.max > r.min || r.mode)
+  const xs: number[] = new Array(iterations)
+  for (let k = 0; k < iterations; k++) {
+    const rate = triangular(R.next(), lo10, x.rateP50, hi90)
+    let pct = 0
+    for (const r of active) pct += triangular(R.next(), r.min, r.mode, r.max)
+    xs[k] = (rate + x.rateDirect * pct / 100) * x.markup
+  }
+  xs.sort((a, b) => a - b)
+  const q = (p: number) => Math.round(xs[Math.min(xs.length - 1, Math.max(0, Math.floor(p * xs.length)))])
+  const lo = xs[0], hi = xs[xs.length - 1]
+  const bins = 30
+  const w = (hi - lo) / bins || 1
+  const histogram = Array.from({ length: bins }, (_, k) => ({ x: Math.round(lo + w * (k + 0.5)), n: 0 }))
+  for (const v of xs) histogram[Math.min(bins - 1, Math.floor((v - lo) / w))].n++
+  const scurve = Array.from({ length: 21 }, (_, k) => ({ pct: k * 5, value: q(Math.min(0.999, Math.max(0.001, k / 20))) }))
+
+  // Tornado: each source swung from its low to its high end with everything else at most likely.
+  const modeSum = sum(active.map((r) => r.mode))
+  const at = (rate: number, pct: number) => Math.round((rate + x.rateDirect * pct / 100) * x.markup)
+  const rows = [
+    { id: 'rate-table', label: 'Rate-table unit costs (P10–P90 of the rows)', low: at(lo10, modeSum), high: at(hi90, modeSum) },
+    ...active.map((r) => ({ id: r.id, label: `${r.name} (${RISK_LEVEL_LABEL[r.level].toLowerCase()})`, low: at(x.rateP50, modeSum - r.mode + r.min), high: at(x.rateP50, modeSum - r.mode + r.max) })),
+  ].map((t) => ({ ...t, swing: t.high - t.low }))
+  const tot = sum(rows.map((t) => t.swing ** 2)) || 1
+  const tornado = rows.map((t) => ({ ...t, share: t.swing ** 2 / tot })).filter((t) => t.swing > 0).sort((a, b) => b.swing - a.swing)
+  return { iterations, seed, p: { P10: q(0.1), P50: q(0.5), P80: q(0.8), P90: q(0.9) }, mean: Math.round(sum(xs) / (xs.length || 1)), histogram, scurve, tornado }
+}
+
+// ───────────────────────────── Basis of estimate
+const money = (n: number) => '$' + (Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : Math.round(n).toLocaleString('en-US'))
+
+/** Generated basis of estimate. VERIFY: BOE wording for parametric Class 5 requests (scope, assumptions, contingency, class). */
+export function parametricBoe(r: ParametricResult, adjustment?: { pct: number; reason: string; changed?: string[] }): Estimate['basis'] {
+  const i = r.inputs
+  const rated = r.risks.filter((x) => x.level !== 'low')
+  const assumptions = [
+    `Rate table: ${r.rateLines.length} rate rows for ${i.diameterIn}" ${i.assetType.replace(/-/g, ' ')}, ${i.workMethod.replace(/-/g, ' ')}, ${i.lengthFt.toLocaleString('en-US')} ft in the ${i.region} region (region rows, else base rate × region factor): ${money(r.rateDirect)} direct at P50, ${money(r.rateSpread.p10)}–${money(r.rateSpread.p90)} at the rows' P10–P90.`,
+    rated.length ? `Risk allowances (most likely % of rate-table direct): ${rated.map((x) => `${x.name} ${x.level} (${x.mode}%, ${x.min}–${x.max}%)`).join('; ')}. All other items rated low.` : 'Every risk item rated low: no allowances above the rate table.',
+    `Sales tax ${r.salesTax.pct}% on taxable material; loaders ${sum(r.loaders.map((l) => l.pct)).toFixed(1)}%; escalation ${r.escalationPct}% from the ${r.basisYear} rate basis to the ${i.midpointYear} spend midpoint.`,
+  ]
+  if (adjustment && (adjustment.pct || adjustment.changed?.length)) assumptions.push(`Estimator review: ${[adjustment.changed?.length ? `risk ratings changed (${adjustment.changed.join('; ')})` : '', adjustment.pct ? `${adjustment.pct > 0 ? '+' : ''}${adjustment.pct}% adjustment` : ''].filter(Boolean).join(', ')} — ${adjustment.reason}.`)
+  return {
+    scopeBasis: `${i.lengthFt.toLocaleString('en-US')} ft of ${i.diameterIn}" ${i.assetType.replace(/-/g, ' ')}, ${i.workMethod.replace(/-/g, ' ')}, ${i.region} region. Class 5 parametric estimate from the rate table and the PM's risk ratings.`,
+    assumptions,
+    exclusions: ['Scope not described by the rate rows or the rated risk items', 'Land acquisition by condemnation', 'Unknown contamination remediation'],
+    contingencyRationale: `Risk-based: Monte Carlo of ${r.mc.iterations.toLocaleString('en-US')} seeded draws (rate-table cost triangular on the rows' P10/P50/P90; each risk item triangular on its min/most likely/max, independent). Funded at P80 ${money(r.mc.p.P80)}: contingency ${money(r.contingency)} (${r.contingencyPct}% of base). P10–P90 ${money(r.mc.p.P10)}–${money(r.mc.p.P90)}.`,
+    classJustification: 'Class 5: need, location and approximate length known; no design. Parametric from the rate table with rated physical, legal and logistical risks.',
+  }
+}
+
+// ───────────────────────────── Saved estimates
+function record(s: AppState, r: ParametricResult, prev?: ParametricRecord['adjustment'], requested?: Record<string, RiskLevel>): ParametricRecord {
+  return {
+    inputs: JSON.parse(JSON.stringify(r.inputs)), requestedRisks: { ...(requested ?? r.inputs.risks) }, rateTableVersion: s.settings.estimating.rateTableVersion, rateDirect: r.rateDirect, rateSpread: r.rateSpread,
+    risks: r.risks.map((x) => ({ id: x.id, name: x.name, level: x.level, pct: x.mode, amount: x.amount })), base: r.base,
+    mc: { iterations: r.mc.iterations, seed: r.mc.seed, p: r.mc.p, mean: r.mc.mean }, contingencyPct: r.contingencyPct, adjustment: prev,
+  }
+}
+
+function applyResult(s: AppState, e: Estimate, r: ParametricResult) {
+  e.lines = r.lines
+  e.loaders = r.loaders
+  e.escalationPct = r.escalationPct
+  e.contingency = { method: 'risk-based', pct: r.contingencyPct, confidence: 'P80' }
+  e.salesTax = r.salesTax
+  e.region = r.inputs.region
+  e.rateTableVersion = s.settings.estimating.rateTableVersion
+}
+
+/** Create a draft Class 5 parametric estimate on a project (route it with class5-review). Mutates the draft. */
+export function createParametricEstimate(d: AppState, pid: string, i: ParametricInputs, requestNote: string, byId = d.currentUserId, needBy?: string): Estimate | undefined {
+  const p = d.projects.find((x) => x.id === pid)
+  if (!p) return
+  const r = priceParametric(d, i, p)
+  if (!r) return
+  const version = Math.max(0, ...d.estimates.filter((e) => e.projectId === pid).map((e) => e.version)) + 1
+  const e: Estimate = {
+    id: uid('est'), projectId: pid, version, title: 'Class 5 parametric estimate', cls: 5, status: 'draft', method: 'quick',
+    createdAt: nowISO(), createdById: byId, lines: [], maturity: { 'need-defined': true }, loaders: [], escalationPct: 0, contingency: { method: 'risk-based', pct: 0 },
+    basis: parametricBoe(r),
+    quick: { inputs: { assetType: i.assetType, workMethod: i.workMethod, diameterBand: 'n/a', terrain: p.location.terrain, district: i.region, qty: i.lengthFt, unit: 'ft', midpointYear: i.midpointYear }, historicalCostId: '', basis: 'p50', baseRate: i.lengthFt ? r.rateDirect / i.lengthFt : 0, regionFactor: d.settings.estimating.regionFactors[i.region] ?? 1, escalationFactor: 1 + r.escalationPct / 100, direct: r.direct, range: { low: r.low, high: r.high }, requestNote, needBy },
+    parametric: record(d, r),
+  }
+  applyResult(d, e, r)
+  d.estimates.push(e)
+  d.audit.push({ id: uid('aud'), at: e.createdAt, actorId: byId, entity: 'estimate', entityId: e.id, projectId: pid, action: 'create', summary: `Class 5 parametric estimate v${version}: ${i.lengthFt.toLocaleString('en-US')} ft, ${i.region}, ${r.risks.filter((x) => x.level !== 'low').length} risk items above low — $${(r.total / 1e6).toFixed(2)}M at P80 (P10–P90 $${(r.low / 1e6).toFixed(2)}M–$${(r.high / 1e6).toFixed(2)}M)` })
+  return e
+}
+
+/** Reprice a saved parametric estimate with new risk ratings and/or an estimator % (preview; no change). */
+export function previewParametric(s: AppState, e: Estimate, risks: Record<string, RiskLevel>, adjustPct: number): ParametricResult | undefined {
+  if (!e.parametric) return
+  const p = s.projects.find((x) => x.id === e.projectId)
+  return priceParametric(s, { ...e.parametric.inputs, risks: { ...e.parametric.inputs.risks, ...risks } }, p, { adjustPct })
+}
+
+/**
+ * Estimating-team review of a parametric estimate: change any risk rating and/or apply a ± % with a reason. Repriced
+ * (Monte Carlo included); before/after kept on the record and in the audit trail.
+ */
+export function adjustParametricEstimate(d: AppState, estimateId: string, o: { risks?: Record<string, RiskLevel>; pct: number; reason: string; note?: string }, byId = d.currentUserId) {
+  const e = d.estimates.find((x) => x.id === estimateId)
+  if (!e?.parametric || !e.quick) return
+  const prevRisks = e.parametric.inputs.risks
+  const risks = { ...prevRisks, ...(o.risks ?? {}) }
+  const r = previewParametric(d, e, risks, o.pct)
+  if (!r) return
+  const names = Object.fromEntries(riskItemsOf(d).map((x) => [x.id, x.name]))
+  const changed = Object.keys(risks).filter((k) => risks[k] !== prevRisks[k]).map((k) => `${names[k] ?? k} ${prevRisks[k] ?? 'low'} → ${risks[k]}`)
+  const before = estimateTotals(e).total
+  applyResult(d, e, r)
+  const after = estimateTotals(e).total
+  const reason = o.note?.trim() ? `${o.reason} — ${o.note.trim()}` : o.reason
+  const adjustment = { pct: o.pct, reason, byId, at: nowISO(), fromTotal: before, toTotal: after, changed }
+  e.basis = parametricBoe(r, { pct: o.pct, reason, changed })
+  e.parametric = record(d, r, adjustment, e.parametric.requestedRisks ?? prevRisks)
+  e.quick = { ...e.quick, direct: r.direct, range: { low: r.low, high: r.high }, adjustment: { pct: o.pct, reason, byId, at: adjustment.at, fromTotal: before, toTotal: after } }
+  d.audit.push({ id: uid('aud'), at: adjustment.at, actorId: byId, entity: 'estimate', entityId: e.id, projectId: e.projectId, action: 'adjust', summary: `Estimator adjusted Class 5 parametric estimate${changed.length ? ` (${changed.join('; ')})` : ''} ${o.pct >= 0 ? '+' : ''}${o.pct}%: $${(before / 1e6).toFixed(2)}M → $${(after / 1e6).toFixed(2)}M — ${reason}` })
+}
+
 ===== FILE: src/core/engine/position.ts =====
 // Project financial position and snapshots (Module 3).
 import type { AppState, BudgetVersion, Milestone, Money, Project, Snapshot, SnapshotType } from '../types'
@@ -6982,6 +7347,7 @@ import { CATEGORIES, CONTRACTORS, DOA, HAZARDS, INFO_FIELDS, INFO_SECTIONS, PEOP
 import { applyProfile, defaultLineSpread, linesOfFunction, rollupGrid, syncForecast, toLines, splitExact } from '../engine/lines'
 import { postImport, stageImport, resolveTxn, type SapRow } from '../engine/sap'
 import { createFactorEstimate, adjustFactorEstimate, factorInputsFromProject } from '../engine/factorModel'
+import { adjustParametricEstimate, createParametricEstimate, parametricInputsFromProject } from '../engine/parametric'
 import { FACTOR_SETTINGS, buildBacktestProjects, buildFactorModels, factorModelAudit, seedProjectDrivers } from './factorModel'
 import { defaultSpread, toFunctions, spreadByYear as spreadYears } from '../engine/wbs'
 import { infoValue } from '../engine/info'
@@ -7565,10 +7931,13 @@ function seedLiveWorkflows(s: AppState, R: ReturnType<typeof rng>) {
       if (inst) advance(s, inst.id, R.int(1, 3))
     }
   }
-  // Class 5 quick estimates for new projects: requested by the PM from the historical cost table, reviewed by an estimator
+  // Class 5 requests for new projects: the PM enters length, location and risk ratings (priced from the rate table
+  // with a Monte Carlo); an estimator reviews. Assets the rate table cannot price by length use the factor model.
   active.filter((p) => p.stageIndex === 0).forEach((p, i) => {
     pin(s, addDays(AS_OF, -R.int(3, 12)))
-    const e = createFactorEstimate(s, p.id, factorInputsFromProject(s, p), R.pick(['Screening number for the TY2028 GRC forecast', 'Planning budget for Gate 1 business case', 'Portfolio plan placeholder — replace when route is selected']), p.team.pm)
+    const note = R.pick(['Screening number for the TY2028 GRC forecast', 'Planning budget for Gate 1 business case', 'Portfolio plan placeholder — replace when route is selected'])
+    const pin_ = parametricInputsFromProject(s, p)
+    const e = (pin_.lengthFt > 0 ? createParametricEstimate(s, p.id, pin_, note, p.team.pm) : undefined) ?? createFactorEstimate(s, p.id, factorInputsFromProject(s, p), note, p.team.pm)
     if (!e) return
     const inst = startWorkflow(s, 'class5-review', { title: `${p.code} Class 5 quick estimate`, recordType: 'estimate', recordId: e.id, projectId: p.id, data: { amount: estimateTotals(e).total, note: e.quick!.requestNote }, startedById: p.team.pm })
     if (!inst) return
@@ -7576,10 +7945,11 @@ function seedLiveWorkflows(s: AppState, R: ReturnType<typeof rng>) {
     if (i === 0) {
       // one already reviewed: adjusted by an estimator with a reason, then approved
       const est = 'u-est1'
-      adjustFactorEstimate(s, e.id, { pct: 12, reason: 'Site condition the drivers do not capture', note: 'Two HDD crossings under the flood-control channel are not represented in the historical population.' }, est)
+      if (e.parametric) adjustParametricEstimate(s, e.id, { risks: { crossings: 'high' }, pct: 0, reason: 'Site condition the drivers do not capture', note: 'Two drills under the flood-control channel; crossings re-rated high.' }, est)
+      else adjustFactorEstimate(s, e.id, { pct: 12, reason: 'Site condition the drivers do not capture', note: 'Two HDD crossings under the flood-control channel are not represented in the historical population.' }, est)
       const live = s.workflows.find((w) => w.id === inst.id)
       const slot = live?.active[0]
-      if (live && slot) actOnWorkflow(s, live.id, slot.nodeId, est, 'approve', 'Adjusted +12% for the channel crossings; otherwise in line with history.')
+      if (live && slot) actOnWorkflow(s, live.id, slot.nodeId, est, 'approve', e.parametric ? 'Crossings re-rated high for the channel drills; otherwise in line with the rate table.' : 'Adjusted +12% for the channel crossings; otherwise in line with history.')
     }
   })
   // gate review packets waiting at PMO quality check
@@ -12870,10 +13240,10 @@ export default function QuickEstimateSettings() {
       <div className="flex min-w-0 flex-col gap-4">
         <Panel title="How the quick estimate works">
           <ol className="ml-5 flex list-decimal flex-col gap-2 text-[13px]">
-            <li><b>Pick a few values.</b> Asset type, work method, diameter, quantity, region and midpoint year, plus the site drivers: soil, crossings, setting, permit complexity, HCA, class location, traffic, work hours and remoteness. Requests from a project start pre-filled from its record.</li>
-            <li><b>Price it on the published factor model{pub ? ` (v${pub.version})` : ''}.</b> Direct = base rate × quantity × size scale × each driver's multiplier × region × escalation (×{escalationFactor(s, 2025, y + 1).toFixed(3)} from 2025 to {y + 1}). Then + loaders ({lp.toFixed(1)}%) and + contingency ({qe.contingencyPct}%). Every driver's dollar effect is itemized, and the drivers' uncertainty gives the P10–P90 range. Drivers are physical, legal or logistical only, never demographic or wealth attributes.</li>
-            <li><b>Check it.</b> The rate-table Class 5 and the matching historical row are shown beside it, so reviewers can see when the model and history disagree.</li>
-            <li><b>Send to the estimating team.</b> The <a className="font-semibold text-link" href={workflowHref('class5-review')}>Class 5 quick estimate review</a> routes it to any estimator ({reviewers.map((p) => p.name).join(', ') || 'none configured'}). They can adjust it by a percentage and/or price it at P10/P90, with a mandatory reason, then approve or return it.</li>
+            <li><b>The PM enters three things.</b> Length of pipe, location (region) and a Low / Medium / High risk rating for each risk item (traffic, permits, soil, crossings, utilities, groundwater, environmental, work hours, tie-ins, access, restoration). Pipe size and work method come from the project record; requests from a project start with ratings pre-filled from its cost drivers.</li>
+            <li><b>Priced automatically from the rate table.</b> Each rate row for that pipe and method × the length (region row, else base row × region factor), plus an allowance per risk item at its rating's most-likely %, then sales tax, loaders ({lp.toFixed(1)}%) and escalation to the spend midpoint. Every allowance is itemized. Risk items are physical, legal or logistical only, never demographic or wealth attributes.</li>
+            <li><b>Monte Carlo.</b> Seeded draws of the rate-table cost (rows' P10 / P50 / P90) and each rated risk (min / most likely / max) give P10, P50, P80 and P90, a histogram, S-curve and a tornado of what drives the range. The estimate is funded at P80; contingency is P80 less the most-likely base.</li>
+            <li><b>Estimating team reviews.</b> The <a className="font-semibold text-link" href={workflowHref('class5-review')}>Class 5 quick estimate review</a> routes it to any estimator ({reviewers.map((p) => p.name).join(', ') || 'none configured'}). Only they can change a risk rating or apply a ± %, with a mandatory reason; the PM cannot adjust after sending. They see a factor-model check beside it, then approve or return.</li>
             <li><b>Approved = estimate of record.</b> It locks, carries its adjustment history, and becomes the planning budget at Gate 1. Maturing to Class 3 starts a new line-item version from it.</li>
           </ol>
         </Panel>
@@ -14003,8 +14373,9 @@ import { BulkReprice } from './Reprice'
 import { Markups, RegionsTax } from './Tables'
 import { ChangeLog, MaturityAdmin, ScopeLibrary, UnitsQuantities } from './Lists'
 import { FactorModelAdmin } from './FactorModel'
+import { RiskItemsAdmin } from './RiskItems'
 
-type Sub = 'rates' | 'factor' | 'reprice' | 'regions' | 'markups' | 'units' | 'scope' | 'maturity' | 'log'
+type Sub = 'rates' | 'risks' | 'factor' | 'reprice' | 'regions' | 'markups' | 'units' | 'scope' | 'maturity' | 'log'
 const SUB_KEY = 'crosswalk:estimating:admin'
 
 export function EstimatingAdmin({ s }: { s: AppState }) {
@@ -14027,6 +14398,7 @@ export function EstimatingAdmin({ s }: { s: AppState }) {
       {!canEdit && <Callout tone="info" title="Maintained by the estimating team">These tables drive every estimate. Estimators, the estimating lead and administrators edit them; everyone else can see them. Every change is recorded in the change log.</Callout>}
       <Tabs<Sub> value={sub} onChange={pick} tabs={[
         { id: 'rates', label: 'Rate table' },
+        { id: 'risks', label: 'Class 5 risk items' },
         { id: 'factor', label: 'Factor model', count: s.factorModels.some((m) => m.status === 'draft' || m.status === 'in-review') ? 1 : undefined },
         { id: 'reprice', label: 'Bulk update', count: stale || undefined },
         { id: 'regions', label: 'Regions & sales tax' },
@@ -14037,6 +14409,7 @@ export function EstimatingAdmin({ s }: { s: AppState }) {
         { id: 'log', label: 'Change log' },
       ]} />
       {sub === 'rates' && <RateTableAdmin s={s} canEdit={canEdit} onReprice={() => pick('reprice')} />}
+      {sub === 'risks' && <RiskItemsAdmin s={s} canEdit={canEdit} />}
       {sub === 'factor' && <FactorModelAdmin s={s} canEdit={canEdit} />}
       {sub === 'reprice' && <BulkReprice s={s} canEdit={canEdit} />}
       {sub === 'regions' && <RegionsTax s={s} canEdit={canEdit} />}
@@ -15087,6 +15460,81 @@ function PlanDrawer({ s, plan, onClose }: { s: AppState; plan: RepricePlan; onCl
 
 /** Count used for the tab badge. */
 export const staleCount = (s: AppState) => repriceCandidates(s).filter((p) => p.eligible && !p.kept).length
+
+===== FILE: src/views/estimating/admin/RiskItems.tsx =====
+// Estimating administration → Risk items: the list a PM rates Low / Medium / High risk on a Class 5 request, with what
+// each level means and its triangular cost impact (min / most likely / max % of rate-table direct cost).
+import type { AppState, RiskItemDef, RiskLevel } from '@/core/types'
+import { DEFAULT_RISK_ITEMS, RISK_LEVELS, RISK_LEVEL_LABEL, riskItemsOf, validateRiskItems } from '@/core/engine/parametric'
+import { Badge, Button, Callout, Input, Panel } from '@/ui/kit'
+import { NumInput } from '../parts'
+import { SaveBar, cellInp, saveSection, useDraft } from './shared'
+
+const describe = (a: RiskItemDef[], b: RiskItemDef[]) => {
+  const out: string[] = []
+  for (const x of b) {
+    const y = a.find((i) => i.id === x.id)
+    if (!y) { out.push(`added ${x.name}`); continue }
+    if (y.name !== x.name) out.push(`${y.name} renamed ${x.name}`)
+    for (const k of RISK_LEVELS) {
+      const p = y.levels[k], q = x.levels[k]
+      if (p.min !== q.min || p.mode !== q.mode || p.max !== q.max) out.push(`${x.name} ${k} ${p.min}/${p.mode}/${p.max}% → ${q.min}/${q.mode}/${q.max}%`)
+      if (p.label !== q.label) out.push(`${x.name} ${k} description changed`)
+    }
+  }
+  for (const y of a) if (!b.some((x) => x.id === y.id)) out.push(`removed ${y.name}`)
+  return out
+}
+
+export function RiskItemsAdmin({ s, canEdit }: { s: AppState; canEdit: boolean }) {
+  const current = riskItemsOf(s)
+  const D = useDraft<RiskItemDef[]>(current)
+  const problems = validateRiskItems(D.draft)
+  const save = () => {
+    if (problems.length) return
+    saveSection('risk-items', `Class 5 risk items: ${describe(current, D.draft).join('; ') || 'no change'}`, (d) => { d.settings.estimating.riskItems = JSON.parse(JSON.stringify(D.draft)) }, 'Risk items saved')
+    D.commit()
+  }
+  const setLevel = (i: number, k: RiskLevel, patch: Partial<RiskItemDef['levels'][RiskLevel]>) => D.set((d) => { d[i].levels[k] = { ...d[i].levels[k], ...patch }; return d })
+  return (
+    <Panel pad={false} title={<span className="inline-flex items-center gap-2">Class 5 risk items <Badge tone="info">{D.draft.length} items</Badge></span>}
+      subtitle="PMs rate each item Low, Medium or High risk on a Class 5 request. Each level adds a triangular allowance (min / most likely / max % of rate-table direct cost); the most likely drives the point estimate and all three feed the Monte Carlo. Physical, legal and logistical conditions only."
+      actions={canEdit && <div className="flex gap-2"><Button size="sm" onClick={() => D.set((d) => [...d, { id: `item${d.length + 1}`, name: 'New risk item', help: '', levels: { low: { label: 'Low', min: 0, mode: 0, max: 1 }, medium: { label: 'Medium', min: 1, mode: 3, max: 6 }, high: { label: 'High', min: 4, mode: 8, max: 15 } } }])}>+ Add item</Button><Button size="sm" variant="ghost" onClick={() => D.set(() => JSON.parse(JSON.stringify(DEFAULT_RISK_ITEMS)))}>Restore defaults</Button></div>}>
+      <div className="scroll-x">
+        <table className="tbl">
+          <thead><tr><th style={{ minWidth: 200 }}>Item</th>{RISK_LEVELS.map((k) => <th key={k} style={{ minWidth: 230 }}>{RISK_LEVEL_LABEL[k]} <span className="font-normal text-faint">· min / likely / max %</span></th>)}{canEdit && <th style={{ width: 30 }} />}</tr></thead>
+          <tbody>
+            {D.draft.map((it, i) => (
+              <tr key={i}>
+                <td className="align-top">{canEdit ? <div className="flex flex-col gap-1"><Input aria-label="Item name" className={cellInp} value={it.name} onChange={(e) => D.set((d) => { d[i].name = e.target.value; return d })} /><Input aria-label="Help text" className={cellInp} placeholder="What the PM should consider" value={it.help} onChange={(e) => D.set((d) => { d[i].help = e.target.value; return d })} /></div> : <><b className="text-[12.5px]">{it.name}</b><div className="text-[11.5px] text-muted">{it.help}</div></>}</td>
+                {RISK_LEVELS.map((k) => {
+                  const l = it.levels[k]
+                  return (
+                    <td key={k} className="align-top">
+                      {canEdit ? (
+                        <div className="flex flex-col gap-1">
+                          <Input aria-label={`${it.name} ${k} description`} className={cellInp} value={l.label} onChange={(e) => setLevel(i, k, { label: e.target.value })} />
+                          <div className="grid grid-cols-3 gap-1">
+                            <NumInput ariaLabel={`${it.name} ${k} min`} className={cellInp} value={l.min} step={0.5} onChange={(v) => setLevel(i, k, { min: v })} />
+                            <NumInput ariaLabel={`${it.name} ${k} most likely`} className={cellInp} value={l.mode} step={0.5} onChange={(v) => setLevel(i, k, { mode: v })} />
+                            <NumInput ariaLabel={`${it.name} ${k} max`} className={cellInp} value={l.max} step={0.5} onChange={(v) => setLevel(i, k, { max: v })} />
+                          </div>
+                        </div>
+                      ) : <div className="text-[12px]"><div>{l.label}</div><div className="tabular-nums text-muted">{l.min} / <b className="text-ink">{l.mode}</b> / {l.max}%</div></div>}
+                    </td>
+                  )
+                })}
+                {canEdit && <td className="align-top"><button className="text-muted hover:text-bad" aria-label={`Remove ${it.name}`} onClick={() => D.set((d) => d.filter((_, k) => k !== i))}>✕</button></td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {problems.length > 0 && D.dirty && <div className="px-4 py-2"><Callout tone="bad" title="Fix before saving">{problems.join(' · ')}</Callout></div>}
+      <SaveBar dirty={D.dirty} onSave={save} onDiscard={D.reset} disabled={problems.length > 0} note="New requests price with the saved table; requests already sent keep their ratings and are repriced only when an estimator reviews them." />
+    </Panel>
+  )
+}
 
 ===== FILE: src/views/estimating/admin/shared.tsx =====
 // Shared pieces for Estimating administration: a working copy with save/discard, the read-only notice,
@@ -17472,12 +17920,27 @@ export function BoeText({ basis, title = 'Basis of estimate' }: { basis: BasisOf
 /** Monte Carlo of a priced estimate: histogram with percentiles, S-curve, tornado of each uncertainty's contribution. */
 export function MonteCarloPanel({ r, iterations = 5000, seed = 11 }: { r: Pick<FactorResult, 'total' | 'parts'>; iterations?: number; seed?: number }) {
   const mc = useMemo(() => monteCarloFactor(r, iterations, seed), [r, iterations, seed])
-  const lo = Math.min(...mc.tornado.map((t) => t.low)), hi = Math.max(...mc.tornado.map((t) => t.high))
+  return <MonteCarloView mc={mc} point={r.total} note={<>Seeded draws (seed {mc.seed}) of the model's base-rate uncertainty and the uncertainty of each driver off its baseline, lognormal and independent, centred on the estimate. Same inputs, same result.</>} />
+}
+
+export interface MonteCarloData {
+  iterations: number
+  seed: number
+  p: { P10: number; P50: number; P80: number; P90: number }
+  mean: number
+  histogram: { x: number; n: number }[]
+  scurve: { pct: number; value: number }[]
+  tornado: { id: string; label: string; low: number; high: number; swing: number; share: number }[]
+}
+
+/** A finished Monte Carlo: percentile tiles, histogram with markers, S-curve, tornado. */
+export function MonteCarloView({ mc, point, note, pointLabel = 'Estimate' }: { mc: MonteCarloData; point: number; note?: React.ReactNode; pointLabel?: string }) {
+  const lo = Math.min(point, ...mc.tornado.map((t) => t.low)), hi = Math.max(point, ...mc.tornado.map((t) => t.high))
   const x = (v: number) => `${((v - lo) / (hi - lo || 1)) * 100}%`
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        {(['P10', 'P50', 'P80', 'P90'] as const).map((k) => <div key={k} className="rounded border border-line px-2.5 py-1.5"><div className="text-[10.5px] font-semibold uppercase tracking-wide text-faint">{k}</div><div className="font-display text-[16px] font-bold tabular-nums">{money(mc.p[k])}</div></div>)}
+        {(['P10', 'P50', 'P80', 'P90'] as const).map((k) => <div key={k} className={cx('rounded border px-2.5 py-1.5', k === 'P80' ? 'border-warn/60 bg-warn/5' : 'border-line')}><div className="text-[10.5px] font-semibold uppercase tracking-wide text-faint">{k}</div><div className="font-display text-[16px] font-bold tabular-nums">{money(mc.p[k])}</div></div>)}
         <div className="rounded border border-line px-2.5 py-1.5"><div className="text-[10.5px] font-semibold uppercase tracking-wide text-faint">Mean</div><div className="font-display text-[16px] font-bold tabular-nums">{money(mc.mean)}</div></div>
       </div>
       <div>
@@ -17488,23 +17951,23 @@ export function MonteCarloPanel({ r, iterations = 5000, seed = 11 }: { r: Pick<F
         <div className="eyebrow mb-1">S-curve · cost at each confidence level</div>
         <LineChart labels={mc.scurve.map((p) => `${p.pct}%`)} series={[{ name: 'Total cost', values: mc.scurve.map((p) => p.value), area: true }]} height={200} yMin={mc.scurve[0].value} />
       </div>
-      <div>
-        <div className="eyebrow mb-1">Tornado · P10–P90 swing from each source of uncertainty alone</div>
+      {mc.tornado.length > 0 && <div>
+        <div className="eyebrow mb-1">Tornado · what drives the range (each source swung alone)</div>
         <div className="flex flex-col gap-1.5">
           {mc.tornado.map((t) => (
-            <div key={t.id} className="grid grid-cols-1 items-center gap-x-2 gap-y-0.5 text-[12px] sm:grid-cols-[minmax(0,200px)_1fr_auto]">
+            <div key={t.id} className="grid grid-cols-1 items-center gap-x-2 gap-y-0.5 text-[12px] sm:grid-cols-[minmax(0,210px)_1fr_auto]">
               <span className="truncate" title={t.label}>{t.label}</span>
               <span className="relative h-3.5 rounded-sm bg-sunken">
-                <span className="absolute top-0 h-3.5 rounded-l-sm bg-good/60" style={{ left: x(t.low), width: `calc(${x(r.total)} - ${x(t.low)})` }} />
-                <span className="absolute top-0 h-3.5 rounded-r-sm bg-bad/60" style={{ left: x(r.total), width: `calc(${x(t.high)} - ${x(r.total)})` }} />
-                <span className="absolute -top-0.5 h-[18px] w-0.5 bg-ink" style={{ left: x(r.total) }} />
+                <span className="absolute top-0 h-3.5 rounded-l-sm bg-good/60" style={{ left: x(Math.min(t.low, point)), width: `calc(${x(point)} - ${x(Math.min(t.low, point))})` }} />
+                <span className="absolute top-0 h-3.5 rounded-r-sm bg-bad/60" style={{ left: x(point), width: `calc(${x(Math.max(t.high, point))} - ${x(point)})` }} />
+                <span className="absolute -top-0.5 h-[18px] w-0.5 bg-ink" style={{ left: x(point) }} title={pointLabel} />
               </span>
               <span className="tabular-nums text-muted">{money(t.low)}–{money(t.high)} · <b className="text-ink">{pct(t.share)}</b> of variance</span>
             </div>
           ))}
         </div>
-      </div>
-      <p className="text-[11.5px] text-muted">Seeded draws (seed {mc.seed}) of the model's base-rate uncertainty and the uncertainty of each driver off its baseline, lognormal and independent, centred on the estimate. Same inputs, same result.</p>
+      </div>}
+      {note && <p className="text-[11.5px] text-muted">{note}</p>}
     </div>
   )
 }
@@ -17813,7 +18276,8 @@ export function DeriveModal({ s, onClose }: { s: AppState; onClose: () => void }
 ===== FILE: src/views/estimating/quick/lib.ts =====
 // Class 5 quick estimate helpers for the estimating module (pure functions and draft mutations).
 // The pricing itself lives in core/engine/quick.ts; this file wires it to the request, review and table-maintenance flows.
-import type { AppState, AssetType, AuditEntry, DiameterBand, Estimate, FactorInputs, HistoricalCost, HistUnit, Project, QuickEstimate, QuickInputs, SiteDrivers, Terrain, WorkMethod, WorkflowInstance } from '@/core/types'
+import type { AppState, AssetType, AuditEntry, DiameterBand, Estimate, FactorInputs, HistoricalCost, HistUnit, ParametricInputs, Project, QuickEstimate, QuickInputs, RiskLevel, SiteDrivers, Terrain, WorkMethod, WorkflowInstance } from '@/core/types'
+import { adjustParametricEstimate, createParametricEstimate } from '@/core/engine/parametric'
 import { CLASS_RANGES, estimateTotals } from '@/core/engine/estimates'
 import { DIAMETER_BANDS, QUICK_CATALOG, UNIT_LABEL, adjustQuickEstimate, computeQuick, deriveFromClosed, escalationFactor, findHistorical, inputsFromProject, type QuickResult } from '@/core/engine/quick'
 import { actOnWorkflow, startWorkflow } from '@/core/engine/workflow'
@@ -17932,7 +18396,8 @@ export function quickEligibility(s: AppState, pid: string): { ok: boolean; reaso
   return { ok: true }
 }
 
-export interface RequestArgs { inputs: QuickInputs | FactorInputs; note: string; needBy?: string; byId?: string }
+export interface RequestArgs { inputs: QuickInputs | FactorInputs | ParametricInputs; note: string; needBy?: string; byId?: string }
+const isParametric = (i: RequestArgs['inputs']): i is ParametricInputs => 'risks' in i && !!(i as ParametricInputs).risks
 export interface RequestResult { estimateId?: string; instId?: string; message: string; ok: boolean }
 
 const names = (d: AppState, ids: string[]) => ids.map((id) => d.people.find((p) => p.id === id)?.name ?? id).join(', ')
@@ -17953,8 +18418,13 @@ function route(d: AppState, e: Estimate, note: string, byId: string): RequestRes
 export function submitQuickRequest(d: AppState, pid: string, a: RequestArgs): RequestResult {
   const byId = a.byId ?? d.currentUserId
   const p = d.projects.find((x) => x.id === pid)
+  if (isParametric(a.inputs)) {
+    const pe = createParametricEstimate(d, pid, a.inputs, a.note.trim(), byId, a.needBy || undefined)
+    if (!pe) return { ok: false, message: 'The rate table has no rows for this pipe and work method' }
+    return route(d, pe, a.note.trim(), byId)
+  }
   if (!publishedModel(d)) return { ok: false, message: 'No published factor model — ask the estimating lead' }
-  const e = createFactorEstimate(d, pid, toFactorInputs(d, p, a.inputs), a.note.trim(), byId, a.needBy || undefined)
+  const e = createFactorEstimate(d, pid, toFactorInputs(d, p, a.inputs as QuickInputs), a.note.trim(), byId, a.needBy || undefined)
   if (!e) return { ok: false, message: 'The factor model has no base rate for this asset and method' }
   return route(d, e, a.note.trim(), byId)
 }
@@ -17981,13 +18451,15 @@ export function reviseQuickRequest(d: AppState, estimateId: string, a: RequestAr
   const byId = a.byId ?? d.currentUserId
   const nAudit = d.audit.length
   const p = d.projects.find((x) => x.id === e.projectId)
-  const fresh = createFactorEstimate(d, e.projectId, toFactorInputs(d, p, a.inputs), a.note.trim(), byId, a.needBy || undefined)
-  if (!fresh) return { ok: false, message: 'The factor model has no base rate for these inputs' }
+  const par = isParametric(a.inputs)
+  const fresh = par ? createParametricEstimate(d, e.projectId, a.inputs as ParametricInputs, a.note.trim(), byId, a.needBy || undefined) : createFactorEstimate(d, e.projectId, toFactorInputs(d, p, a.inputs as QuickInputs), a.note.trim(), byId, a.needBy || undefined)
+  if (!fresh) return { ok: false, message: par ? 'The rate table has no rows for this pipe and work method' : 'The factor model has no base rate for these inputs' }
   // Use the engine's pricing and basis text, but keep this record (same id and version).
   d.estimates.splice(d.estimates.indexOf(fresh), 1)
   d.audit.splice(nAudit)
-  e.lines = fresh.lines; e.loaders = fresh.loaders; e.contingency = fresh.contingency; e.basis = fresh.basis; e.quick = fresh.quick; e.factor = fresh.factor; e.salesTax = fresh.salesTax; e.region = fresh.region; e.escalationPct = 0; e.cls = 5
-  d.audit.push({ id: uid('aud'), at: nowISO(), actorId: byId, entity: 'estimate', entityId: e.id, projectId: e.projectId, action: 'revise', summary: `Revised Class 5 quick estimate v${e.version} on factor model v${e.factor?.modelVersion ?? '—'} (${describeQuickInputs(a.inputs)}): $${(estimateTotals(e).total / 1e6).toFixed(2)}M` })
+  e.lines = fresh.lines; e.loaders = fresh.loaders; e.contingency = fresh.contingency; e.basis = fresh.basis; e.quick = fresh.quick; e.factor = fresh.factor; e.parametric = fresh.parametric; e.salesTax = fresh.salesTax; e.region = fresh.region; e.escalationPct = fresh.escalationPct; e.rateTableVersion = fresh.rateTableVersion; e.title = fresh.title; e.cls = 5
+  const what = par ? `rate table + risk ratings (${(a.inputs as ParametricInputs).lengthFt.toLocaleString('en-US')} ft, ${(a.inputs as ParametricInputs).region})` : `factor model v${e.factor?.modelVersion ?? '—'} (${describeQuickInputs(a.inputs as QuickInputs)})`
+  d.audit.push({ id: uid('aud'), at: nowISO(), actorId: byId, entity: 'estimate', entityId: e.id, projectId: e.projectId, action: 'revise', summary: `Revised Class 5 quick estimate v${e.version} on ${what}: $${(estimateTotals(e).total / 1e6).toFixed(2)}M` })
   const back = returnedToRequester(d, e)
   if (back) {
     back.inst.data.amount = estimateTotals(e).total
@@ -18045,9 +18517,10 @@ export function previewAdjust(s: AppState, e: Estimate, basis: QuickEstimate['ba
 }
 
 /** Apply an estimator adjustment and keep the workflow's amount current. */
-export function applyAdjustment(d: AppState, estimateId: string, o: { pct: number; basis: QuickEstimate['basis']; reason: string; note?: string }, byId = d.currentUserId) {
+export function applyAdjustment(d: AppState, estimateId: string, o: { pct: number; basis: QuickEstimate['basis']; reason: string; note?: string; risks?: Record<string, RiskLevel> }, byId = d.currentUserId) {
   const e0 = d.estimates.find((x) => x.id === estimateId)
-  if (e0?.factor) adjustFactorEstimate(d, estimateId, o, byId)
+  if (e0?.parametric) adjustParametricEstimate(d, estimateId, { risks: o.risks, pct: o.pct, reason: o.reason, note: o.note }, byId)
+  else if (e0?.factor) adjustFactorEstimate(d, estimateId, o, byId)
   else adjustQuickEstimate(d, estimateId, o, byId)
   const e = d.estimates.find((x) => x.id === estimateId)
   const inst = e && d.workflows.find((w) => w.id === e.workflowInstanceId)
@@ -18238,6 +18711,112 @@ export function rowUsage(s: Pick<AppState, 'estimates'>, rowId: string) {
 
 export const projectLabel = (p?: Project) => (p ? `${p.code} · ${p.name}` : '—')
 
+===== FILE: src/views/estimating/quick/parametricParts.tsx =====
+// Class 5 parametric request — presentational pieces: the risk-item ratings (Low / Medium / High risk), the live
+// result (headline with the Monte Carlo P10–P90, risk allowances, build-up, rate rows) and the Monte Carlo view.
+import type { AppState, RiskItemDef, RiskLevel } from '@/core/types'
+import { RISK_LEVELS, RISK_LEVEL_LABEL, riskItemsOf, type ParametricResult } from '@/core/engine/parametric'
+import { cx, money, sum } from '@/core/util'
+import { Badge, Select } from '@/ui/kit'
+import { QuickHeadline } from './parts'
+import { MonteCarloView, VerifyTag } from './factorParts'
+
+const TONE: Record<RiskLevel, string> = { low: 'border-line', medium: 'border-warn/60 bg-warn/5', high: 'border-bad/50 bg-bad/5' }
+
+/** One row per risk item: name, a Low / Medium / High risk dropdown, what the chosen level means, and its $ effect. */
+export function RiskRatings({ s, value, onChange, result, disabled, original, idPrefix = 'risk' }: {
+  s: AppState; value: Record<string, RiskLevel>; onChange?: (v: Record<string, RiskLevel>) => void; result?: ParametricResult; disabled?: boolean
+  /** Ratings to compare against (e.g. the PM's, when an estimator re-rates). */ original?: Record<string, RiskLevel>; idPrefix?: string
+}) {
+  const items = riskItemsOf(s)
+  const amount = (id: string) => result?.risks.find((r) => r.id === id)?.amount ?? 0
+  return (
+    <div className="flex flex-col gap-1.5">
+      {items.map((it: RiskItemDef) => {
+        const lv = value[it.id] ?? 'low'
+        const was = original?.[it.id] ?? 'low'
+        return (
+          <div key={it.id} className={cx('grid grid-cols-1 items-center gap-x-3 gap-y-1 rounded border px-2.5 py-2 sm:grid-cols-[minmax(0,1fr)_150px]', TONE[lv])}>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold">
+                <label htmlFor={`${idPrefix}-${it.id}`}>{it.name}</label>
+                {amount(it.id) > 0 && <span className="text-[12px] font-normal tabular-nums text-muted">+{money(amount(it.id))}</span>}
+                {original && was !== lv && <Badge tone="marker">was {RISK_LEVEL_LABEL[was].toLowerCase()}</Badge>}
+              </div>
+              <div className="text-[12px] text-muted">{it.levels[lv].label}</div>
+            </div>
+            {disabled || !onChange
+              ? <span className="text-[12.5px] font-semibold sm:text-right">{RISK_LEVEL_LABEL[lv]}</span>
+              : <Select id={`${idPrefix}-${it.id}`} aria-label={it.name} title={it.help} value={lv} onChange={(e) => onChange({ ...value, [it.id]: e.target.value as RiskLevel })}
+                  options={RISK_LEVELS.map((k) => ({ value: k, label: RISK_LEVEL_LABEL[k] }))} />}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Rate table → risk allowances → tax, loaders, escalation → risk-based contingency (P80) → total. */
+export function ParametricBuildUp({ r }: { r: ParametricResult }) {
+  const row = (label: React.ReactNode, value: React.ReactNode, strong?: boolean) => (
+    <tr className={cx(strong && 'border-t border-line')}><td className={cx('text-[12.5px]', strong && 'font-semibold')}>{label}</td><td className={cx('num text-[12.5px]', strong && 'font-semibold')}>{value}</td></tr>
+  )
+  const allowances = sum(r.riskLines.map((l) => l.unitCost))
+  return (
+    <table className="tbl [&_td]:py-1">
+      <tbody>
+        {row(<>Rate table <span className="text-faint">({r.rateLines.length} rows × {r.inputs.lengthFt.toLocaleString('en-US')} ft, {r.inputs.region})</span></>, money(r.rateDirect))}
+        {row(<>+ Risk allowances <span className="text-faint">({r.riskPct}% most likely)</span></>, money(allowances))}
+        {r.adjustmentLine ? row(<>+ Estimator adjustment <span className="text-faint">({r.adjustPct > 0 ? '+' : ''}{r.adjustPct}%)</span></>, money(r.adjustmentLine.unitCost)) : null}
+        {row('= Direct cost', money(r.direct), true)}
+        {row(<>+ Sales tax <span className="text-faint">({r.salesTax.pct}% on material)</span></>, money(r.tax))}
+        {row(<>+ Loaders <span className="text-faint">({sum(r.loaders.map((l) => l.pct)).toFixed(1)}%)</span></>, money(r.loaderAmount))}
+        {row(<>+ Escalation <span className="text-faint">({r.basisYear} → {r.inputs.midpointYear}, {r.escalationPct}%)</span></>, money(r.escalation))}
+        {row('= Base estimate (most likely)', money(r.base), true)}
+        {row(<>+ Risk-based contingency <span className="text-faint">(to P80, {r.contingencyPct}%)</span></>, money(r.contingency))}
+        <tr className="border-t-2 border-ink/60"><td className="font-display text-[13.5px] font-bold">= Estimate at P80</td><td className="num font-display text-[13.5px] font-bold">{money(r.total)}</td></tr>
+      </tbody>
+    </table>
+  )
+}
+
+/** The rate rows that priced the estimate (collapsible). */
+export function RateRows({ r }: { r: ParametricResult }) {
+  return (
+    <details className="rounded border border-line px-3 py-2">
+      <summary className="cursor-pointer text-[12.5px] font-semibold">Rate-table rows ({r.rateLines.length}) · {money(r.rateSpread.p10)}–{money(r.rateSpread.p90)} at the rows' P10–P90</summary>
+      <div className="scroll-x mt-2">
+        <table className="tbl">
+          <thead><tr><th>Item</th><th className="num">Qty</th><th>Unit</th><th className="num">Unit cost</th><th className="num">Amount</th></tr></thead>
+          <tbody>
+            {r.rateLines.map((l) => <tr key={l.id}><td className="text-[12.5px]">{l.description}</td><td className="num">{l.qty.toLocaleString('en-US')}</td><td>{l.unit}</td><td className="num">{money(l.unitCost)}</td><td className="num">{money(l.qty * l.unitCost)}</td></tr>)}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  )
+}
+
+/** Headline at P80 with the Monte Carlo P10–P90 against the AACE Class 5 band. */
+export function ParametricHeadline({ r, size = 'lg' }: { r: ParametricResult; size?: 'lg' | 'md' }) {
+  return <QuickHeadline total={r.total} low={r.mc.p.P10} high={r.mc.p.P90} perUnit={r.perFoot} unit="ft" size={size} source="Monte Carlo" />
+}
+
+/** Full live result: headline, Monte Carlo (shown by default), build-up, rate rows. */
+export function ParametricResultView({ r, compact }: { r: ParametricResult; compact?: boolean }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <ParametricHeadline r={r} size={compact ? 'md' : 'lg'} />
+      <div className="rounded-md border border-line p-3">
+        <div className="mb-2 flex flex-wrap items-center gap-2"><span className="eyebrow">Monte Carlo</span><Badge tone="info">{r.mc.iterations.toLocaleString('en-US')} draws</Badge><VerifyTag>Distributions — verify</VerifyTag></div>
+        <MonteCarloView mc={r.mc} point={r.base} pointLabel="Base estimate (most likely)" note={<>Seeded draws (seed {r.mc.seed}): rate-table cost triangular on the rows' P10 / P50 / P90, and each risk item triangular on its min / most likely / max at the rating chosen, independent. The estimate is funded at P80; contingency is P80 less the most-likely base. Same inputs, same result.</>} />
+      </div>
+      <div><div className="eyebrow mb-1">How the number is built</div><ParametricBuildUp r={r} /></div>
+      <RateRows r={r} />
+    </div>
+  )
+}
+
 ===== FILE: src/views/estimating/quick/parts.tsx =====
 // Presentational pieces for the Class 5 quick estimate: result headline, range vs AACE, build-up, matched row.
 import type { AppState, HistoricalCost, HistUnit, QuickInputs } from '@/core/types'
@@ -18276,7 +18855,7 @@ export function RangeLegend({ source = 'Historical' }: { source?: string }) {
 }
 
 /** Headline total, $/unit and the range bar. */
-export function QuickHeadline({ total, low, high, perUnit, unit, size = 'lg', source = 'Historical' }: { total: number; low: number; high: number; perUnit: number; unit: HistUnit; size?: 'lg' | 'md'; source?: 'Historical' | 'Model' }) {
+export function QuickHeadline({ total, low, high, perUnit, unit, size = 'lg', source = 'Historical' }: { total: number; low: number; high: number; perUnit: number; unit: HistUnit; size?: 'lg' | 'md'; source?: string }) {
   const a = aaceCompare({ total, low, high })
   return (
     <div className="flex flex-col gap-1.5">
@@ -18292,7 +18871,7 @@ export function QuickHeadline({ total, low, high, perUnit, unit, size = 'lg', so
       <RangeLegend source={source} />
       <p className="text-[12px] text-muted">
         {source} spread {pct(a.lo)} / +{pct(a.hi)} around the estimate{' '}
-        {a.inside ? <>sits <b className="text-good">inside</b> the AACE Class 5 range ({pct(a.aaceLo)} / +{pct(a.aaceHi)}: {money(a.aaceLow)}–{money(a.aaceHigh)}).</> : <>is <b className="text-warn">wider than</b> the AACE Class 5 range ({pct(a.aaceLo)} / +{pct(a.aaceHi)}): treat the {source === 'Model' ? 'model range' : 'history'} as thin.</>}
+        {a.inside ? <>sits <b className="text-good">inside</b> the AACE Class 5 range ({pct(a.aaceLo)} / +{pct(a.aaceHi)}: {money(a.aaceLow)}–{money(a.aaceHigh)}).</> : <>is <b className="text-warn">wider than</b> the AACE Class 5 range ({pct(a.aaceLo)} / +{pct(a.aaceHi)}): treat the {source === 'Historical' ? 'history' : `${source.toLowerCase()} range`} as thin.</>}
       </p>
     </div>
   )
@@ -18360,11 +18939,12 @@ function Mini({ k, v, strong }: { k: string; v: React.ReactNode; strong?: boolea
 }
 
 ===== FILE: src/views/estimating/quick/QuickForm.tsx =====
-// Class 5 quick estimate request on the factor model: a handful of dropdowns pre-filled from the project scope and its
-// cost drivers, a live forward-looking number with every driver itemized, the rate-table cross-check and the generated
-// BOE, and one button that sends it to the estimating team (class5-review workflow).
+// Class 5 request a PM fills in: length of pipe, location and a Low / Medium / High risk rating per risk item, priced
+// automatically from the rate table with a Monte Carlo, and one button that sends it to the estimating team
+// (class5-review workflow). The factor-model pieces below are kept for the estimator's model check and older records.
 import { useMemo, useState } from 'react'
-import type { AppState, AssetType, DiameterBand, FactorInputs, FactorModel, Project, QuickInputs, Terrain, WorkMethod } from '@/core/types'
+import type { AppState, AssetType, DiameterBand, FactorInputs, FactorModel, ParametricInputs, Project, QuickInputs, Terrain, WorkMethod } from '@/core/types'
+import { parametricInputsFromProject, priceParametric } from '@/core/engine/parametric'
 import { mutate, useMe, useStore } from '@/core/store'
 import { DIAMETER_BANDS, QUICK_CATALOG, UNIT_LABEL } from '@/core/engine/quick'
 import { factorBoe, factorInputsFromProject, priceFactor, publishedModel, rateTableEstimate, taxForDistrict } from '@/core/engine/factorModel'
@@ -18374,9 +18954,10 @@ import { cx } from '@/core/util'
 import { Badge, Button, Callout, Field, Input, Panel, Select, TextArea } from '@/ui/kit'
 import { toast } from '@/ui/toast'
 import { NumInput } from '../parts'
-import { METHOD_LABEL, TERRAIN_LABEL, bandLabel, blankInputs, catalogOf, districtsOf, normalizeInputs, quickEligibility, canRevise, reviseQuickRequest, submitQuickRequest, toFactorInputs, type RequestResult } from './lib'
+import { ASSET_LABEL, METHOD_LABEL, TERRAIN_LABEL, bandLabel, blankInputs, catalogOf, districtsOf, normalizeInputs, quickEligibility, canRevise, reviseQuickRequest, submitQuickRequest, toFactorInputs, type RequestResult } from './lib'
 import { QuickBadge, QuickHeadline } from './parts'
 import { BoeText, DriverInputs, DriverTable, FactorBuildUp, MonteCarloToggle, RateTableCompare, buildOf } from './factorParts'
+import { ParametricResultView, RiskRatings } from './parametricParts'
 
 const PURPOSES = ['Screening number for the GRC forecast', 'Planning budget for the Gate 1 business case', 'Portfolio plan placeholder until a route is selected']
 export const NEW_NEED = '__new'
@@ -18430,33 +19011,38 @@ export function ModelLine({ model, r, inputs }: { model: FactorModel; r: ReturnT
   )
 }
 
+const PIPE_SIZES = [2, 3, 4, 6, 8, 10, 12, 16, 20, 24, 30, 36]
+
 /**
- * Full request: optional project picker (or a new need with no project), scope and driver inputs pre-filled from the
- * project, purpose, need-by, live result, "Send to estimating team". With `reviseId` it reprices a returned quick
+ * PM request for a Class 5 estimate: length of pipe, location and a Low / Medium / High risk rating per risk item.
+ * The pipe and work method come from the project record. Priced automatically from the rate table with a Monte
+ * Carlo; only the estimating team adjusts it, in the next workflow step. With `reviseId` it reprices a returned
  * estimate in place and routes it again.
  */
 export function QuickRequest({ projectId, allowPicker, reviseId, onDone, onCancel }: { projectId?: string; allowPicker?: boolean; reviseId?: string; onDone?: (estimateId: string, projectId: string) => void; onCancel?: () => void }) {
   const s = useStore()
   const me = useMe()
-  const model = publishedModel(s)
   const revising = reviseId ? s.estimates.find((e) => e.id === reviseId) : undefined
   const [pid, setPid] = useState<string>(revising?.projectId ?? projectId ?? NEW_NEED)
   const project = s.projects.find((p) => p.id === pid)
-  const initial = (id: string): FactorInputs => {
-    const p = s.projects.find((x) => x.id === id)
-    if (revising?.quick) return toFactorInputs(s, p, revising.quick.inputs)
-    return p && catalogOf(p.asset.type) ? (normalizeInputs(factorInputsFromProject(s, p)) as FactorInputs) : toFactorInputs(s, undefined, blankInputs(s))
+  const initial = (id: string): ParametricInputs => {
+    if (revising?.parametric) return JSON.parse(JSON.stringify(revising.parametric.inputs))
+    return parametricInputsFromProject(s, s.projects.find((x) => x.id === id))
   }
-  const [inputs, setInputsRaw] = useState<FactorInputs>(() => initial(pid))
-  const setInputs = (v: FactorInputs) => setInputsRaw(!project && v.district !== inputs.district ? { ...v, taxPct: taxForDistrict(s, v.district) } : v)
+  const [inputs, setInputs] = useState<ParametricInputs>(() => initial(pid))
+  const [pipeOpen, setPipeOpen] = useState(false)
   const [note, setNote] = useState(revising?.quick?.requestNote ?? '')
   const [needBy, setNeedBy] = useState(revising?.quick?.needBy ?? '')
-  const pickProject = (id: string) => { setPid(id); setInputsRaw(initial(id)) }
+  const pickProject = (id: string) => { setPid(id); setInputs(initial(id)) }
+  const set = (patch: Partial<ParametricInputs>) => setInputs((v) => ({ ...v, ...patch }))
+  const r = useMemo(() => priceParametric(s, inputs, project), [s, inputs, project])
   const elig = revising ? { ok: canRevise(s, revising), reason: canRevise(s, revising) ? undefined : 'Only a returned or recalled estimate can be revised' } : project ? quickEligibility(s, project.id) : { ok: false, reason: undefined }
-  const fromProject = project && catalogOf(project.asset.type) ? (normalizeInputs(factorInputsFromProject(s, project)) as FactorInputs) : undefined
-  const differs = fromProject ? (['assetType', 'workMethod', 'diameterBand', 'terrain', 'district', 'qty', 'midpointYear'] as const).filter((k) => fromProject[k] !== inputs[k]) : []
-  const driverDiffs = fromProject ? (Object.keys(inputs.site) as (keyof FactorInputs['site'])[]).filter((k) => fromProject.site[k] !== inputs.site[k]) : []
-  const problems = [!model && 'No published factor model', !inputs.qty && 'Enter a quantity', !note.trim() && 'Say what the estimate is for', !elig.ok && elig.reason].filter(Boolean) as string[]
+  const fromProject = project ? parametricInputsFromProject(s, project) : undefined
+  const changedRisks = fromProject ? Object.keys(inputs.risks).filter((k) => inputs.risks[k] !== fromProject.risks[k]).length : 0
+  const pipeCats = QUICK_CATALOG.filter((c) => c.unit === 'ft')
+  const methods = catalogOf(inputs.assetType)?.methods ?? []
+  const y = Number(s.settings.asOf.slice(0, 4))
+  const problems = [!inputs.lengthFt && 'Enter the length of pipe', inputs.lengthFt > 0 && !r && 'The rate table has no rows for this pipe and work method — ask the estimating team', !note.trim() && 'Say what the estimate is for', !elig.ok && elig.reason].filter(Boolean) as string[]
   const send = () => {
     if (problems.length || !project) return
     let res: RequestResult = { ok: false, message: '' }
@@ -18475,12 +19061,31 @@ export function QuickRequest({ projectId, allowPicker, reviseId, onDone, onCance
             <Select id="q-project" value={pid} onChange={(e) => pickProject(e.target.value)} options={[{ value: NEW_NEED, label: 'New need — no project yet' }, ...s.projects.filter((p) => p.status === 'active' || p.status === 'on-hold').map((p) => ({ value: p.id, label: `${p.code} · ${p.name}` }))]} />
           </Field>
         )}
-        <QuickInputsForm s={s} value={inputs} onChange={setInputs} />
-        {differs.length > 0 && <div className="flex flex-wrap items-center gap-2 text-[11.5px] text-muted"><span>Differs from the project record ({differs.join(', ').replace('assetType', 'asset').replace('workMethod', 'method').replace('diameterBand', 'band').replace('midpointYear', 'midpoint')}).</span><button className="font-semibold text-link" onClick={() => setInputsRaw({ ...fromProject!, site: inputs.site })}>Reset scope to project</button></div>}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Length of pipe (feet)"><NumInput id="q-length" value={inputs.lengthFt} min={0} onChange={(v) => set({ lengthFt: Math.max(0, Math.round(v)) })} /></Field>
+          <Field label="Location (region)"><Select id="q-region" value={inputs.region} onChange={(e) => set({ region: e.target.value })} options={s.settings.estimating.regions.map((g) => ({ value: g, label: `${g} · ×${(s.settings.estimating.regionFactors[g] ?? 1).toFixed(2)}` }))} /></Field>
+        </div>
+        <div className="rounded border border-line bg-sunken/40 px-3 py-2 text-[12.5px]">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span><span className="text-muted">Pipe and work:</span> <b>{inputs.diameterIn}" {ASSET_LABEL[inputs.assetType].toLowerCase()}</b> · {METHOD_LABEL[inputs.workMethod].toLowerCase()} · {inputs.midpointYear} spend midpoint <span className="text-faint">{project ? '(from the project record)' : ''}</span></span>
+            <button type="button" className="font-semibold text-link" onClick={() => setPipeOpen((v) => !v)}>{pipeOpen ? 'Done' : 'Change'}</button>
+          </div>
+          {pipeOpen && (
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Field label="Pipe type"><Select id="q-asset" value={inputs.assetType} onChange={(e) => { const a = e.target.value as AssetType; set({ assetType: a, workMethod: catalogOf(a)?.methods.includes(inputs.workMethod) ? inputs.workMethod : catalogOf(a)!.methods[0] }) }} options={pipeCats.map((c) => ({ value: c.asset, label: c.label }))} /></Field>
+              <Field label="Work method"><Select id="q-method" value={inputs.workMethod} onChange={(e) => set({ workMethod: e.target.value as WorkMethod })} options={methods.map((m) => ({ value: m, label: METHOD_LABEL[m] }))} /></Field>
+              <Field label="Pipe size"><Select id="q-dia" value={String(inputs.diameterIn)} onChange={(e) => set({ diameterIn: Number(e.target.value) })} options={[...new Set([...PIPE_SIZES, inputs.diameterIn])].sort((a, b) => a - b).map((d) => ({ value: String(d), label: `${d}"` }))} /></Field>
+              <Field label="Spend midpoint year"><Select id="q-mid" value={String(inputs.midpointYear)} onChange={(e) => set({ midpointYear: Number(e.target.value) })} options={Array.from({ length: 7 }, (_, k) => String(y + k))} /></Field>
+            </div>
+          )}
+        </div>
         <div className="flex flex-col gap-2 rounded-md border border-line p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2"><span className="eyebrow">Site cost drivers</span>{project && <span className="text-[11.5px] text-muted">{driverDiffs.length ? <>{driverDiffs.length} changed from the project record · <button className="font-semibold text-link" onClick={() => setInputsRaw({ ...inputs, site: { ...fromProject!.site } })}>Reset drivers</button></> : 'From the project record'}</span>}</div>
-          <DriverInputs value={inputs} onChange={setInputs} fromProject={fromProject} />
-          <p className="text-[11.5px] text-muted">Physical, legal and logistical conditions only. Community demographics and income are never model inputs.</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="eyebrow">Risks that drive the estimate</span>
+            {fromProject && <span className="text-[11.5px] text-muted">{changedRisks ? <>{changedRisks} changed from the project record · <button className="font-semibold text-link" onClick={() => set({ risks: { ...fromProject.risks } })}>Reset</button></> : 'Pre-filled from the project record'}</span>}
+          </div>
+          <RiskRatings s={s} value={inputs.risks} onChange={(risks) => set({ risks })} result={r} idPrefix="q-risk" />
+          <p className="text-[11.5px] text-muted">Physical, legal and logistical conditions only. Community demographics and income are never estimate inputs.</p>
         </div>
         {pid !== NEW_NEED && <>
           <Field label="What is it for">
@@ -18491,7 +19096,7 @@ export function QuickRequest({ projectId, allowPicker, reviseId, onDone, onCance
         </>}
         {pid !== NEW_NEED ? (
           <div className="flex flex-col gap-2 rounded-md border border-marker/60 bg-marker/5 p-3">
-            <div className="text-[12.5px] text-muted">Routes to the estimating team (any estimator) to check the drivers and the rate-table cross-check, adjust with a reason from the override list if needed, and approve. The approved number becomes the project's Class 5 estimate of record.</div>
+            <div className="text-[12.5px] text-muted">Goes to the estimating team (any estimator). They check the risk ratings and the rate table, adjust with a reason if needed, and approve. The approved number becomes the project's Class 5 estimate of record.</div>
             {problems.length > 0 && <ul className="text-[12px] text-warn">{problems.map((p) => <li key={p}>· {p}</li>)}</ul>}
             <div className="flex flex-wrap gap-2">
               <Button variant="primary" disabled={problems.length > 0} onClick={send}>{revising ? 'Resubmit to estimating team' : 'Send to estimating team'}</Button>
@@ -18499,11 +19104,11 @@ export function QuickRequest({ projectId, allowPicker, reviseId, onDone, onCance
             </div>
           </div>
         ) : (
-          <Callout tone="info" title="No project yet">This number is not saved. When the need is confirmed, <button className="font-semibold text-link" onClick={() => go('#new-project')}>start a new project</button>, then request the quick estimate on it so the estimating team can review it.</Callout>
+          <Callout tone="info" title="No project yet">This number is not saved. When the need is confirmed, <button className="font-semibold text-link" onClick={() => go('#new-project')}>start a new project</button>, then request the Class 5 estimate on it so the estimating team can review it.</Callout>
         )}
       </div>
-      <Panel className="min-w-0 self-start" title={<span className="inline-flex items-center gap-2">Live estimate <QuickBadge /></span>} subtitle={project ? `${project.code} · ${project.name}` : 'Unsaved — new need'}>
-        {model ? <FactorResultView s={s} model={model} inputs={inputs} project={project} /> : <Callout tone="bad" title="No published factor model">The estimating lead has to publish a factor model (Estimating → Administration → Factor model) before quick estimates can be priced.</Callout>}
+      <Panel className="min-w-0 self-start" title={<span className="inline-flex items-center gap-2">Live estimate <Badge tone="info">Class 5 · parametric</Badge></span>} subtitle={project ? `${project.code} · ${project.name}` : 'Unsaved — new need'}>
+        {r ? <ParametricResultView r={r} /> : <Callout tone={inputs.lengthFt ? 'bad' : 'info'} title={inputs.lengthFt ? 'No rate-table rows' : 'Enter the length of pipe'}>{inputs.lengthFt ? `The rate table has no rows for ${METHOD_LABEL[inputs.workMethod].toLowerCase()} on ${ASSET_LABEL[inputs.assetType].toLowerCase()}. Ask the estimating team to add them.` : 'The estimate fills in from the rate table as soon as there is a length.'}</Callout>}
       </Panel>
     </div>
   )
@@ -18568,7 +19173,7 @@ export function QuickTab() {
   return (
     <div className="flex flex-col gap-4">
       {waitingMine > 0 && <Callout tone="marker" title={`${waitingMine} quick estimate${waitingMine > 1 ? 's' : ''} waiting on you`}>Open one below to check the drivers and the rate-table cross-check, adjust it with an override reason if needed, and approve or return it.</Callout>}
-      <Panel title="Request a Class 5 quick estimate" subtitle="Pick a few values and confirm the site drivers; the published Class 5 factor model gives a forward-looking number with every driver itemized and its P10–P90 range. Sending it routes it to the estimating team for approval or adjustment.">
+      <Panel title="Request a Class 5 quick estimate" subtitle="Enter the length of pipe, the location and how risky each item is. The rate table prices it automatically and a Monte Carlo gives the P10–P90 range. Sending it routes it to the estimating team, who review it and adjust it if needed.">
         {sent && <div className="mb-3"><Callout tone="good" title="Sent to the estimating team">Track it on <button className="font-semibold text-link" onClick={() => openEstimate(sent.pid, sent.eid)}>{s.projects.find((p) => p.id === sent.pid)?.code} estimates</button> or in the list below.</Callout></div>}
         <QuickRequest allowPicker projectId={pid} onDone={(eid, p) => setSent({ eid, pid: p })} />
       </Panel>
@@ -18586,11 +19191,11 @@ export function QuickTab() {
 // the estimator's Adjust panel during review (reason from the override list), and the adjustment history.
 // Older quick estimates priced from the historical cost table still render with their matched row.
 import { useState } from 'react'
-import type { AppState, Estimate, FactorInputs, Project, QuickEstimate } from '@/core/types'
+import type { AppState, Estimate, FactorInputs, Project, QuickEstimate, RiskLevel } from '@/core/types'
 import { getState, mutate, personName, useMe, useStore } from '@/core/store'
 import { estimateTotals } from '@/core/engine/estimates'
 import { UNIT_LABEL } from '@/core/engine/quick'
-import { DRIVER_INFO, levelOf, levelLabel, previewFactorAdjust } from '@/core/engine/factorModel'
+import { DRIVER_INFO, factorInputsFromProject, levelOf, levelLabel, previewFactorAdjust, priceFactor, publishedModel } from '@/core/engine/factorModel'
 import { cx, fmtDate, fmtDateTime, money, moneyDelta, pct, sum } from '@/core/util'
 import { Badge, Button, Callout, ClassBadge, Field, KV, Modal, Panel, SegButtons, Select, StatusBadge, TextArea } from '@/ui/kit'
 import { toast } from '@/ui/toast'
@@ -18600,7 +19205,9 @@ import { NumInput } from '../parts'
 import { ASSET_LABEL, METHOD_LABEL, TERRAIN_LABEL, adjustmentHistory, applyAdjustment, bandLabel, canAdjust, isBanded, previewAdjust, returnedToRequester, reviewSlot, storedMatch, canRevise } from './lib'
 import { BuildUp, MatchedRow, QuickBadge, QuickHeadline, type BuildUpData } from './parts'
 import { QuickRequest } from './QuickForm'
-import { BoeText, DriverTable, MonteCarloPanel, RateTableCompare, VerifyTag } from './factorParts'
+import { BoeText, DriverTable, MonteCarloPanel, MonteCarloView, RateTableCompare, VerifyTag } from './factorParts'
+import { ParametricBuildUp, ParametricHeadline, ParametricResultView, RateRows, RiskRatings } from './parametricParts'
+import { previewParametric, type priceParametric } from '@/core/engine/parametric'
 
 /** Build-up of a saved quick estimate (from what was stored when it was priced or adjusted). */
 function savedBuildUp(s: AppState, e: Estimate): BuildUpData | undefined {
@@ -18632,7 +19239,16 @@ export function QuickEstimateView({ estimate: e, project, onCopy, inbox }: { est
     <Panel title="Request" pad>
       <div className="flex flex-col gap-3">
         <div className="rounded border border-line bg-sunken/40 px-3 py-2 text-[13px]"><div className="eyebrow mb-0.5">What it is for</div>{q.requestNote || <span className="text-muted">Not stated</span>}</div>
-        <KV cols={2} items={[
+        {e.parametric ? <KV cols={2} items={[
+          ['Requested by', `${personName(s, wf?.startedById ?? e.createdById)} · ${fmtDate(e.createdAt.slice(0, 10))}`],
+          ['Needed by', q.needBy ? <span className={cx(q.needBy < s.settings.asOf && e.status === 'in-review' && 'font-semibold text-bad')}>{fmtDate(q.needBy)}</span> : 'No date'],
+          ['Length of pipe', `${e.parametric.inputs.lengthFt.toLocaleString('en-US')} ft`],
+          ['Location', `${e.parametric.inputs.region} (×${(s.settings.estimating.regionFactors[e.parametric.inputs.region] ?? 1).toFixed(2)})`],
+          ['Pipe and work', `${e.parametric.inputs.diameterIn}" ${ASSET_LABEL[e.parametric.inputs.assetType].toLowerCase()} · ${METHOD_LABEL[e.parametric.inputs.workMethod].toLowerCase()}`],
+          ['Spend midpoint', String(e.parametric.inputs.midpointYear)],
+          ['Priced at', `Rate table v${e.parametric.rateTableVersion} + risk ratings · P80`],
+          ['Risks above low', String(Object.values(e.parametric.inputs.risks).filter((v) => v !== 'low').length)],
+        ]} /> : <KV cols={2} items={[
           ['Requested by', `${personName(s, wf?.startedById ?? e.createdById)} · ${fmtDate(e.createdAt.slice(0, 10))}`],
           ['Needed by', q.needBy ? <span className={cx(q.needBy < s.settings.asOf && e.status === 'in-review' && 'font-semibold text-bad')}>{fmtDate(q.needBy)}</span> : 'No date'],
           ['Asset · method', `${ASSET_LABEL[q.inputs.assetType]} · ${METHOD_LABEL[q.inputs.workMethod]}`],
@@ -18641,7 +19257,7 @@ export function QuickEstimateView({ estimate: e, project, onCopy, inbox }: { est
           ['Quantity', `${q.inputs.qty.toLocaleString('en-US')} ${UNIT_LABEL[q.inputs.unit]}`],
           ['Spend midpoint', String(q.inputs.midpointYear)],
           ['Priced at', e.factor ? `Factor model v${e.factor.modelVersion}${q.basis !== 'p50' ? ` · ${q.basis.toUpperCase()}` : ''}` : `${q.basis.toUpperCase()} of history`],
-        ]} />
+        ]} />}
         {e.factor && 'site' in q.inputs && <DriverSummary inputs={q.inputs as FactorInputs} />}
       </div>
     </Panel>
@@ -18655,7 +19271,7 @@ export function QuickEstimateView({ estimate: e, project, onCopy, inbox }: { est
               <span className="font-mono text-[13px] font-semibold text-muted">v{e.version}</span>
               <h2 className="font-display text-[18px] font-bold leading-tight">{e.title}</h2>
               <QuickBadge /><ClassBadge cls={e.cls} size="lg" /><StatusBadge status={e.status} />
-              {q.adjustment && <Badge tone="marker">Adjusted {q.adjustment.pct > 0 ? '+' : ''}{q.adjustment.pct}%</Badge>}
+              {q.adjustment && (e.parametric?.adjustment ? <Badge tone="marker">Reviewed{e.parametric.adjustment.changed.length ? ` · ${e.parametric.adjustment.changed.length} rating${e.parametric.adjustment.changed.length > 1 ? 's' : ''} changed` : ''}{e.parametric.adjustment.pct ? ` · ${e.parametric.adjustment.pct > 0 ? '+' : ''}${e.parametric.adjustment.pct}%` : ''}</Badge> : <Badge tone="marker">Adjusted {q.adjustment.pct > 0 ? '+' : ''}{q.adjustment.pct}%</Badge>)}
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
               <span>Requested by <b className="text-ink">{personName(s, wf?.startedById ?? e.createdById)}</b> · {fmtDate(e.createdAt.slice(0, 10))}</span>
@@ -18670,11 +19286,11 @@ export function QuickEstimateView({ estimate: e, project, onCopy, inbox }: { est
         </div>
       )}
       {!inbox && back && <Callout tone="warn" title="Returned by the estimating team">{back.event?.comment ? <>“{back.event.comment}” — {personName(s, back.event.actorId)}, {fmtDateTime(back.event.at)}. </> : null}{revisable ? 'Revise the inputs and resubmit, or submit it unchanged in the workflow panel below.' : `Waiting on ${back.slot.assigneeIds.map((id) => personName(s, id)).join(', ')} to revise and resubmit.`}</Callout>}
-      {!inbox && e.status === 'in-review' && rv && !back && <Callout tone="info" title="With the estimating team">Waiting on {rv.slot.assigneeIds.map((id) => personName(s, id)).join(' or ')}{rv.slot.due ? ` · due ${fmtDate(rv.slot.due)}` : ''}. Any estimator can check the match, adjust with a reason and approve.</Callout>}
+      {!inbox && e.status === 'in-review' && rv && !back && <Callout tone="info" title="With the estimating team">Waiting on {rv.slot.assigneeIds.map((id) => personName(s, id)).join(' or ')}{rv.slot.due ? ` · due ${fmtDate(rv.slot.due)}` : ''}. Any estimator can check {e.parametric ? 'the risk ratings and rate table' : 'the match'}, adjust with a reason and approve. {e.parametric ? 'The requester cannot change the number after sending it.' : ''}</Callout>}
       {!inbox && e.status === 'approved' && <Callout tone="good" title="Approved — estimate of record">Approved by {personName(s, e.approvedById)}{q.adjustment ? ` after a ${q.adjustment.pct > 0 ? '+' : ''}${q.adjustment.pct}% adjustment` : ' as requested'}. It becomes the planning budget at the Gate 1 decision. Mature it to Class 3 with a new line-item version.</Callout>}
       {!inbox && e.status === 'draft' && <Callout tone="warn" title={lastReturn?.action === 'recall' ? 'Recalled by the requester' : 'Returned by the estimating team'}>{lastReturn?.comment ? <>“{lastReturn.comment}” — {personName(s, lastReturn.actorId)}, {fmtDateTime(lastReturn.at)}. </> : null}Revise the inputs and resubmit.</Callout>}
 
-      {e.factor ? <FactorDetail s={s} e={e} inbox={inbox} requestPanel={requestPanel} /> : <div className={cx('grid grid-cols-1 gap-3', !inbox && 'xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]')}>
+      {e.parametric ? <ParametricDetail s={s} e={e} inbox={inbox} requestPanel={requestPanel} editing={adjustable} /> : e.factor ? <FactorDetail s={s} e={e} inbox={inbox} requestPanel={requestPanel} /> : <div className={cx('grid grid-cols-1 gap-3', !inbox && 'xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]')}>
         <div className="flex min-w-0 flex-col gap-3">
           {inbox ? <QuickHeadline total={t.total} low={q.range.low} high={q.range.high} perUnit={q.inputs.qty ? t.total / q.inputs.qty : 0} unit={q.inputs.unit} size="md" /> : requestPanel}
           {inbox && <div className="rounded border border-line bg-sunken/40 px-3 py-2 text-[13px]"><div className="eyebrow mb-0.5">What it is for</div>{q.requestNote || <span className="text-muted">Not stated</span>}<div className="mt-1 text-[11.5px] text-muted">{ASSET_LABEL[q.inputs.assetType]} · {METHOD_LABEL[q.inputs.workMethod]}{isBanded(q.inputs.assetType) ? ` · ${bandLabel(q.inputs.diameterBand)}` : ''} · {q.inputs.qty.toLocaleString('en-US')} {UNIT_LABEL[q.inputs.unit]} · {TERRAIN_LABEL[q.inputs.terrain].toLowerCase()} · {q.inputs.district} · {q.inputs.midpointYear} midpoint{q.needBy ? ` · needed by ${fmtDate(q.needBy)}` : ''}</div></div>}
@@ -18692,7 +19308,7 @@ export function QuickEstimateView({ estimate: e, project, onCopy, inbox }: { est
         </div>
       </div>}
 
-      {adjustable && (e.factor ? <FactorAdjustPanel s={s} e={e} /> : <AdjustPanel s={s} e={e} />)}
+      {adjustable && (e.parametric ? <ParametricAdjustPanel s={s} e={e} /> : e.factor ? <FactorAdjustPanel s={s} e={e} /> : <AdjustPanel s={s} e={e} />)}
       {!adjustable && e.status === 'in-review' && inbox && <p className="text-[12px] text-muted">Only the estimating team can adjust this estimate.</p>}
       {(hist.length > 0 || q.adjustment) && <AdjustmentHistory s={s} e={e} />}
       {!inbox && e.workflowInstanceId && <WorkflowStatus instanceId={e.workflowInstanceId} compact={e.status !== 'in-review'} />}
@@ -18907,6 +19523,105 @@ export function QuickReviewSummary({ estimateId }: { estimateId: string }) {
       <div className="flex flex-wrap items-center gap-2"><QuickBadge /><span className="text-[12px] text-muted">v{e.version} · {e.title}</span><StatusBadge status={e.status} /></div>
       <QuickEstimateView estimate={e} project={p} inbox />
     </div>
+  )
+}
+
+/** Saved parametric pricing (repriced live from the stored inputs so the Monte Carlo charts show): ratings, result, BOE, model check. */
+function ParametricDetail({ s, e, inbox, requestPanel, editing }: { s: AppState; e: Estimate; inbox?: boolean; requestPanel: React.ReactNode; editing?: boolean }) {
+  const par = e.parametric!
+  const r = previewParametric(s, e, par.inputs.risks, par.adjustment?.pct ?? 0)
+  const p = s.projects.find((x) => x.id === e.projectId)
+  const model = publishedModel(s)
+  const check = model && p ? priceFactor(s, model, factorInputsFromProject(s, p)) : undefined
+  const modelCheck = check?.base ? (
+    <div className="rounded-md border border-line px-3 py-2 text-[12.5px]">
+      <span className="eyebrow">Model check (estimating team)</span>
+      <div className="mt-0.5">Class 5 factor model v{model!.version} on the project's recorded drivers: <b className="tabular-nums">{money(check.total)}</b> (P10–P90 {money(check.p10)}–{money(check.p90)}), {check.total >= estimateTotals(e).total ? '+' : '−'}{pct(Math.abs(check.total / estimateTotals(e).total - 1))} from this estimate.</div>
+    </div>
+  ) : null
+  if (!r) return <Callout tone="warn" title="Cannot reprice">The rate table no longer has rows for this pipe and work method. The saved total is {money(estimateTotals(e).total)}.</Callout>
+  const ratings = <div><div className="eyebrow mb-1">Risk ratings{par.adjustment?.changed.length ? ' (estimator changes marked)' : ''}</div><RiskRatings s={s} value={par.inputs.risks} result={r} disabled original={par.requestedRisks} /></div>
+  if (inbox) return (
+    <div className="flex flex-col gap-3">
+      <ParametricHeadline r={r} size="md" />
+      <div className="rounded border border-line bg-sunken/40 px-3 py-2 text-[13px]"><div className="eyebrow mb-0.5">What it is for</div>{e.quick?.requestNote || <span className="text-muted">Not stated</span>}<div className="mt-1 text-[11.5px] text-muted">{par.inputs.lengthFt.toLocaleString('en-US')} ft · {par.inputs.diameterIn}" {ASSET_LABEL[par.inputs.assetType].toLowerCase()} · {METHOD_LABEL[par.inputs.workMethod].toLowerCase()} · {par.inputs.region} · {par.inputs.midpointYear} midpoint{e.quick?.needBy ? ` · needed by ${fmtDate(e.quick.needBy)}` : ''}</div></div>
+      {!editing && ratings}
+      <details className="rounded border border-line px-3 py-2"><summary className="cursor-pointer text-[12.5px] font-semibold">Build-up, Monte Carlo and basis of estimate</summary><div className="mt-2 flex flex-col gap-3"><ParametricResultView r={r} compact />{modelCheck}<BoeText basis={e.basis} /></div></details>
+    </div>
+  )
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <div className="flex min-w-0 flex-col gap-3">{requestPanel}{!editing && <Panel title="Risk ratings">{ratings}</Panel>}</div>
+        <Panel className="min-w-0" title="Estimate" subtitle={`${e.status === 'approved' ? 'As approved' : 'As priced'} from the rate table and risk ratings, funded at P80`}>
+          <div className="flex flex-col gap-3"><ParametricHeadline r={r} size="md" /><ParametricBuildUp r={r} /><RateRows r={r} /></div>
+        </Panel>
+      </div>
+      <Panel title="Monte Carlo" subtitle={`${r.mc.iterations.toLocaleString('en-US')} seeded draws of the rate-table cost and each rated risk`}>
+        <ParametricMonteCarlo r={r} />
+      </Panel>
+      {modelCheck}
+      <BoeText basis={e.basis} />
+    </div>
+  )
+}
+
+/** The Monte Carlo of a saved parametric estimate. */
+function ParametricMonteCarlo({ r }: { r: NonNullable<ReturnType<typeof priceParametric>> }) {
+  return <MonteCarloView mc={r.mc} point={r.base} pointLabel="Base estimate (most likely)" note={<>Rate-table cost triangular on the rows' P10 / P50 / P90; each risk item triangular on its min / most likely / max at its rating, independent. Funded at P80 ({money(r.mc.p.P80)}); contingency is P80 less the most-likely base.</>} />
+}
+
+/** Estimating-team review of a parametric request: re-rate any risk item and/or apply a ± %, with a reason. */
+function ParametricAdjustPanel({ s, e }: { s: AppState; e: Estimate }) {
+  const me = useMe()
+  const par = e.parametric!
+  const reasons = s.settings.factorModel?.overrideReasons ?? []
+  const [risks, setRisks] = useState<Record<string, RiskLevel>>({ ...par.inputs.risks })
+  const [pctAdj, setPct] = useState<number>(par.adjustment?.pct ?? 0)
+  const [reason, setReason] = useState('')
+  const [note, setNote] = useState('')
+  const before = estimateTotals(e).total
+  const r = previewParametric(s, e, risks, pctAdj)
+  const after = r ? r.total : before
+  const changedRisks = Object.keys(risks).filter((k) => risks[k] !== par.inputs.risks[k])
+  const changed = changedRisks.length > 0 || pctAdj !== (par.adjustment?.pct ?? 0)
+  const ok = changed && !!reason
+  const apply = () => {
+    if (!ok) return
+    mutate((d) => applyAdjustment(d, e.id, { pct: pctAdj, basis: 'p50', reason, note: note.trim() || undefined, risks }, me.id))
+    toast(`Adjusted: ${money(before)} → ${money(after)}`)
+    setReason(''); setNote('')
+  }
+  return (
+    <Panel className="border-marker/70" title="Review and adjust (estimating team)" subtitle="Change any risk rating and/or apply a ± % to direct cost. The Monte Carlo re-runs; pick a reason. Kept with the estimate, in its BOE and in the audit trail.">
+      <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-3">
+          <RiskRatings s={s} value={risks} onChange={setRisks} result={r} original={par.requestedRisks ?? par.inputs.risks} idPrefix="adj-risk" />
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="Adjustment % of direct" className="w-36"><NumInput id="adj-pct" value={pctAdj} onChange={(v) => setPct(Math.max(-50, Math.min(100, Math.round(v * 10) / 10)))} /></Field>
+            <div className="flex flex-wrap gap-1 pb-0.5">{[-10, -5, 0, 5, 10, 15].map((v) => <button key={v} type="button" onClick={() => setPct(v)} className={cx('rounded border px-1.5 py-0.5 text-[11.5px] tabular-nums', pctAdj === v ? 'border-ink bg-ink text-surface' : 'border-line text-muted hover:text-ink')}>{v > 0 ? '+' : ''}{v}%</button>)}</div>
+          </div>
+          <Field label="Reason (required)">{reasons.length ? <Select id="adj-reason" value={reason} onChange={(ev) => setReason(ev.target.value)} options={[{ value: '', label: 'Choose a reason…' }, ...reasons.map((x) => ({ value: x, label: x }))]} /> : <TextArea id="adj-reason" value={reason} onChange={(ev) => setReason(ev.target.value)} />}</Field>
+          <Field label="Note (optional)"><TextArea id="adj-note" className="min-h-[52px]" placeholder="e.g. Geotech borings found rock along the first 2,000 ft." value={note} onChange={(ev) => setNote(ev.target.value)} /></Field>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="primary" disabled={!ok} onClick={apply}>Apply</Button>
+            {!changed && <span className="text-[12px] text-muted">Change a rating or the % to adjust.</span>}
+            {changed && !reason && <span className="text-[12px] text-warn">Choose a reason to apply.</span>}
+            <span className="text-[12px] text-muted">Then approve or return below.</span>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 rounded-md border border-line bg-sunken/40 p-3 sm:max-w-sm">
+          <div className="eyebrow">Before → after (P80)</div>
+          <div className="flex flex-wrap items-baseline gap-2 font-display tabular-nums">
+            <span className="text-[17px] text-muted line-through decoration-faint">{money(before)}</span><span aria-hidden className="text-muted">→</span><span className="text-[22px] font-bold">{money(after)}</span>
+          </div>
+          <div className={cx('text-[12.5px] font-semibold tabular-nums', after > before ? 'text-bad' : after < before ? 'text-good' : 'text-muted')}>{after === before ? 'No change' : `${moneyDelta(after - before)} (${after > before ? '+' : ''}${pct(after / before - 1, 1)})`}</div>
+          {r && <div className="text-[11.5px] text-muted">New P10–P90 {money(r.mc.p.P10)} – {money(r.mc.p.P90)}</div>}
+          {changedRisks.length > 0 && <div className="text-[11.5px] text-muted">{changedRisks.length} rating{changedRisks.length > 1 ? 's' : ''} changed</div>}
+          <VerifyTag>BOE updated — verify</VerifyTag>
+        </div>
+      </div>
+    </Panel>
   )
 }
 

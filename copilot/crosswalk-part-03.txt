@@ -1,8 +1,9 @@
-CROSSWALK — PART 3 OF 11: core + shell-ui + actuals + admin
+CROSSWALK — PART 3 OF 12: core + shell-ui + actuals
 Capital project delivery for gas utilities (prototype, fictional demo data).
 Each file starts with a line '===== FILE: <path> ====='. Part 01 has the docs, data model (src/core/types.ts) and engine the other parts rely on.
 
 FILES IN THIS PART:
+  src/core/seed/reference.ts
   src/core/seed/workflows.ts
   src/App.tsx
   src/index.css
@@ -16,12 +17,603 @@ FILES IN THIS PART:
   src/ui/toast.tsx
   src/views/actuals/Actuals.tsx
   src/views/actuals/Drill.tsx
-  src/views/actuals/lib.ts
-  src/views/actuals/Reconcile.tsx
-  src/views/admin/Admin.tsx
-  src/views/admin/AiSettings.tsx
-  src/views/admin/Cbs.tsx
-  src/views/admin/common.tsx
+
+===== FILE: src/core/seed/reference.ts =====
+// Reference data shipped with the product: roles, CBS, lifecycle templates, libraries, DOA.
+// These are product defaults a client edits in Admin. Fictional org "Arroyo Valley Gas".
+import type {
+  InfoFieldDef, WbsFunction, CostCategory, DeliverableDef, DoaMatrix, HazardItem, LifecycleTemplate, Person, Program, Role, RiskLibraryItem, UnitCostRate, AssetType, WorkMethod, Terrain,
+  ForecastLine, SapMapping, SpreadProfile, HistoricalCost, DiameterBand, HistUnit, Project,
+} from '../types'
+import { parametricLines } from '../engine/estimates'
+
+export const ROLES: Role[] = [
+  { id: 'exec', name: 'Vice President', description: 'Executive approver above director authority' },
+  { id: 'sponsor', name: 'Director (Sponsor)', description: 'Accountable executive for a project; approves within director authority' },
+  { id: 'program-manager', name: 'Program Manager', description: 'Owns a regulatory program portfolio' },
+  { id: 'pm', name: 'Project Manager', description: 'Delivers scope, schedule and budget' },
+  { id: 'engineer', name: 'Project Engineer', description: 'Owns design deliverables' },
+  { id: 'estimator', name: 'Estimator', description: 'Prepares estimates and basis of estimate' },
+  { id: 'estimating-lead', name: 'Estimating Lead', description: 'Reviews and signs estimates' },
+  { id: 'project-controls', name: 'Project Controls', description: 'Cost, forecast, change and baseline control' },
+  { id: 'scheduler', name: 'Scheduler', description: 'Owns the integrated schedule' },
+  { id: 'finance', name: 'Capital Finance', description: 'Budget authorization and ERP posting' },
+  { id: 'pmo', name: 'PMO', description: 'Standards, gate quality checks and portfolio reporting' },
+  { id: 'gate-board', name: 'Gate Review Board', description: 'Decides gate outcomes' },
+  { id: 'safety-advisor', name: 'Safety Advisor', description: 'Approves job-specific safety plans' },
+  { id: 'construction-manager', name: 'Construction Manager', description: 'Leads field execution' },
+  { id: 'contractor-safety', name: 'Contractor Safety Lead', description: "Prepares the contractor's job safety plan" },
+  { id: 'environmental', name: 'Environmental Specialist', description: 'Permits and environmental compliance' },
+  { id: 'land', name: 'Land Agent', description: 'Land rights and right-of-way' },
+  { id: 'supply', name: 'Supply Management', description: 'Sourcing and contracts' },
+  { id: 'legal', name: 'Legal', description: 'Non-standard contract terms' },
+  { id: 'records', name: 'Records', description: 'Verifies traceable, verifiable, complete records' },
+  { id: 'plant-accounting', name: 'Plant Accounting', description: 'Unitization and capitalization' },
+  { id: 'admin', name: 'Administrator', description: 'Configures templates, workflows and libraries' },
+]
+
+const P = (id: string, name: string, title: string, roles: Person['roles'], dollarAuthority: number, managerId?: string, company?: string): Person => ({
+  id, name, title, roles, email: `${name.toLowerCase().replace(/[^a-z]+/g, '.')}@${company ? company.toLowerCase().replace(/[^a-z]+/g, '') + '.com' : 'arroyovalleygas.com'}`, dollarAuthority, managerId, company,
+})
+
+export const PEOPLE: Person[] = [
+  P('u-vp', 'Dana Whitfield', 'VP, Infrastructure Delivery', ['exec', 'gate-board'], 50_000_000),
+  P('u-dir1', 'Marcus Oyelaran', 'Director, Pipeline Delivery', ['sponsor', 'gate-board'], 5_000_000, 'u-vp'),
+  P('u-dir2', 'Elena Castañeda', 'Director, Stations & Storage', ['sponsor', 'gate-board'], 5_000_000, 'u-vp'),
+  P('u-dir3', 'Raj Patel', 'Director, Delivery Strategy & Controls', ['sponsor', 'gate-board', 'pmo'], 5_000_000, 'u-vp'),
+  P('u-pgm1', 'Grace Liu', 'Program Manager, Pipeline Safety', ['program-manager'], 500_000, 'u-dir1'),
+  P('u-pgm2', 'Tom Brennan', 'Program Manager, Integrity & Valves', ['program-manager'], 500_000, 'u-dir1'),
+  P('u-pgm3', 'Nadia Haddad', 'Program Manager, Stations', ['program-manager'], 500_000, 'u-dir2'),
+  P('u-me', 'Avery Morgan', 'Senior PMO Analyst', ['pmo', 'admin'], 0, 'u-dir3'),
+  P('u-pmo2', 'Keisha Grant', 'PMO Lead', ['pmo', 'gate-board'], 0, 'u-dir3'),
+  P('u-pm1', 'Quinn Ellis', 'Project Manager', ['pm'], 100_000, 'u-pgm1'),
+  P('u-pm2', 'Priya Raman', 'Senior Project Manager', ['pm'], 100_000, 'u-pgm1'),
+  P('u-pm3', 'Luis Ortega', 'Project Manager', ['pm'], 100_000, 'u-pgm2'),
+  P('u-pm4', 'Hannah Kim', 'Project Manager', ['pm'], 100_000, 'u-pgm2'),
+  P('u-pm5', 'Samuel Adeyemi', 'Senior Project Manager', ['pm'], 100_000, 'u-pgm3'),
+  P('u-pm6', 'Claire Dubois', 'Project Manager', ['pm'], 100_000, 'u-pgm3'),
+  P('u-eng1', 'Victor Nguyen', 'Project Engineer', ['engineer'], 0, 'u-pgm1'),
+  P('u-eng2', 'Maya Johansson', 'Project Engineer', ['engineer'], 0, 'u-pgm3'),
+  P('u-est1', 'Omar Siddiqui', 'Cost Estimator', ['estimator'], 0, 'u-dir3'),
+  P('u-est2', 'Brooke Hayes', 'Cost Estimator', ['estimator'], 0, 'u-dir3'),
+  P('u-estl', 'Frank Molina', 'Estimating Lead', ['estimating-lead'], 0, 'u-dir3'),
+  P('u-pc1', 'Rachel Stein', 'Project Controls Analyst', ['project-controls'], 0, 'u-dir3'),
+  P('u-pc2', 'Kofi Owusu', 'Project Controls Analyst', ['project-controls'], 0, 'u-dir3'),
+  P('u-sch', 'Ines Barros', 'Lead Scheduler', ['scheduler'], 0, 'u-dir3'),
+  P('u-fin', 'Paul Okafor', 'Capital Finance Manager', ['finance'], 0),
+  P('u-saf1', 'Teresa Lindqvist', 'Construction Safety Advisor', ['safety-advisor'], 0),
+  P('u-saf2', 'Andre Washington', 'Construction Safety Advisor', ['safety-advisor'], 0),
+  P('u-cm1', 'Nate Kowalski', 'Construction Manager', ['construction-manager'], 50_000, 'u-dir1'),
+  P('u-cm2', 'Rosa Jimenez', 'Construction Manager', ['construction-manager'], 50_000, 'u-dir2'),
+  P('u-env', 'Kenji Watanabe', 'Environmental Specialist', ['environmental'], 0),
+  P('u-land', 'Sophie Martin', 'Senior Land Agent', ['land'], 0),
+  P('u-sup', 'Ahmed Farouk', 'Sourcing Manager', ['supply'], 0),
+  P('u-legal', 'Laura Chen', 'Senior Counsel', ['legal'], 0),
+  P('u-rec', 'Marco Delgado', 'Records Supervisor', ['records'], 0),
+  P('u-pa', 'Susan Park', 'Plant Accounting Lead', ['plant-accounting'], 0),
+  P('c-1', 'Ray Hollis', 'Safety Lead', ['contractor-safety'], 0, undefined, 'Thistledown Pipeline Co.'),
+  P('c-2', 'Dolores Vega', 'HSE Manager', ['contractor-safety'], 0, undefined, 'Tumbleweed Energy Co.'),
+  P('c-3', 'Kurt Jensen', 'Safety Coordinator', ['contractor-safety'], 0, undefined, 'Sandpiper Utility Co.'),
+]
+
+export const CONTRACTORS = ['Thistledown Pipeline Co.', 'Tumbleweed Energy Co.', 'Sandpiper Utility Co.']
+
+export const CATEGORIES: CostCategory[] = [
+  // CBS categories carry the CBS Level 3 function code they roll up to (see WBS_FUNCTIONS).
+  { id: 'cat-pmc', code: '100', name: 'Project management', group: 'direct', erpCostElement: '5800100' },
+  { id: 'cat-eng', code: '200', name: 'Engineering & design', group: 'direct', erpCostElement: '5400100' },
+  { id: 'cat-pipe', code: '300.1', name: 'Pipe & fittings', group: 'direct', erpCostElement: '5310100' },
+  { id: 'cat-valves', code: '300.2', name: 'Valves & actuators', group: 'direct', erpCostElement: '5320100' },
+  { id: 'cat-equipment', code: '300.3', name: 'Major equipment', group: 'direct', erpCostElement: '5330100' },
+  { id: 'cat-test', code: '390', name: 'Consumable & temporary material (test water, bypasses)', group: 'direct', erpCostElement: '5610100' },
+  { id: 'cat-fabrication', code: '400', name: 'Fabrication', group: 'direct', erpCostElement: '5340100' },
+  { id: 'cat-contract', code: '500.1', name: 'Contract construction', group: 'direct', erpCostElement: '5200100' },
+  { id: 'cat-traffic', code: '500.2', name: 'Traffic control', group: 'direct', erpCostElement: '5710100' },
+  { id: 'cat-restore', code: '500.3', name: 'Restoration & paving', group: 'direct', erpCostElement: '5700100' },
+  { id: 'cat-inspect', code: '500.4', name: 'Construction inspection & NDE', group: 'direct', erpCostElement: '5600100' },
+  { id: 'cat-commission', code: '600', name: 'Commissioning', group: 'direct', erpCostElement: '5620100' },
+  { id: 'cat-co-labor', code: '700', name: 'Operations (company labor)', group: 'direct', erpCostElement: '5100100' },
+  { id: 'cat-support', code: '800', name: 'Project support services', group: 'direct', erpCostElement: '5810100' },
+  { id: 'cat-env', code: '850', name: 'Environmental', group: 'direct', erpCostElement: '5510100' },
+  { id: 'cat-land', code: '860', name: 'Land & right-of-way (labor)', group: 'direct', erpCostElement: '5500100' },
+  { id: 'cat-land-purchase', code: '870', name: 'Land (purchase)', group: 'direct', erpCostElement: '5520100' },
+  { id: 'cat-permit-fees', code: '880', name: 'Permitting fees', group: 'direct', erpCostElement: '5530100' },
+  { id: 'cat-loaders', code: '900', name: 'Project overhead (AFUDC, allocations)', group: 'indirect', erpCostElement: '5900100' },
+  { id: 'cat-escalation', code: '950', name: 'Escalation', group: 'escalation', erpCostElement: '5950100' },
+  { id: 'cat-undiff', code: '999', name: 'Undifferentiated', group: 'direct', erpCostElement: '5980100' },
+  { id: 'cat-contingency', code: '990', name: 'Contingency', group: 'contingency', erpCostElement: '5990100' },
+]
+
+// ── Unit-cost library (ES-03). p50 values are illustrative 2025$ planning rates.
+let rid = 0
+function rate(assetType: AssetType, workMethod: WorkMethod, categoryId: string, description: string, unit: string, p50: number, extra: { diameterIn?: number; terrain?: Terrain; n?: number } = {}): UnitCostRate {
+  rid++
+  return { id: `rate-${rid}`, assetType, workMethod, categoryId, description, unit, p50: Math.round(p50), p10: Math.round(p50 * 0.78), p90: Math.round(p50 * 1.34), diameterIn: extra.diameterIn, terrain: extra.terrain, sampleSize: extra.n ?? 4 + ((rid * 7) % 19), basisYear: 2025 }
+}
+const DIAS = [12, 16, 20, 24, 30, 36]
+const pipeCost: Record<number, number> = { 12: 95, 16: 150, 20: 205, 24: 270, 30: 365, 36: 455 }
+const terrains: Terrain[] = ['urban', 'suburban', 'rural']
+const tf: Record<Terrain, number> = { urban: 1.55, suburban: 1.0, rural: 0.68 }
+
+export const RATES: UnitCostRate[] = (() => {
+  const out: UnitCostRate[] = []
+  for (const wm of ['replace-open-trench', 'replace-hdd'] as WorkMethod[]) {
+    const hdd = wm === 'replace-hdd' ? 1.45 : 1
+    for (const d of DIAS) {
+      const df = d / 20
+      out.push(rate('transmission-pipeline', wm, 'cat-pipe', `Line pipe & fittings, ${d}" API 5L X65`, 'ft', pipeCost[d], { diameterIn: d }))
+      for (const t of terrains) out.push(rate('transmission-pipeline', wm, 'cat-contract', `Pipeline installation, ${d}", ${t}`, 'ft', 820 * df * tf[t] * hdd, { diameterIn: d, terrain: t }))
+    }
+    for (const t of terrains) {
+      out.push(rate('transmission-pipeline', wm, 'cat-restore', `Restoration & paving, ${t}`, 'ft', { urban: 340, suburban: 170, rural: 55 }[t], { terrain: t }))
+      out.push(rate('transmission-pipeline', wm, 'cat-traffic', `Traffic control, ${t}`, 'ft', { urban: 125, suburban: 48, rural: 9 }[t], { terrain: t }))
+      // 2026 table: traffic control priced by region where city requirements differ
+      for (const [region, f] of [['West', 1.35], ['East', 1.1]] as const) out.push({ ...rate('transmission-pipeline', wm, 'cat-traffic', `Traffic control, ${t}`, 'ft', { urban: 125, suburban: 48, rural: 9 }[t] * f, { terrain: t }), region })
+      out.push(rate('transmission-pipeline', wm, 'cat-land', `Temporary & permanent land rights, ${t}`, 'ft', { urban: 95, suburban: 60, rural: 30 }[t], { terrain: t }))
+    }
+    out.push(rate('transmission-pipeline', wm, 'cat-co-labor', 'Company labor (inspection, gas ops, tie-in support)', 'ft', 145))
+    out.push(rate('transmission-pipeline', wm, 'cat-eng', 'Engineering, survey & design', 'ft', 128))
+    out.push(rate('transmission-pipeline', wm, 'cat-env', 'Environmental review, monitoring & permits', 'ft', 42))
+    out.push(rate('transmission-pipeline', wm, 'cat-inspect', 'Weld inspection, X-ray & coating inspection', 'ft', 52))
+    out.push(rate('transmission-pipeline', wm, 'cat-test', 'Hydrostatic strength test of new pipe', 'ft', 28))
+    out.push(rate('transmission-pipeline', wm, 'cat-valves', 'Mainline valves & tie-in assemblies', 'LS', 1_350_000))
+    out.push(rate('transmission-pipeline', wm, 'cat-pmc', 'Project management', 'ft', 62))
+    out.push(rate('transmission-pipeline', wm, 'cat-support', 'Project controls, PMO, outreach & closeout support', 'ft', 38))
+    out.push(rate('transmission-pipeline', wm, 'cat-permit-fees', 'Permit fees (municipal, environmental, land)', 'ft', 9))
+    out.push(rate('transmission-pipeline', wm, 'cat-commission', 'Commissioning & functional checkout', 'ft', 6))
+  }
+  // Hydrotest
+  for (const t of terrains) out.push(rate('transmission-pipeline', 'hydrotest', 'cat-contract', `Test section setup, fill, test & dewater, ${t}`, 'ft', 165 * tf[t], { terrain: t }))
+  out.push(rate('transmission-pipeline', 'hydrotest', 'cat-test', 'Test water acquisition, treatment & disposal', 'ft', 38))
+  out.push(rate('transmission-pipeline', 'hydrotest', 'cat-co-labor', 'Company labor (gas control, blowdown, purge)', 'ft', 62))
+  out.push(rate('transmission-pipeline', 'hydrotest', 'cat-eng', 'Test plan engineering & segmenting', 'ft', 34))
+  out.push(rate('transmission-pipeline', 'hydrotest', 'cat-pipe', 'Short-section replacements & test heads', 'ft', 22))
+  out.push(rate('transmission-pipeline', 'hydrotest', 'cat-env', 'Discharge permit & monitoring', 'ft', 11))
+  out.push(rate('transmission-pipeline', 'hydrotest', 'cat-restore', 'Excavation restoration', 'ft', 31))
+  out.push(rate('transmission-pipeline', 'hydrotest', 'cat-pmc', 'Project management & controls', 'ft', 26))
+  out.push(rate('transmission-pipeline', 'hydrotest', 'cat-valves', 'Temporary supply (CNG/LNG) and bypass', 'LS', 420_000))
+  // Distribution main
+  for (const d of [4, 6, 8]) for (const t of terrains) out.push(rate('distribution-main', 'replace-open-trench', 'cat-contract', `Main & service installation, ${d}" PE, ${t}`, 'ft', (210 + d * 18) * tf[t], { diameterIn: d, terrain: t }))
+  for (const d of [4, 6, 8]) out.push(rate('distribution-main', 'replace-open-trench', 'cat-pipe', `PE main & service material, ${d}"`, 'ft', 9 + d * 3.2, { diameterIn: d }))
+  out.push(rate('distribution-main', 'replace-open-trench', 'cat-restore', 'Paving restoration (municipal standard)', 'ft', 165))
+  out.push(rate('distribution-main', 'replace-open-trench', 'cat-traffic', 'Traffic control', 'ft', 42))
+  out.push(rate('distribution-main', 'replace-open-trench', 'cat-co-labor', 'Company labor (tie-overs, abandonment)', 'ft', 58))
+  out.push(rate('distribution-main', 'replace-open-trench', 'cat-eng', 'Design & mapping', 'ft', 24))
+  out.push(rate('distribution-main', 'replace-open-trench', 'cat-pmc', 'Project management', 'ft', 15))
+  // Valve automation (per site)
+  out.push(rate('valve-site', 'valve-automation', 'cat-valves', 'Remote-control valve & actuator package', 'ea', 465_000))
+  out.push(rate('valve-site', 'valve-automation', 'cat-contract', 'Site construction & installation', 'ea', 640_000))
+  out.push(rate('valve-site', 'valve-automation', 'cat-equipment', 'SCADA RTU, power & communications', 'ea', 255_000))
+  out.push(rate('valve-site', 'valve-automation', 'cat-eng', 'Engineering & design', 'ea', 210_000))
+  out.push(rate('valve-site', 'valve-automation', 'cat-co-labor', 'Company labor & commissioning', 'ea', 140_000))
+  out.push(rate('valve-site', 'valve-automation', 'cat-env', 'Permits & environmental', 'ea', 45_000))
+  out.push(rate('valve-site', 'valve-automation', 'cat-land', 'Site easement', 'ea', 60_000))
+  out.push(rate('valve-site', 'valve-automation', 'cat-pmc', 'Project management', 'ea', 45_000))
+  out.push(rate('valve-site', 'valve-automation', 'cat-support', 'Project controls & closeout support', 'ea', 25_000))
+  out.push(rate('valve-site', 'valve-automation', 'cat-commission', 'SCADA point-to-point & functional checkout', 'ea', 38_000))
+  // Compressor station modernization (lump sum per station)
+  for (const wm of ['compressor-replacement', 'station-rebuild'] as WorkMethod[]) {
+    const f = wm === 'station-rebuild' ? 0.55 : 1
+    out.push(rate('compressor-station', wm, 'cat-equipment', 'Electric-drive compressor units & motors', 'LS', 118_000_000 * f, { n: 3 }))
+    out.push(rate('compressor-station', wm, 'cat-contract', 'Mechanical, civil & building construction', 'LS', 142_000_000 * f, { n: 3 }))
+    out.push(rate('compressor-station', wm, 'cat-equipment', 'Electrical substation & utility interconnect', 'LS', 46_000_000 * f, { n: 3 }))
+    out.push(rate('compressor-station', wm, 'cat-eng', 'EPC engineering & design', 'LS', 39_000_000 * f, { n: 3 }))
+    out.push(rate('compressor-station', wm, 'cat-env', 'Air permits, CEQA & mitigation', 'LS', 14_000_000 * f, { n: 3 }))
+    out.push(rate('compressor-station', wm, 'cat-co-labor', 'Company labor, commissioning & startup', 'LS', 18_000_000 * f, { n: 3 }))
+    out.push(rate('compressor-station', wm, 'cat-pmc', 'Owner PM & oversight', 'LS', 10_000_000 * f, { n: 3 }))
+    out.push(rate('compressor-station', wm, 'cat-support', 'Project controls, PMO, regulatory & closeout support', 'LS', 6_000_000 * f, { n: 3 }))
+    out.push(rate('compressor-station', wm, 'cat-commission', 'Commissioning & startup support', 'LS', 7_500_000 * f, { n: 3 }))
+    out.push(rate('compressor-station', wm, 'cat-fabrication', 'Skid & piping spool fabrication', 'LS', 9_000_000 * f, { n: 3 }))
+    out.push(rate('compressor-station', wm, 'cat-permit-fees', 'Air district & building permit fees', 'LS', 1_200_000 * f, { n: 3 }))
+    out.push(rate('compressor-station', wm, 'cat-inspect', 'QA/QC & third-party inspection', 'LS', 7_500_000 * f, { n: 3 }))
+  }
+  return out
+})()
+
+// ── Lifecycle templates (SG-01..03): 5-stage standard, 3-stage condensed for small projects.
+const D = (id: string, name: string, kind: DeliverableDef['kind'], ownerRole: DeliverableDef['ownerRole'], reviewerRole: DeliverableDef['reviewerRole'], description: string, acceptance: string, condition?: DeliverableDef['condition']): DeliverableDef => ({ id, name, kind, ownerRole, reviewerRole, description, acceptance, condition })
+
+export const TEMPLATES: LifecycleTemplate[] = [
+  {
+    id: 'tpl-standard',
+    name: 'Standard capital project (5 stages)',
+    description: 'Default for pipeline, station and storage projects over $5M. Mirrors a five-stage gas major projects model.',
+    stages: [
+      {
+        id: 'st1', index: 0, name: 'Initiation & Business Case', purpose: 'Confirm the need, driver and funding path; produce a Class 5 estimate and planning budget.',
+        gate: {
+          id: 'g1', name: 'Gate 1 · Approve business case', decisionRoles: ['sponsor', 'gate-board'], requiredEstimateClass: 5, budgetEvent: 'planning', unlocks: [],
+          deliverables: [
+            D('d-charter', 'Project charter', 'document', 'pm', 'sponsor', 'Need, driver, regulatory citation, sponsor, high-level scope', 'Driver and citation stated; sponsor named'),
+            D('d-feas', 'Feasibility study', 'document', 'engineer', 'program-manager', 'Alternatives screened, constructability, records review', 'At least two alternatives compared'),
+            D('d-est5', 'Class 5 estimate', 'estimate', 'estimator', 'estimating-lead', 'Parametric estimate with range', 'Approved estimate at Class 5 or better'),
+            D('d-risk1', 'High-level risk assessment', 'risk-register', 'pm', 'project-controls', 'Top risks with owners', 'At least five risks scored'),
+            D('d-recovery', 'Revenue recovery strategy', 'document', 'program-manager', 'finance', 'GRC, balancing account or memo account path', 'Mechanism and proceeding named'),
+          ],
+        },
+      },
+      {
+        id: 'st2', index: 1, name: 'Preliminary Design & Option Selection', purpose: 'Select the preferred option, write the execution plan and set the baseline schedule.',
+        gate: {
+          id: 'g2', name: 'Gate 2 · Select option', decisionRoles: ['sponsor', 'gate-board'], unlocks: ['long-lead-release'],
+          deliverables: [
+            D('d-site', 'Site assessment & survey plan', 'document', 'engineer', 'pm', 'Field verification, potholing plan', 'Survey scope approved'),
+            D('d-options', 'Option analysis', 'document', 'engineer', 'program-manager', 'Test vs replace or route options with cost and risk', 'Preferred option justified'),
+            D('d-pep', 'Project Execution Plan', 'document', 'pm', 'pmo', 'Organization, contracting strategy, controls, quality, safety approach', 'All PEP sections complete'),
+            D('d-sched', 'Baseline schedule (Level 3)', 'schedule', 'scheduler', 'project-controls', 'Logic-linked schedule through in-service', 'No open ends; critical path identified'),
+            D('d-longlead', 'Long-lead material list', 'checklist', 'engineer', 'pm', 'Pipe, valves, major equipment with need dates', 'Need dates tied to schedule'),
+            D('d-ceqa', 'CEQA determination', 'permit', 'environmental', 'pm', 'Exemption or initial study path', 'Determination documented', { field: 'permitsNeeded.ceqa', op: 'truthy' }),
+          ],
+        },
+      },
+      {
+        id: 'st3', index: 2, name: 'Detailed Design & Procurement', purpose: 'Complete design, secure land and permits, produce the Class 3 estimate and award construction.',
+        gate: {
+          id: 'g3', name: 'Gate 3 · Authorize construction', decisionRoles: ['sponsor', 'exec', 'gate-board'], requiredEstimateClass: 3, budgetEvent: 'control', unlocks: ['po-over-threshold', 'contract-award', 'construction-ntp'],
+          deliverables: [
+            D('d-design', 'Issued-for-construction design', 'document', 'engineer', 'engineer', 'IFC drawings, specifications, MAOP basis', 'Stamped IFC package'),
+            D('d-est3', 'Class 3 estimate & basis of estimate', 'estimate', 'estimator', 'estimating-lead', 'Line-item estimate with BOE', 'Approved estimate at Class 3 or better'),
+            D('d-riskq', 'Quantified risk register', 'risk-register', 'pm', 'project-controls', 'Three-point impacts; contingency tied to exposure', 'Top 10 risks quantified'),
+            D('d-land', 'Land rights secured', 'checklist', 'land', 'pm', 'TREs and easements executed or scheduled', 'All parcels at least in negotiation with need dates'),
+            D('d-permits', 'Permits issued or scheduled', 'permit', 'environmental', 'pm', 'Encroachment, discharge, air as applicable', 'Permit matrix complete'),
+            D('d-award', 'Construction contract award recommendation', 'document', 'pm', 'program-manager', 'Bid tab, target price, award memo', 'Bid within estimate range or explained'),
+            D('d-jssp', 'Job-specific safety plan', 'safety-plan', 'construction-manager', 'safety-advisor', 'Approved plan for first work package', 'Plan approved by safety advisor'),
+            D('d-hydro', 'Hydrotest plan & discharge permit', 'permit', 'engineer', 'environmental', 'Test sections, water source, discharge', 'Plan approved', { field: 'permitsNeeded.hydrotestDischarge', op: 'truthy' }),
+          ],
+        },
+      },
+      {
+        id: 'st4', index: 3, name: 'Construction', purpose: 'Execute safely; control scope, cost, schedule and risk; commission and place in service.',
+        gate: {
+          id: 'g4', name: 'Gate 4 · Place in service', decisionRoles: ['sponsor', 'gate-board'], unlocks: ['place-in-service'],
+          deliverables: [
+            D('d-commission', 'Commissioning & in-service records', 'records', 'construction-manager', 'records', 'Pressure test charts, weld logs, NDE', 'Records complete for all segments'),
+            D('d-notice', 'Notice of operation', 'document', 'pm', 'program-manager', 'Date of operation recorded', 'Signed notice'),
+            D('d-training', 'Operations turnover & training', 'checklist', 'pm', 'construction-manager', 'O&M handover', 'Ops sign-off'),
+            D('d-demob', 'Demobilization & restoration inspection', 'checklist', 'construction-manager', 'pm', 'Restoration accepted by jurisdiction', 'Final inspection passed'),
+          ],
+        },
+      },
+      {
+        id: 'st5', index: 4, name: 'Closeout', purpose: 'Turn over records and assets, close costs, capture lessons and freeze the evidence package.',
+        gate: {
+          id: 'g5', name: 'Gate 5 · Close project', decisionRoles: ['sponsor', 'gate-board'], unlocks: [],
+          deliverables: [
+            D('d-asbuilt', 'As-builts to GIS', 'records', 'engineer', 'records', 'As-built drawings posted', 'GIS updated'),
+            D('d-unitize', 'Unitization to plant accounting', 'checklist', 'project-controls', 'plant-accounting', 'Asset units and costs', 'Accepted by plant accounting'),
+            D('d-fincl', 'Financial closeout', 'checklist', 'project-controls', 'finance', 'Final cost, accruals cleared, WBS closed', 'Zero open commitments'),
+            D('d-lessons', 'Lessons learned', 'document', 'pm', 'pmo', 'Lessons captured and tagged', 'At least three lessons'),
+            D('d-rrpkg', 'Reasonableness-review evidence package', 'document', 'project-controls', 'pmo', 'Baselines, changes, variances, estimate classes', 'Package frozen'),
+          ],
+        },
+      },
+    ],
+  },
+  {
+    id: 'tpl-small',
+    name: 'Condensed project (3 stages)',
+    description: 'For valve automation and projects under $5M: stages combined, fewer deliverables.',
+    stages: [
+      {
+        id: 'sm1', index: 0, name: 'Initiate & Plan', purpose: 'Confirm need, Class 5 estimate, planning budget.',
+        gate: {
+          id: 'sg1', name: 'Gate A · Approve plan', decisionRoles: ['sponsor'], requiredEstimateClass: 5, budgetEvent: 'planning', unlocks: ['long-lead-release'],
+          deliverables: [
+            D('ds-charter', 'Project charter', 'document', 'pm', 'program-manager', 'Need, scope, sponsor', 'Driver stated'),
+            D('ds-est5', 'Class 5 estimate', 'estimate', 'estimator', 'estimating-lead', 'Parametric estimate', 'Approved'),
+            D('ds-sched', 'Milestone schedule', 'schedule', 'pm', 'project-controls', 'Key dates through in-service', 'Dates set'),
+          ],
+        },
+      },
+      {
+        id: 'sm2', index: 1, name: 'Design, Procure & Authorize', purpose: 'Design, Class 3 estimate, control budget, award.',
+        gate: {
+          id: 'sg2', name: 'Gate B · Authorize construction', decisionRoles: ['sponsor', 'gate-board'], requiredEstimateClass: 3, budgetEvent: 'control', unlocks: ['po-over-threshold', 'contract-award', 'construction-ntp'],
+          deliverables: [
+            D('ds-design', 'IFC design', 'document', 'engineer', 'engineer', 'Drawings', 'Stamped'),
+            D('ds-est3', 'Class 3 estimate', 'estimate', 'estimator', 'estimating-lead', 'Line-item estimate', 'Approved'),
+            D('ds-risk', 'Risk register', 'risk-register', 'pm', 'project-controls', 'Quantified top risks', 'Scored'),
+            D('ds-jssp', 'Job-specific safety plan', 'safety-plan', 'construction-manager', 'safety-advisor', 'Approved plan', 'Approved'),
+          ],
+        },
+      },
+      {
+        id: 'sm3', index: 2, name: 'Construct & Close', purpose: 'Build, place in service, close out.',
+        gate: {
+          id: 'sg3', name: 'Gate C · Close project', decisionRoles: ['sponsor'], unlocks: ['place-in-service'],
+          deliverables: [
+            D('ds-records', 'In-service records', 'records', 'construction-manager', 'records', 'Test and weld records', 'Verified'),
+            D('ds-fincl', 'Financial closeout', 'checklist', 'project-controls', 'finance', 'Costs closed', 'Closed'),
+            D('ds-lessons', 'Lessons learned', 'document', 'pm', 'pmo', 'Lessons', 'Captured'),
+          ],
+        },
+      },
+    ],
+  },
+]
+
+export const DOA: DoaMatrix[] = [
+  {
+    id: 'doa-std', name: 'Capital delivery authority', version: 3, effective: '2026-01-01',
+    rows: [
+      { upTo: 250_000, roleId: 'program-manager', label: 'Program Manager' },
+      { upTo: 5_000_000, roleId: 'sponsor', label: 'Director' },
+      { upTo: 50_000_000, roleId: 'exec', label: 'Vice President' },
+      { upTo: 1e13, roleId: 'exec', label: 'VP with officer committee' },
+    ],
+  },
+]
+
+export const PROGRAMS: Program[] = [
+  // VERIFY: regulatory driver citations (PU Code sections, 49 CFR 192 parts) are public-law references for the fictional programs; confirm before reuse.
+  { id: 'prg-pse', code: 'PSE', name: 'Pipeline Safety Enhancement', description: 'Test or replace transmission pipe lacking sufficient pressure-test records.', regulatoryDriver: 'PU Code §957–958; 49 CFR 192 Subpart J', recovery: 'Balancing account', lifecycleTemplateId: 'tpl-standard', doaMatrixId: 'doa-std' },
+  { id: 'prg-tim', code: 'TIM', name: 'Transmission Integrity & MAOP', description: 'MAOP reconfirmation and integrity assessments under the gas transmission safety rule.', regulatoryDriver: '49 CFR 192.624, 192.710', recovery: 'GRC base', lifecycleTemplateId: 'tpl-standard', doaMatrixId: 'doa-std' },
+  { id: 'prg-drp', code: 'DRP', name: 'Distribution Main Replacement', description: 'Replace vintage distribution main with modern PE.', regulatoryDriver: 'DIMP, 49 CFR 192 Subpart P', recovery: 'GRC base', lifecycleTemplateId: 'tpl-standard', doaMatrixId: 'doa-std' },
+  { id: 'prg-csm', code: 'CSM', name: 'Compressor & Storage Modernization', description: 'Replace aging gas-fired compression with electric drives and modernize storage facilities.', regulatoryDriver: 'Air district rules; reliability', recovery: 'Advice letter', lifecycleTemplateId: 'tpl-standard', doaMatrixId: 'doa-std' },
+  { id: 'prg-vap', code: 'VAP', name: 'Valve Automation', description: 'Install remote-control and automatic shutoff valves on transmission lines.', regulatoryDriver: '49 CFR 192.179, 192.634 (Valve Rule)', recovery: 'GRC base', lifecycleTemplateId: 'tpl-small', doaMatrixId: 'doa-std' },
+]
+
+const H = (id: string, activity: string, hazard: string, controls: [HazardItem['controls'][number]['type'], string][], permits: string[] = [], oqTasks: string[] = []): HazardItem => ({ id, activity, hazard, controls: controls.map(([type, text]) => ({ type, text })), permits, oqTasks, effective: '2026-01-15' })
+
+export const HAZARDS: HazardItem[] = [
+  H('hz-1', 'Excavation', 'Trench collapse / cave-in', [['engineering', 'Shoring, sloping or trench box per soil classification'], ['administrative', 'Competent person inspects daily and after rain'], ['administrative', 'Ladder within 25 ft of workers in trenches 4 ft or deeper']], ['Excavation permit'], ['Excavation & backfill']),
+  H('hz-2', 'Excavation', 'Strike of buried facilities', [['administrative', 'Valid 811 ticket; positive response from all members'], ['administrative', 'Hand dig / vacuum within tolerance zone'], ['administrative', 'Pothole and mark substructures before mechanical excavation']], ['811 locate']),
+  H('hz-3', 'Excavation', 'Spoil pile and falling objects', [['engineering', 'Spoil set back at least 2 ft from edge'], ['ppe', 'Hard hat and high-visibility vest']]),
+  H('hz-4', 'Tie-in / hot tap', 'Gas release and ignition', [['engineering', 'Bypass and pressure control fittings rated for MAOP'], ['administrative', 'Hot tap procedure reviewed at tailboard'], ['administrative', 'Continuous gas monitoring; ignition sources controlled'], ['ppe', 'FR clothing']], ['Hot work permit'], ['Hot tapping', 'Tapping & stopping']),
+  H('hz-5', 'Purge & blowdown', 'Flammable atmosphere / noise', [['engineering', 'Blowdown silencer or recompression where feasible'], ['administrative', 'Exclusion zone and wind check'], ['ppe', 'Hearing protection']], [], ['Purging']),
+  H('hz-6', 'Welding', 'Burns, fumes, arc flash', [['engineering', 'Local exhaust in pits'], ['administrative', 'Fire watch 30 minutes after hot work'], ['ppe', 'Welding hood, gloves, FR clothing']], ['Hot work permit'], ['Welding (qualified procedure)']),
+  H('hz-7', 'Pressure testing', 'Stored energy / test failure', [['engineering', 'Test heads rated and inspected'], ['administrative', 'Restricted zone during pressurization; no one in line of fire'], ['administrative', 'Test procedure and pressure chart recorder calibrated']], [], ['Pressure testing']),
+  H('hz-8', 'Pressure testing', 'Test water discharge', [['administrative', 'Discharge per permit; sampling'], ['engineering', 'Dechlorination and energy dissipation']], ['Discharge permit']),
+  H('hz-9', 'Traffic control', 'Struck by vehicles', [['engineering', 'Approved traffic control plan; arrow boards'], ['administrative', 'Flaggers certified'], ['ppe', 'Class 3 high-visibility garments at night']], ['Encroachment permit']),
+  H('hz-10', 'Confined space', 'Oxygen deficiency / toxic atmosphere', [['administrative', 'Permit-required confined space entry with attendant'], ['engineering', 'Forced-air ventilation and continuous monitoring'], ['administrative', 'Rescue plan on site']], ['Confined space permit']),
+  H('hz-11', 'Lifting & rigging', 'Dropped load / crane contact', [['administrative', 'Lift plan for critical lifts'], ['administrative', 'Qualified rigger and signal person'], ['engineering', 'Tag lines; exclusion zone']], ['Lift plan']),
+  H('hz-12', 'HDD', 'Inadvertent return / frac-out', [['administrative', 'Frac-out contingency plan'], ['engineering', 'Annular pressure monitoring'], ['administrative', 'Biological monitor near waterways']]),
+  H('hz-13', 'Work near energized lines', 'Electrical contact', [['administrative', 'Minimum approach distances; spotter'], ['engineering', 'Insulated barriers where required']]),
+  H('hz-14', 'All outdoor work', 'Heat illness', [['administrative', 'Water, shade and rest per heat illness plan above 80°F'], ['administrative', 'High-heat procedures above 95°F; acclimatization']]),
+  H('hz-15', 'Station work', 'Hazardous energy release', [['administrative', 'Lockout/tagout with gas control coordination'], ['engineering', 'Double block and bleed']], [], ['Isolation & LOTO']),
+  H('hz-16', 'Coating & cleaning', 'Silica / respirable dust', [['engineering', 'Wet methods or vacuum capture'], ['ppe', 'Respirator per exposure assessment']]),
+  H('hz-17', 'Heavy equipment', 'Struck-by / caught-between', [['administrative', 'Spotter for backing equipment'], ['engineering', 'Backup alarms and cameras']]),
+  H('hz-18', 'Public interface', 'Public entering work zone', [['engineering', 'Fencing and barricades'], ['administrative', 'Notice to residents 72 hours ahead']]),
+]
+
+export const RISK_LIBRARY: RiskLibraryItem[] = [
+  { id: 'rl-1', title: 'Unknown substructures', category: 'Third-party / substructures', cause: 'Incomplete records of foreign utilities in the alignment', event: 'Conflicts found during excavation', effect: 'Redesign, standby time, crew productivity loss', appliesTo: ['replace-open-trench', 'replace-hdd', 'hydrotest'], typicalCostPct: 4, typicalDays: 25 },
+  { id: 'rl-2', title: 'Encroachment permit delay', category: 'Permitting', cause: 'Agency backlog and moratoria on paving', event: 'Permit issued later than need date', effect: 'Construction start slips', appliesTo: ['replace-open-trench', 'replace-hdd', 'hydrotest', 'valve-automation'], typicalCostPct: 2, typicalDays: 45 },
+  { id: 'rl-3', title: 'Contaminated soil', category: 'Environmental', cause: 'Historic industrial land use near alignment', event: 'Hazardous soil encountered', effect: 'Disposal cost and handling delays', appliesTo: ['replace-open-trench', 'station-rebuild', 'compressor-replacement'], typicalCostPct: 3, typicalDays: 20 },
+  { id: 'rl-4', title: 'Pipe delivery late', category: 'Material', cause: 'Mill capacity and coating lead times', event: 'Line pipe arrives after required-on-site date', effect: 'Critical path slip, crew demob/remob', appliesTo: ['replace-open-trench', 'replace-hdd'], typicalCostPct: 2, typicalDays: 60 },
+  { id: 'rl-5', title: 'Outage window lost', category: 'Operations', cause: 'System demand or other outages', event: 'Gas control cannot release the line on plan', effect: 'Tie-in and test delayed to next window', appliesTo: ['replace-open-trench', 'replace-hdd', 'hydrotest', 'valve-automation'], typicalCostPct: 1.5, typicalDays: 90 },
+  { id: 'rl-6', title: 'Land rights not secured', category: 'Land / right-of-way', cause: 'Owner negotiations stall', event: 'TRE or easement not executed by need date', effect: 'Reroute or condemnation; delay', appliesTo: ['replace-open-trench', 'replace-hdd', 'valve-automation'], typicalCostPct: 2.5, typicalDays: 75 },
+  { id: 'rl-7', title: 'Test failure', category: 'Technical', cause: 'Undetected manufacturing or construction defects', event: 'Section fails hydrostatic test', effect: 'Replacement and retest', appliesTo: ['hydrotest'], typicalCostPct: 6, typicalDays: 35 },
+  { id: 'rl-8', title: 'HDD frac-out', category: 'Environmental', cause: 'Unfavorable geology', event: 'Drilling fluid surfaces', effect: 'Cleanup, agency notice, stoppage', appliesTo: ['replace-hdd'], typicalCostPct: 3, typicalDays: 15 },
+  { id: 'rl-9', title: 'Contractor productivity below plan', category: 'Productivity', cause: 'Congested urban corridor and work-hour limits', event: 'Footage per day below estimate', effect: 'Labor cost overrun', appliesTo: ['replace-open-trench', 'replace-hdd'], typicalCostPct: 5, typicalDays: 30 },
+  { id: 'rl-10', title: 'Electrical interconnect delay', category: 'Third-party / substructures', cause: 'Electric utility interconnection queue', event: 'Service not energized on schedule', effect: 'Commissioning slip', appliesTo: ['compressor-replacement', 'station-rebuild', 'valve-automation'], typicalCostPct: 2, typicalDays: 120 },
+  { id: 'rl-11', title: 'Air permit conditions tighten', category: 'Regulatory change', cause: 'Air district rule amendments', event: 'Additional controls required', effect: 'Design change and equipment cost', appliesTo: ['compressor-replacement', 'station-rebuild'], typicalCostPct: 2, typicalDays: 60 },
+  { id: 'rl-12', title: 'Weather / rain season', category: 'Weather', cause: 'Winter storms', event: 'Excavation halted', effect: 'Standby cost', appliesTo: ['replace-open-trench', 'hydrotest', 'replace-hdd'], typicalCostPct: 1, typicalDays: 20 },
+  { id: 'rl-13', title: 'Records gaps found', category: 'Records', cause: 'Incomplete historic records', event: 'Additional segments need testing', effect: 'Scope growth', appliesTo: ['hydrotest', 'replace-open-trench'], typicalCostPct: 4, typicalDays: 40 },
+  { id: 'rl-14', title: 'Bid exceeds estimate', category: 'Market', cause: 'Tight contractor market', event: 'Low bid above Class 3 range', effect: 'Re-bid or self-perform', appliesTo: ['replace-open-trench', 'replace-hdd', 'compressor-replacement', 'station-rebuild', 'valve-automation'], typicalCostPct: 8, typicalDays: 45 },
+  { id: 'rl-15', title: 'Favorable steel pricing', category: 'Material', cause: 'Commodity price softening', event: 'Pipe purchased below estimate', effect: 'Material savings', appliesTo: ['replace-open-trench', 'replace-hdd'], typicalCostPct: -2, typicalDays: 0 },
+]
+
+// ── WBS functions (CBS Level 3) the forecast is spread against (product default; editable in Configuration).
+export const WBS_FUNCTIONS: WbsFunction[] = [
+  // Sample WBS functions (CBS level 3) for the fictional utility. Contingency (990) is held separately, not spread to a function.
+  { id: 'wbs-100', code: '100', name: 'Project Management', description: 'Owner project management and construction management staff for the life of the project.', categoryIds: ['cat-pmc'], timing: 'flat' },
+  { id: 'wbs-200', code: '200', name: 'Engineering and Design', description: 'Design, survey, engineering reviews and engineering documentation.', categoryIds: ['cat-eng'], timing: 'early' },
+  { id: 'wbs-300', code: '300', name: 'Material - Permanent', description: 'Material that is installed and stays with the asset.', categoryIds: ['cat-pipe', 'cat-valves', 'cat-equipment'], timing: 'early' },
+  { id: 'wbs-390', code: '390', name: 'Material - Consumable & Temporary', description: 'Material used up or removed during the work: test water, temporary facilities, supplies.', categoryIds: ['cat-test'], timing: 'mid' },
+  { id: 'wbs-400', code: '400', name: 'Fabrication', description: 'Off-site assembly work.', categoryIds: ['cat-fabrication'], timing: 'early' },
+  { id: 'wbs-500', code: '500', name: 'Construction', description: 'Field installation labor, equipment and quality control.', categoryIds: ['cat-contract', 'cat-traffic', 'cat-restore', 'cat-inspect'], timing: 'mid' },
+  { id: 'wbs-600', code: '600', name: 'Commissioning', description: 'Checkout and commissioning of installed systems.', categoryIds: ['cat-commission'], timing: 'late' },
+  { id: 'wbs-700', code: '700', name: 'Operations', description: 'Operating-crew support to the project, such as isolation, purge and startup.', categoryIds: ['cat-co-labor'], timing: 'mid' },
+  { id: 'wbs-800', code: '800', name: 'Project Support Services', description: 'Shared project services: controls, PMO, closeout, regulatory, supply chain, outreach, safety, IT.', categoryIds: ['cat-support'], timing: 'flat' },
+  { id: 'wbs-850', code: '850', name: 'Environmental', description: 'Environmental studies, monitoring and closeout.', categoryIds: ['cat-env'], timing: 'early' },
+  { id: 'wbs-860', code: '860', name: 'Land & Right of Way', description: 'Land and right-of-way labor and agreements.', categoryIds: ['cat-land'], timing: 'early' },
+  { id: 'wbs-870', code: '870', name: 'Land', description: 'Land purchases.', categoryIds: ['cat-land-purchase'], timing: 'early' },
+  { id: 'wbs-880', code: '880', name: 'Permitting', description: 'Permit fees.', categoryIds: ['cat-permit-fees'], timing: 'early' },
+  { id: 'wbs-900', code: '900', name: 'Project Overhead', description: 'Indirect costs applied to the project, such as overheads and AFUDC.', categoryIds: ['cat-loaders'], timing: 'flat' },
+  { id: 'wbs-999', code: '999', name: 'Undifferentiated', description: 'Costs not assigned to a function.', categoryIds: ['cat-undiff'], timing: 'flat' },
+]
+
+export const INFO_SECTIONS = ['Identification', 'Need & justification', 'Scope & asset', 'Location', 'Regulatory & funding', 'Operations & customers', 'Constraints & stakeholders', 'Closeout']
+
+const F = (section: string, key: string, label: string, type: InfoFieldDef['type'], extra: Partial<InfoFieldDef> = {}): InfoFieldDef => ({ section, key, label, type, ...extra })
+export const INFO_FIELDS: InfoFieldDef[] = [
+  F('Identification', 'name', 'Project name', 'text', { bind: 'name', requiredAtStage: 0 }),
+  F('Identification', 'program', 'Program', 'text', { readOnly: true }),
+  F('Identification', 'projectType', 'Project type', 'select', { options: ['Pipe replacement', 'Pressure test', 'Abandonment', 'New installation', 'Station modernization', 'Valve automation', 'Main replacement'], requiredAtStage: 0 }),
+  F('Identification', 'erpWbs', 'ERP WBS element', 'text', { bind: 'erpWbs', requiredAtStage: 0 }),
+  F('Identification', 'workOrder', 'Work order authorization (WOA) no.', 'text', { requiredAtStage: 2, help: 'Phase 2 WOA approved before execution' }),
+  F('Identification', 'scheduleId', 'Schedule (P6) ID', 'text', { bind: 'scheduleId', requiredAtStage: 1 }),
+  F('Identification', 'pm', 'Project manager', 'text', { readOnly: true }),
+  F('Identification', 'sponsor', 'Sponsor', 'text', { readOnly: true }),
+  F('Need & justification', 'problemStatement', 'Problem statement', 'textarea', { requiredAtStage: 0, help: 'What condition exists today and why it must be addressed' }),
+  F('Need & justification', 'driver', 'Primary driver', 'select', { bind: 'driver', options: ['Safety / compliance', 'Reliability', 'Capacity', 'Customer / new business', 'Relocation', 'Environmental'], requiredAtStage: 0 }),
+  F('Need & justification', 'regulatoryCitation', 'Regulatory citation', 'text', { bind: 'regulatoryCitation', requiredAtStage: 0 }),
+  F('Need & justification', 'consequence', 'Consequence of not doing the work', 'textarea', { requiredAtStage: 0 }),
+  F('Need & justification', 'alternatives', 'Alternatives considered', 'textarea', { requiredAtStage: 1 }),
+  F('Need & justification', 'selectedRationale', 'Why the selected alternative', 'textarea', { requiredAtStage: 1 }),
+  F('Need & justification', 'benefits', 'Benefits and risk reduced', 'textarea', { requiredAtStage: 1 }),
+  F('Scope & asset', 'scopeSummary', 'Scope summary', 'textarea', { bind: 'scope.summary', requiredAtStage: 0 }),
+  F('Scope & asset', 'lineId', 'Line / facility ID', 'text', { bind: 'asset.lineId', requiredAtStage: 0 }),
+  F('Scope & asset', 'diameter', 'Diameter (in)', 'number', { bind: 'asset.diameterIn' }),
+  F('Scope & asset', 'length', 'Length (ft)', 'number', { bind: 'asset.lengthFt' }),
+  F('Scope & asset', 'maop', 'MAOP (psig)', 'number', { bind: 'asset.maopPsig', requiredAtStage: 0 }),
+  F('Scope & asset', 'material', 'Material / grade', 'text', { bind: 'asset.material' }),
+  F('Scope & asset', 'vintage', 'Vintage (year installed)', 'number', { bind: 'asset.vintage' }),
+  F('Scope & asset', 'records', 'Pressure-test records status', 'select', { bind: 'asset.recordsStatus', options: ['complete', 'gaps', 'unknown'], requiredAtStage: 0 }),
+  F('Location', 'city', 'City', 'text', { bind: 'location.city', requiredAtStage: 0 }),
+  F('Location', 'county', 'County', 'text', { bind: 'location.county' }),
+  F('Location', 'district', 'Operating district', 'text', { bind: 'location.district', requiredAtStage: 0 }),
+  F('Location', 'classLocation', 'Class location', 'select', { bind: 'location.classLocation', options: ['1', '2', '3', '4'] }),
+  F('Location', 'hca', 'High consequence area', 'boolean', { bind: 'location.hca' }),
+  F('Location', 'dac', 'Disadvantaged community', 'boolean', { bind: 'location.dac' }),
+  F('Location', 'lat', 'Latitude (WGS84)', 'number', { bind: 'location.lat', requiredAtStage: 0, help: 'Decimal degrees, e.g. 35.4231 — set on the Map tab by clicking, pasting or importing KML' }),
+  F('Location', 'lng', 'Longitude (WGS84)', 'number', { bind: 'location.lng', requiredAtStage: 0, help: 'Decimal degrees, e.g. -119.8765' }),
+  F('Location', 'crossings', 'Major crossings (freeway, rail, water)', 'textarea', { requiredAtStage: 1 }),
+  F('Regulatory & funding', 'recovery', 'Cost recovery mechanism', 'text', { readOnly: true }),
+  F('Regulatory & funding', 'proceeding', 'Proceeding / funding source', 'text', { bind: 'fundingProceeding', requiredAtStage: 0 }),
+  F('Regulatory & funding', 'grcWorkpaper', 'GRC workpaper reference', 'text'),
+  F('Regulatory & funding', 'ceqaPath', 'CEQA path', 'select', { options: ['Exempt', 'Initial study / MND', 'EIR', 'Not applicable'], requiredAtStage: 1 }),
+  F('Regulatory & funding', 'cpcn', 'CPCN required', 'select', { options: ['No', 'Yes', 'Under review'], requiredAtStage: 1 }),
+  F('Operations & customers', 'outage', 'Outage / clearance requirements', 'textarea', { requiredAtStage: 2, help: 'Windows, gas control constraints, bypass' }),
+  F('Operations & customers', 'customersAffected', 'Customers affected by service interruption', 'number', { requiredAtStage: 2 }),
+  F('Operations & customers', 'temporarySupply', 'Temporary supply plan (CNG/LNG/bypass)', 'textarea'),
+  F('Operations & customers', 'communityImpact', 'Community and traffic impact', 'textarea', { requiredAtStage: 2 }),
+  F('Constraints & stakeholders', 'constraints', 'Key constraints', 'textarea', { requiredAtStage: 1 }),
+  F('Constraints & stakeholders', 'workWindows', 'Work-hour and seasonal windows', 'text'),
+  F('Constraints & stakeholders', 'agencies', 'Agencies and jurisdictions', 'textarea', { requiredAtStage: 1 }),
+  F('Constraints & stakeholders', 'stakeholders', 'External stakeholders', 'textarea'),
+  F('Closeout', 'inService', 'In-service date', 'date', { bind: 'dates.inService', requiredAtStage: 3 }),
+  F('Closeout', 'assetUnits', 'Asset units placed in service', 'textarea', { requiredAtStage: 4 }),
+  F('Closeout', 'gisUpdated', 'GIS updated with as-builts', 'select', { options: ['No', 'Yes'], requiredAtStage: 4 }),
+]
+
+// ── Forecast line items (FC-10): each rolls up to one WBS function; SAP actuals land here via the mapping table.
+const FL = (id: string, code: string, name: string, functionId: string, categoryIds: string[], note?: string): ForecastLine => ({ id, code, name, functionId, categoryIds, active: true, note })
+export const FORECAST_LINES: ForecastLine[] = [
+  FL('fl-100', '100.10', 'Project management', 'wbs-100', ['cat-pmc']),
+  FL('fl-200', '200.10', 'Engineering, survey & design', 'wbs-200', ['cat-eng'], 'Outside engineering plus company engineering labor charged to the .02 sub-WBS'),
+  FL('fl-300-10', '300.10', 'Pipe & fittings', 'wbs-300', ['cat-pipe']),
+  FL('fl-300-20', '300.20', 'Valves & actuators', 'wbs-300', ['cat-valves']),
+  FL('fl-300-30', '300.30', 'Major equipment', 'wbs-300', ['cat-equipment']),
+  FL('fl-390', '390.10', 'Test water, consumables & temporary bypasses', 'wbs-390', ['cat-test']),
+  FL('fl-400', '400.10', 'Fabrication', 'wbs-400', ['cat-fabrication']),
+  FL('fl-500-10', '500.10', 'Contract construction', 'wbs-500', ['cat-contract']),
+  FL('fl-500-20', '500.20', 'Traffic control', 'wbs-500', ['cat-traffic']),
+  FL('fl-500-30', '500.30', 'Restoration & paving', 'wbs-500', ['cat-restore']),
+  FL('fl-500-40', '500.40', 'Construction inspection & NDE', 'wbs-500', ['cat-inspect']),
+  FL('fl-600', '600.10', 'Commissioning', 'wbs-600', ['cat-commission']),
+  FL('fl-700', '700.10', 'Operations (safe-out, safe-in, startup)', 'wbs-700', ['cat-co-labor']),
+  FL('fl-800', '800.10', 'Project support services', 'wbs-800', ['cat-support'], 'Project controls, PMO, closeout, regulatory, supply management, outreach'),
+  FL('fl-850', '850.10', 'Environmental', 'wbs-850', ['cat-env']),
+  FL('fl-860', '860.10', 'Land & right-of-way labor', 'wbs-860', ['cat-land']),
+  FL('fl-870', '870.10', 'Land purchase', 'wbs-870', ['cat-land-purchase']),
+  FL('fl-880', '880.10', 'Permitting fees', 'wbs-880', ['cat-permit-fees']),
+  FL('fl-900', '900.10', 'Project overhead (AFUDC, allocations)', 'wbs-900', ['cat-loaders'], 'Overhead, benefits and AFUDC settlements from SAP'),
+  FL('fl-999', '999.10', 'Undifferentiated', 'wbs-999', ['cat-undiff']),
+]
+
+// ── SAP cost element → forecast line mapping (FC-11). Lower priority number runs first; first match wins.
+const M = (id: string, priority: number, from: string, to: string, target: SapMapping['target'], lineId: string | undefined, note: string, extra: Partial<SapMapping> = {}): SapMapping => ({ id, priority, costElementFrom: from, costElementTo: to, target, lineId, note, active: true, ...extra })
+export const SAP_MAPPINGS: SapMapping[] = [
+  M('map-01', 10, '5100000', '5199999', 'line', 'fl-200', 'Company labor charged to the engineering sub-WBS is engineering, not operations', { wbsSuffix: '.02' }),
+  M('map-02', 20, '5100000', '5199999', 'line', 'fl-700', 'Company labor — operations support (safe-out, safe-in, startup)'),
+  M('map-03', 30, '5200000', '5209999', 'line', 'fl-500-10', 'Contract services — construction, equipment rental, change orders'),
+  M('map-04', 40, '5310000', '5319999', 'line', 'fl-300-10', 'Material — line pipe, fittings, coating'),
+  M('map-05', 41, '5320000', '5329999', 'line', 'fl-300-20', 'Material — valves & actuators'),
+  M('map-06', 42, '5330000', '5339999', 'line', 'fl-300-30', 'Material — major equipment'),
+  M('map-07', 43, '5340000', '5349999', 'line', 'fl-400', 'Fabrication — shop assembly'),
+  M('map-08', 50, '5400000', '5409999', 'line', 'fl-200', 'Outside engineering services'),
+  M('map-09', 55, '5500000', '5509999', 'line', 'fl-860', 'Land & right-of-way labor, appraisal, title'),
+  M('map-10', 56, '5510000', '5519999', 'line', 'fl-850', 'Environmental consultants, monitoring, water treatment'),
+  M('map-11', 57, '5520000', '5529999', 'line', 'fl-870', 'Land purchase'),
+  M('map-12', 58, '5530000', '5539999', 'line', 'fl-880', 'Permit fees (municipal, environmental, land)'),
+  M('map-13', 60, '5600000', '5609999', 'line', 'fl-500-40', 'Construction inspection — weld, NDE, coating'),
+  M('map-14', 61, '5610000', '5619999', 'line', 'fl-390', 'Test water, consumables, temporary bypasses'),
+  M('map-15', 62, '5620000', '5629999', 'line', 'fl-600', 'Commissioning services'),
+  M('map-16', 70, '5700000', '5709999', 'line', 'fl-500-30', 'Paving & restoration'),
+  M('map-17', 71, '5710000', '5719999', 'line', 'fl-500-20', 'Traffic control services'),
+  M('map-18', 80, '5800000', '5809999', 'line', 'fl-100', 'Project management services'),
+  M('map-19', 81, '5810000', '5819999', 'line', 'fl-800', 'Project support services — controls, PMO, closeout, outreach'),
+  M('map-20', 90, '5900000', '5949999', 'line', 'fl-900', 'Overhead, benefits and AFUDC settlements'),
+  M('map-21', 91, '5980000', '5989999', 'line', 'fl-999', 'Costs not tied to a specific function'),
+  M('map-22', 95, '1400000', '1499999', 'exclude', undefined, 'Balance-sheet inventory transfers are not project cost'),
+]
+
+// ── Custom spread profiles (FC-12) beyond the built-in curves.
+export const SPREAD_PROFILES: SpreadProfile[] = [
+  { id: 'prof-material', name: 'Material order: deposit + delivery', description: '20% deposit at order, balance on delivery near the end of the window', weights: [20, 0, 0, 0, 0, 0, 10, 70] },
+  { id: 'prof-mobilize', name: 'Mobilize, produce, demobilize', description: 'Ramp up over the first quarter, steady production, short tail', weights: [3, 8, 12, 14, 14, 14, 14, 12, 6, 3] },
+  { id: 'prof-retention', name: 'Progress with 5% retention', description: 'Steady progress billing; retention released in the last month', weights: [9.5, 9.5, 9.5, 9.5, 9.5, 9.5, 9.5, 9.5, 9.5, 9.5, 5] },
+  { id: 'prof-moratorium', name: 'Paving — holiday moratorium', description: 'Even, with no paving in November–January (city moratorium)', weights: [1], zeroMonths: [11, 12, 1] },
+  { id: 'prof-closeout', name: 'Closeout tail', description: 'Most cost in the last two months: as-builts, records, final invoices', weights: [1, 1, 1, 2, 6, 10] },
+]
+
+export const REGION_FACTORS: Record<string, number> = { West: 1.12, East: 1.0, South: 0.94, North: 0.97 }
+export const REGIONS = ['North', 'West', 'South', 'East']
+
+export const TAX_RATES = [
+  { county: 'Coastline County', rate: 7.75 },
+  { county: 'Arroyo County', rate: 9.5 },
+  { county: 'Sierra Mesa County', rate: 8.25 },
+]
+
+export const UNITS = [
+  { id: 'ft', label: 'Feet' }, { id: 'mi', label: 'Miles' }, { id: 'ea', label: 'Each' }, { id: 'site', label: 'Sites' },
+  { id: 'hp', label: 'Horsepower' }, { id: 'LS', label: 'Lump sum' }, { id: 'day', label: 'Days' }, { id: 'hr', label: 'Hours' },
+  { id: 'ton', label: 'Tons' }, { id: 'cy', label: 'Cubic yards' }, { id: 'sf', label: 'Square feet' },
+]
+
+export const QUANTITY_TYPES = [
+  { id: 'qt-pipe', label: 'Pipe installed', unit: 'ft', feeds: 'lengthFt' as const },
+  { id: 'qt-tested', label: 'Pipe tested', unit: 'ft', feeds: 'lengthFt' as const },
+  { id: 'qt-abandon', label: 'Pipe abandoned in place', unit: 'ft' },
+  { id: 'qt-tieins', label: 'Tie-ins', unit: 'ea', feeds: 'tieIns' as const },
+  { id: 'qt-services', label: 'Services transferred', unit: 'ea', feeds: 'services' as const },
+  { id: 'qt-sections', label: 'Test sections', unit: 'ea' },
+  { id: 'qt-short', label: 'Short-section replacements', unit: 'ea' },
+  { id: 'qt-valves', label: 'Valve sites automated', unit: 'site', feeds: 'sites' as const },
+  { id: 'qt-units', label: 'Compressor units', unit: 'ea' },
+  { id: 'qt-hp', label: 'Station capacity', unit: 'hp', feeds: 'hp' as const },
+  { id: 'qt-reg', label: 'Regulator stations', unit: 'ea' },
+]
+
+export const SCOPE_LIBRARY = {
+  inScope: [
+    'Engineering, survey and design', 'Land rights and permits', 'Construction and inspection', 'Tie-ins and gas handling', 'Restoration',
+    'Hydrostatic strength test', 'Abandonment of existing pipe in place', 'Valve and actuator installation', 'SCADA RTU and communications',
+    'Site civil work', 'Commissioning with gas control', 'Compressor units and motors', 'Substation and interconnect', 'Station piping and controls',
+    'Demolition of legacy units', 'Air permit compliance', 'Service transfers', 'Traffic control', 'Environmental monitoring',
+  ],
+  outOfScope: [
+    'Customer meter work', 'Unrelated leak repairs', 'Third-party relocations', 'Paving beyond trench restoration limits', 'Land acquisition by condemnation',
+    'Unknown contamination remediation', 'Distribution system reinforcement', 'Permanent landscaping',
+  ],
+  assumptions: [
+    'Outage windows available October–April', 'Work hours 7 AM–6 PM weekdays in residential areas', 'No groundwater dewatering beyond 2 ft',
+    'Night work not required', 'Existing easements are sufficient', 'Pipe available from stock within 12 weeks', 'Single mobilization',
+  ],
+}
+
+// ── Historical cost table (ES-20): direct $/unit from closed projects, base-year dollars.
+// Built from the unit-rate library so the demo's Class 5 quick estimates agree with its parametric estimates.
+export function buildHistoricalCosts(rates: UnitCostRate[]): HistoricalCost[] {
+  const out: HistoricalCost[] = []
+  let k = 0
+  const codes = ['PRJ-0871', 'PRJ-0904', 'PRJ-0912', 'PRJ-0933', 'PRJ-0957', 'PRJ-0968', 'PRJ-0981', 'PRJ-0995', 'PRJ-1003', 'PRJ-1011', 'PRJ-1017', 'PRJ-1024']
+  const add = (assetType: AssetType, workMethod: WorkMethod, diameterBand: DiameterBand, terrain: Terrain | 'any', unit: HistUnit, rep: { dia: number; terrain: Terrain; len: number; qty: number; sites?: number }) => {
+    const proj = { asset: { type: assetType, diameterIn: rep.dia, lengthFt: rep.len }, workMethod, location: { terrain: rep.terrain }, scope: { quantities: [{ label: 'Valve sites', qty: rep.sites ?? 1, unit: 'ea' }] } } as unknown as Project
+    const lines = parametricLines(proj, rates)
+    if (!lines.length) return
+    const byCat: Record<string, number> = {}
+    for (const l of lines) byCat[l.categoryId] = (byCat[l.categoryId] || 0) + l.qty * l.unitCost
+    const tot = Object.values(byCat).reduce((a, b) => a + b, 0)
+    const per = tot / rep.qty
+    k++
+    const wob = 0.94 + ((k * 37) % 13) / 100 // history is never exactly the library
+    const n = 3 + ((k * 7) % 11)
+    out.push({
+      id: `hc-${k}`, assetType, workMethod, diameterBand, terrain, unit,
+      p50: Math.round(per * wob), p10: Math.round(per * wob * (0.7 + (k % 3) * 0.03)), p90: Math.round(per * wob * (1.38 + (k % 4) * 0.06)),
+      n, baseYear: k % 3 ? 2025 : 2024,
+      mix: Object.fromEntries(Object.entries(byCat).map(([c, v]) => [c, +(v / tot).toFixed(4)])),
+      sources: codes.filter((_, i) => (i + k) % 3 === 0).slice(0, Math.min(n, 5)),
+      updatedAt: '2026-07-15', updatedById: 'u-estl', active: true,
+      note: n < 5 ? 'Small sample — confirm with the estimating lead' : undefined,
+    })
+  }
+  const bands: [DiameterBand, number][] = [['10-16', 16], ['20-24', 24], ['26-36', 30]]
+  for (const wm of ['replace-open-trench', 'replace-hdd'] as WorkMethod[])
+    for (const [b, d] of bands) for (const t of ['urban', 'suburban', 'rural'] as Terrain[]) add('transmission-pipeline', wm, b, t, 'ft', { dia: d, terrain: t, len: 15_000, qty: 15_000 })
+  for (const t of ['urban', 'suburban', 'rural'] as Terrain[]) add('transmission-pipeline', 'hydrotest', 'n/a', t, 'ft', { dia: 20, terrain: t, len: 25_000, qty: 25_000 })
+  for (const t of ['urban', 'suburban', 'rural'] as Terrain[]) add('distribution-main', 'replace-open-trench', 'le-8', t, 'ft', { dia: 6, terrain: t, len: 8_000, qty: 8_000 })
+  add('valve-site', 'valve-automation', 'n/a', 'any', 'site', { dia: 24, terrain: 'suburban', len: 0, qty: 3, sites: 3 })
+  add('compressor-station', 'compressor-replacement', 'n/a', 'any', 'hp', { dia: 0, terrain: 'rural', len: 0, qty: 22_000 })
+  add('compressor-station', 'station-rebuild', 'n/a', 'any', 'hp', { dia: 0, terrain: 'rural', len: 0, qty: 9_000 })
+  k++
+  out.push({ id: `hc-${k}`, assetType: 'regulator-station', workMethod: 'station-rebuild', diameterBand: 'n/a', terrain: 'any', unit: 'station', p10: 1_900_000, p50: 2_750_000, p90: 4_100_000, n: 9, baseYear: 2025, mix: { 'cat-equipment': 0.24, 'cat-contract': 0.38, 'cat-eng': 0.12, 'cat-co-labor': 0.1, 'cat-land': 0.04, 'cat-env': 0.03, 'cat-inspect': 0.03, 'cat-pmc': 0.06 }, sources: ['PRJ-0912', 'PRJ-0968', 'PRJ-1011'], updatedAt: '2026-07-15', updatedById: 'u-estl', active: true })
+  return out
+}
 
 ===== FILE: src/core/seed/workflows.ts =====
 // Default process catalog (Module 7). Each is a published, versioned WorkflowDef a client edits in the designer.
@@ -2064,893 +2656,4 @@ export function ActualDrill({ projectId, lineId, fnId, months, cellAmount, onClo
 
 function Cell({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return <div className="min-w-0 bg-surface px-3 py-2"><div className="eyebrow truncate">{label}</div><div className="truncate font-semibold tabular-nums">{value}</div>{sub && <div className="truncate font-mono text-[11px] text-faint">{sub}</div>}</div>
-}
-
-===== FILE: src/views/actuals/lib.ts =====
-// Pure helpers for the SAP actuals pages: import review roll-ups, exception reasons, rule labels and the
-// coverage checks the mapping-table admin runs. No React; everything takes AppState so it can be unit-tested.
-import type { ActualsImport, ActualTxn, AppState, Money, Project, SapMapping, TxnStatus } from '@/core/types'
-import { forecastLines, functionOfLine, lineById } from '@/core/engine/lines'
-import { matchRule, projectForWbs } from '@/core/engine/sap'
-import { sum } from '@/core/util'
-
-export const TXN_STATUS: Record<TxnStatus, { label: string; tone: 'good' | 'info' | 'neutral' | 'bad' | 'warn'; hint: string }> = {
-  mapped: { label: 'Mapped', tone: 'good', hint: 'A mapping rule (or a person) sent it to one forecast line' },
-  allocated: { label: 'Allocated', tone: 'info', hint: 'Loader / overhead settlement spread over the period’s direct lines pro-rata' },
-  excluded: { label: 'Excluded', tone: 'neutral', hint: 'Kept out of project actuals (balance-sheet or non-project cost)' },
-  unmapped: { label: 'Unmapped', tone: 'bad', hint: 'No active rule covers the cost element — blocks posting' },
-  'no-project': { label: 'No project', tone: 'bad', hint: 'The SAP WBS element matches no project — blocks posting' },
-}
-
-export const importTxns = (s: AppState, importId: string) => s.actualTxns.filter((t) => t.importId === importId)
-
-export interface ImportFigures { rows: number; total: Money; mapped: Money; allocated: Money; excluded: Money; unmapped: Money; noProject: Money; exceptions: number; resolved: number; credits: number; projects: number; periods: string[] }
-export function importFigures(txns: ActualTxn[]): ImportFigures {
-  const t = (st: TxnStatus) => Math.round(sum(txns.filter((x) => x.status === st).map((x) => x.amount)))
-  return {
-    rows: txns.length,
-    total: Math.round(sum(txns.map((x) => x.amount))),
-    mapped: t('mapped'), allocated: t('allocated'), excluded: t('excluded'), unmapped: t('unmapped'), noProject: t('no-project'),
-    exceptions: txns.filter(isException).length,
-    resolved: txns.filter((x) => x.manual).length,
-    credits: txns.filter((x) => x.amount < 0 && x.status !== 'excluded').length,
-    projects: new Set(txns.map((x) => x.projectId).filter(Boolean)).size,
-    periods: [...new Set(txns.map((x) => x.period))].sort(),
-  }
-}
-
-export const isException = (t: ActualTxn) => t.status === 'unmapped' || t.status === 'no-project'
-
-/** Plain-language reason a row needs a person. */
-export function exceptionReason(s: AppState, t: ActualTxn): string {
-  if (t.status === 'no-project') return `WBS element ${t.sapWbs} does not belong to any project (no project has that ERP WBS or a parent of it)`
-  if (t.status === 'unmapped') {
-    const r = s.settings.sapMappings.find((x) => x.id === t.ruleId)
-    if (r?.target === 'line') return `Rule P${r.priority} matches but targets a line that is missing or inactive`
-    return `No active mapping rule covers cost element ${t.costElement}${t.costElementName ? ` (${t.costElementName})` : ''}`
-  }
-  return ''
-}
-
-/** "P30 · 5200000–5200999 → 06.10 Contract construction" */
-export function ruleLabel(s: AppState, r?: SapMapping): string {
-  if (!r) return ''
-  return `P${r.priority} · ${r.costElementFrom}–${r.costElementTo}${r.wbsSuffix ? ` on *${r.wbsSuffix}` : ''}${r.textContains ? ` text “${r.textContains}”` : ''} → ${targetLabel(s, r)}`
-}
-export function targetLabel(s: AppState, r: Pick<SapMapping, 'target' | 'lineId'>): string {
-  if (r.target === 'allocate') return 'Allocate pro-rata'
-  if (r.target === 'exclude') return 'Exclude'
-  const l = lineById(s, r.lineId)
-  return l ? `${l.code} ${l.name}` : 'Missing line'
-}
-export const ruleOf = (s: AppState, t: ActualTxn) => s.settings.sapMappings.find((x) => x.id === t.ruleId)
-
-/** How a transaction landed: rule, manual resolution or status. */
-export function howMapped(s: AppState, t: ActualTxn): string {
-  if (t.manual) return `Resolved by hand${t.manual.note ? ` — ${t.manual.note}` : ''}`
-  const r = ruleOf(s, t)
-  return r ? ruleLabel(s, r) : TXN_STATUS[t.status].hint
-}
-
-export interface ProjectRoll {
-  p?: Project
-  projectId: string
-  byLine: Record<string, { direct: Money; allocated: Money }>
-  direct: Money; allocated: Money; excluded: Money; exceptions: Money
-  rows: number
-}
-/**
- * Roll an import up by project and forecast line. Allocated rows use their posted allocation; on a staged import
- * they are previewed the same way posting will do it (pro-rata to the project-period's mapped lines).
- */
-export function projectLineRollup(s: AppState, txns: ActualTxn[]): ProjectRoll[] {
-  const out = new Map<string, ProjectRoll>()
-  const get = (pid: string) => {
-    let r = out.get(pid)
-    if (!r) { r = { p: s.projects.find((x) => x.id === pid), projectId: pid, byLine: {}, direct: 0, allocated: 0, excluded: 0, exceptions: 0, rows: 0 }; out.set(pid, r) }
-    return r
-  }
-  const cell = (r: ProjectRoll, lid: string) => (r.byLine[lid] ??= { direct: 0, allocated: 0 })
-  for (const t of txns) {
-    const r = get(t.projectId ?? '—')
-    r.rows++
-    if (t.status === 'mapped' && t.lineId) { cell(r, t.lineId).direct += t.amount; r.direct += t.amount }
-    else if (t.status === 'excluded') r.excluded += t.amount
-    else if (isException(t)) r.exceptions += t.amount
-  }
-  for (const t of txns.filter((x) => x.status === 'allocated')) {
-    const r = get(t.projectId ?? '—')
-    const share = t.allocation ?? previewAllocation(txns, t)
-    for (const [lid, v] of Object.entries(share)) cell(r, lid).allocated += v
-    r.allocated += t.amount
-  }
-  return [...out.values()].sort((a, b) => (a.p?.code ?? 'ZZZ').localeCompare(b.p?.code ?? 'ZZZ'))
-}
-
-/** Pro-rata split of an allocated row over its project-period's mapped lines (mirrors postImport). */
-export function previewAllocation(txns: ActualTxn[], t: ActualTxn): Record<string, Money> {
-  const direct: Record<string, Money> = {}
-  for (const x of txns) if (x.status === 'mapped' && x.lineId && x.projectId === t.projectId && x.period === t.period) direct[x.lineId] = (direct[x.lineId] || 0) + x.amount
-  const ids = Object.keys(direct)
-  if (!ids.length) return {}
-  const base = sum(Object.values(direct))
-  const out: Record<string, Money> = {}
-  let acc = 0
-  ids.forEach((k, i) => { const v = i === ids.length - 1 ? Math.round((t.amount - acc) * 100) / 100 : Math.round(t.amount * (base ? direct[k] / base : 1 / ids.length) * 100) / 100; out[k] = v; acc += v })
-  return out
-}
-
-export const importLabel = (imp: ActualsImport) => `${imp.fileName} · ${imp.period}`
-
-// ───────────────────────────── Mapping-table coverage
-
-export interface Overlap { a: SapMapping; b: SapMapping; kind: 'refines' | 'shadowed' | 'conflict'; text: string }
-const n = (x: string) => Number(x)
-const covers = (a: SapMapping, b: SapMapping) => n(a.costElementFrom) <= n(b.costElementFrom) && n(a.costElementTo) >= n(b.costElementTo)
-const intersects = (a: SapMapping, b: SapMapping) => n(a.costElementFrom) <= n(b.costElementTo) && n(b.costElementFrom) <= n(a.costElementTo)
-const hasFilter = (r: SapMapping) => !!(r.wbsSuffix || r.textContains)
-
-/** Overlapping cost-element ranges among active rules, classified: a narrower rule first (fine), a rule that can never match, or a real conflict. */
-export function ruleOverlaps(rules: SapMapping[]): Overlap[] {
-  const act = rules.filter((r) => r.active).sort((a, b) => a.priority - b.priority)
-  const out: Overlap[] = []
-  for (let i = 0; i < act.length; i++) for (let j = i + 1; j < act.length; j++) {
-    const a = act[i], b = act[j] // a runs first
-    if (!intersects(a, b)) continue
-    const sameTarget = a.target === b.target && a.lineId === b.lineId
-    if (covers(a, b) && !hasFilter(a)) out.push({ a, b, kind: 'shadowed', text: `P${b.priority} never matches: P${a.priority} runs first and covers its whole range with no WBS or text filter` })
-    else if (hasFilter(a) || covers(b, a)) out.push({ a, b, kind: 'refines', text: `P${a.priority} is narrower and runs first; P${b.priority} catches the rest` })
-    else out.push({ a, b, kind: sameTarget ? 'refines' : 'conflict', text: sameTarget ? `Ranges overlap but both send cost to the same place` : `Ranges partly overlap with different targets — rows in ${a.costElementFrom > b.costElementFrom ? a.costElementFrom : b.costElementFrom}–${a.costElementTo < b.costElementTo ? a.costElementTo : b.costElementTo} follow P${a.priority}` })
-  }
-  return out
-}
-
-/** Active forecast lines no active rule sends cost to. */
-export const linesWithoutRule = (s: AppState) => forecastLines(s).filter((l) => !s.settings.sapMappings.some((r) => r.active && r.target === 'line' && r.lineId === l.id))
-
-/** Rules pointing at a missing or inactive line. */
-export const brokenRules = (s: AppState) => s.settings.sapMappings.filter((r) => r.active && r.target === 'line' && !forecastLines(s).some((l) => l.id === r.lineId))
-
-/** Cost elements in staged imports that no rule covers (what to add next), with row count and amount. */
-export function unmappedElements(s: AppState): { costElement: string; name: string; rows: number; amount: Money }[] {
-  const staged = new Set(s.actualsImports.filter((x) => x.status === 'staged').map((x) => x.id))
-  const m = new Map<string, { costElement: string; name: string; rows: number; amount: Money }>()
-  for (const t of s.actualTxns) if (staged.has(t.importId) && t.status === 'unmapped' && !t.manual) {
-    const e = m.get(t.costElement) ?? { costElement: t.costElement, name: t.costElementName, rows: 0, amount: 0 }
-    e.rows++; e.amount += t.amount
-    m.set(t.costElement, e)
-  }
-  return [...m.values()]
-}
-
-/** Test one row against the mapping table: the winning rule, every rule that would match, and the project. */
-export function testRow(s: AppState, row: { costElement: string; sapWbs: string; text: string }, rules = s.settings.sapMappings) {
-  const r = { ...row, vendor: '' }
-  const winner = matchRule(rules, r)
-  const all = [...rules].filter((x) => x.active).sort((a, b) => a.priority - b.priority).filter((x) => matchRule([x], r))
-  const p = row.sapWbs.trim() ? projectForWbs(s, row.sapWbs) : undefined
-  const line = winner?.target === 'line' ? lineById(s, winner.lineId) : undefined
-  return { winner, all, project: p, line, fnId: line ? functionOfLine(s, line.id) : undefined }
-}
-
-===== FILE: src/views/actuals/Reconcile.tsx =====
-// Reconciliation: does Crosswalk agree with SAP? For a chosen extract (a staged or posted import, or the bundled
-// fictional sample file) and period, compares SAP project cost with Crosswalk's posted actuals and the forecast's
-// actual months by project, then drills to lines, functions, cost elements and the rows that explain each gap.
-import React, { useMemo, useState } from 'react'
-import type { AppState } from '@/core/types'
-import { go, projectHref } from '@/core/router'
-import { parseSapExtract, type SapRow } from '@/core/engine/sap'
-import { reconcile, reconCsvRows, reconItemCsvRows, ruleLanding, RECON_ITEM_LABEL, RECON_STATUS_LABEL, RECON_TOLERANCE, UNPLACED, type ReconItem, type ReconPeriod, type ReconProject, type ReconStatus } from '@/core/engine/reconcile'
-import { FICTIONAL_SAMPLE_FILE } from '@/core/engine/sapSample'
-import { lineById } from '@/core/engine/lines'
-import { saveFile, toCSV } from '@/core/download'
-import { cx, fmtDate, fmtMonth, money, sum } from '@/core/util'
-import { Badge, Button, Callout, Drawer, Empty, Field, Panel, SegButtons, Select, Tabs, type Tone } from '@/ui/kit'
-import { toast } from '@/ui/toast'
-import { Icon } from '@/ui/icons'
-import { lsGet, lsSet } from '../admin/common'
-import { TXN_STATUS } from './lib'
-import SAMPLE_CSV from '../../../samples/sap-actuals-fictional.csv?raw'
-
-export { SAMPLE_CSV }
-export const SAMPLE_SOURCE = 'sample'
-const $ = (n: number) => money(n, 'full')
-const signed = (n: number) => (n > 0 ? `+${$(n)}` : $(n))
-
-/** Open the reconciliation tab on the SAP actuals page (optionally for one project or one extract). */
-export function openReconciliation(o: { projectId?: string; source?: string } = {}) {
-  lsSet('crosswalk:actuals-tab', 'recon')
-  lsSet('crosswalk:recon-open', o)
-  go('#actuals')
-}
-/** Read (and clear) a pending hand-off from openReconciliation. */
-export function takeReconHandoff(): { projectId?: string; source?: string } | null {
-  const o = lsGet<{ projectId?: string; source?: string } | null>('crosswalk:recon-open', null)
-  if (o) lsSet('crosswalk:recon-open', null)
-  return o
-}
-
-const STATUS_TONE: Record<ReconStatus, Tone> = { ties: 'good', 'lines-differ': 'warn', differs: 'bad', 'not-posted': 'warn' }
-export function ReconBadge({ status, diff }: { status: ReconStatus; diff: number }) {
-  return <Badge tone={STATUS_TONE[status]}>{status === 'differs' ? `Differs by ${signed(diff)}` : RECON_STATUS_LABEL[status]}</Badge>
-}
-
-export function sourceRows(s: AppState, source: string): SapRow[] {
-  if (source === SAMPLE_SOURCE) return parseSapExtract(SAMPLE_CSV, s.settings.asOf.slice(0, 7)).rows
-  return s.actualTxns.filter((t) => t.importId === source)
-}
-
-export default function Reconciliation({ s, source, onSource, projectId: initialProject }: { s: AppState; source: string; onSource: (id: string) => void; projectId?: string }) {
-  const imports = useMemo(() => s.actualsImports.filter((x) => x.status !== 'discarded').sort((a, b) => b.period.localeCompare(a.period) || b.importedAt.localeCompare(a.importedAt)), [s.actualsImports])
-  const rows = useMemo(() => sourceRows(s, source), [s, source])
-  const periods = useMemo(() => [...new Set(rows.map((r) => r.period))].sort(), [rows])
-  const [period, setPeriod] = useState('')
-  const per = periods.includes(period) ? period : ''
-  const [pid, setPid] = useState(initialProject ?? '')
-  const [openPid, setOpenPid] = useState<string | null>(initialProject ?? null)
-  const rec = useMemo(() => reconcile(s, rows, { period: per || undefined }), [s, rows, per])
-  const shown = rec.projects.filter((p) => !pid || p.projectId === pid)
-  const T = rec.totals
-  const pc = (id?: string) => s.projects.find((p) => p.id === id)
-  const srcName = source === SAMPLE_SOURCE ? FICTIONAL_SAMPLE_FILE : imports.find((x) => x.id === source)?.fileName ?? 'extract'
-  const exportCsv = async (what: 'summary' | 'rows') => {
-    const data = what === 'summary' ? reconCsvRows(s, rec) : reconItemCsvRows(s, rec)
-    if (!data.length) { toast('Nothing to export', 'info'); return }
-    const r = await saveFile(`${srcName.replace(/\.\w+$/, '')}-reconciliation${what === 'rows' ? '-rows' : ''}${per ? `-${per}` : ''}.csv`, toCSV(data), 'text/csv')
-    if (r === 'saved') toast(what === 'summary' ? 'Reconciliation exported' : 'Reconciling rows exported')
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <Panel pad={false}>
-        <div className="flex flex-col gap-3 p-3 sm:p-4">
-          <p className="text-[12.5px] text-muted">SAP is the book of record. For every project-period in the extract, <b className="text-ink">SAP project cost</b> (rows on the project’s WBS run through the current mapping table, less rows the table excludes) is compared with Crosswalk’s <b className="text-ink">posted actuals</b> and with what the project’s latest <b className="text-ink">forecast</b> treats as actuals for that month. Rows are matched by document, WBS, cost element and amount, so every difference traces to the rows behind it.</p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
-            <Field label="SAP extract">
-              <Select aria-label="SAP extract" value={source} onChange={(e) => { onSource(e.target.value); setPeriod('') }} options={[{ value: SAMPLE_SOURCE, label: `${FICTIONAL_SAMPLE_FILE} · fictional sample (not staged)` }, ...imports.map((x) => ({ value: x.id, label: `${x.fileName} · ${x.status} · ${fmtMonth(x.period)}` }))]} />
-            </Field>
-            <Field label="Period">
-              <Select aria-label="Period" value={per} onChange={(e) => setPeriod(e.target.value)} options={[{ value: '', label: periods.length > 1 ? `All periods (${periods.length})` : 'All periods' }, ...periods.map((m) => ({ value: m, label: fmtMonth(m) }))]} />
-            </Field>
-            <Field label="Project">
-              <Select aria-label="Project" value={pid} onChange={(e) => setPid(e.target.value)} options={[{ value: '', label: `All projects (${rec.projects.length})` }, ...rec.projects.map((p) => ({ value: p.projectId, label: `${pc(p.projectId)?.code ?? p.projectId} · ${pc(p.projectId)?.name ?? ''}` }))]} />
-            </Field>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-px border-t border-line bg-line sm:grid-cols-4 xl:grid-cols-7">
-          <Fig label="SAP rows" value={$(T.sapGross)} sub={`${T.rows} rows · ${rec.periods.map(fmtMonth).join(', ') || '—'}`} />
-          <Fig label="Excluded by rule" value={$(T.sapExcluded)} sub="balance sheet / not project cost" />
-          <Fig label="No project" value={$(T.noProject)} sub={`${rec.noProject.rows.length} row${rec.noProject.rows.length === 1 ? '' : 's'} · WBS matches no project`} tone={T.noProject ? 'bad' : undefined} />
-          <Fig label="SAP project cost" value={$(T.sapCost)} sub={`${T.projects} project${T.projects === 1 ? '' : 's'}`} />
-          <Fig label="Crosswalk posted" value={$(T.posted)} sub="CostPeriod actuals" />
-          <Fig label="Difference" value={signed(T.diff)} sub={`posted − SAP · ${$(T.diff - T.explained)} unexplained`} tone={Math.abs(T.diff) > RECON_TOLERANCE ? 'bad' : 'good'} />
-          <Fig label="Projects that tie" value={`${T.tie} / ${T.projects}`} sub={`within $${RECON_TOLERANCE} per period, total and lines`} tone={T.tie === T.projects ? 'good' : undefined} />
-        </div>
-      </Panel>
-
-      <Panel title="By project" subtitle={`${shown.length} project${shown.length === 1 ? '' : 's'} · click a row for lines, cost elements and SAP rows`} pad={false}
-        actions={<><Button size="sm" variant="ghost" onClick={() => exportCsv('summary')} icon={<Icon name="download" className="h-3.5 w-3.5" />}>CSV</Button><Button size="sm" variant="ghost" onClick={() => exportCsv('rows')} icon={<Icon name="download" className="h-3.5 w-3.5" />}>Rows CSV</Button></>}>
-        {shown.length ? (
-          <div className="scroll-x">
-            <table className="tbl [&_td]:py-1.5">
-              <thead><tr><th>Project</th><th className="num">SAP cost</th><th className="num">Posted</th><th className="num">Difference</th><th className="num hidden sm:table-cell">Unexplained</th><th className="num hidden md:table-cell">Forecast</th><th>Status</th></tr></thead>
-              <tbody>
-                {shown.map((p) => {
-                  const pr = pc(p.projectId)
-                  return (
-                    <tr key={p.projectId} className="clickable" onClick={() => setOpenPid(p.projectId)}>
-                      <td className="max-w-[220px]"><div className="font-mono text-[12px] font-semibold">{pr?.code ?? p.projectId}</div><div className="truncate text-[11.5px] text-muted" title={pr?.name}>{pr?.name}</div></td>
-                      <td className="num">{$(p.sapCost)}{p.sapExcluded ? <div className="text-[10.5px] text-faint">{$(p.sapExcluded)} excl.</div> : null}</td>
-                      <td className="num">{p.periods.every((x) => x.posted === undefined) ? <span className="text-faint">—</span> : $(p.posted)}{p.periods.some((x) => x.source === 'summary') && <div className="text-[10.5px] text-faint">summary</div>}</td>
-                      <td className={cx('num font-semibold', Math.abs(p.diff) > RECON_TOLERANCE ? 'text-bad' : 'text-faint')}>{p.diff ? signed(p.diff) : '–'}</td>
-                      <td className={cx('num hidden sm:table-cell', Math.abs(p.diff - p.explained) > RECON_TOLERANCE ? 'text-bad' : 'text-faint')}>{p.diff - p.explained ? signed(p.diff - p.explained) : '–'}</td>
-                      <td className="num hidden md:table-cell">{forecastCell(p)}</td>
-                      <td className="whitespace-nowrap"><ReconBadge status={p.status} diff={p.diff} />{p.items > 0 && <div className="mt-0.5 text-[10.5px] text-muted">{p.items} reconciling row{p.items === 1 ? '' : 's'}</div>}</td>
-                    </tr>
-                  )
-                })}
-                {!pid && <tr className="bg-sunken font-bold"><td>Total</td><td className="num">{$(T.sapCost)}</td><td className="num">{$(T.posted)}</td><td className="num">{signed(T.diff)}</td><td className="num hidden sm:table-cell">{signed(T.diff - T.explained)}</td><td className="hidden md:table-cell" /><td>{T.tie}/{T.projects} tie</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        ) : <div className="p-4"><Empty title="Nothing to reconcile">{rows.length ? 'No row in this extract lands on a project for the chosen period.' : 'This extract has no rows.'}</Empty></div>}
-      </Panel>
-
-      <Items s={s} items={rec.items.filter((it) => !pid || pid in it.effect || it.sap?.projectId === pid || it.cw?.projectId === pid)} />
-
-      {rec.noProject.rows.length > 0 && !pid && (
-        <Panel title="WBS elements with no project" subtitle={`${$(rec.noProject.amount)} SAP cost that belongs to no Crosswalk project — stays out of every project until SAP is corrected or the row is assigned on import`} pad={false}>
-          <RowsTable s={s} rows={rec.noProject.rows} />
-        </Panel>
-      )}
-
-      {openPid && <ProjectDrawer s={s} rec={rec.projects.find((p) => p.projectId === openPid)} pid={openPid} rows={rows} items={rec.items} source={srcName} onClose={() => setOpenPid(null)} />}
-    </div>
-  )
-}
-
-function forecastCell(p: ReconProject) {
-  const inAct = p.periods.every((x) => x.forecast.inActuals)
-  const none = p.periods.every((x) => !x.forecast.inActuals && !x.forecast.etc)
-  if (none) return <span className="text-faint">no forecast</span>
-  return inAct ? <span title="The latest forecast treats these months as actuals">{$(p.forecastActual)}<div className="text-[10.5px] text-faint">as actuals</div></span>
-    : <span className="text-warn" title="The latest forecast still holds estimate-to-complete in these months — roll the forecast forward">{$(p.forecastEtc)}<div className="text-[10.5px]">still ETC</div></span>
-}
-
-function Fig({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: 'good' | 'bad' }) {
-  return (
-    <div className="min-w-0 bg-surface px-3 py-2.5 sm:px-4">
-      <div className="eyebrow truncate">{label}</div>
-      <div className={cx('mt-0.5 truncate font-display text-[17px] font-bold leading-tight tabular-nums', tone === 'bad' ? 'text-bad' : tone === 'good' ? 'text-good' : 'text-ink')}>{value}</div>
-      {sub && <div className="truncate text-[11px] text-muted" title={sub}>{sub}</div>}
-    </div>
-  )
-}
-
-const KIND_TONE: Record<ReconItem['kind'], Tone> = { 'sap-only': 'warn', 'crosswalk-only': 'info', 'mapped-differently': 'bad' }
-function Items({ s, items }: { s: AppState; items: ReconItem[] }) {
-  const [kind, setKind] = useState<ReconItem['kind'] | 'all'>('all')
-  const [n, setN] = useState(50)
-  const shown = items.filter((i) => kind === 'all' || i.kind === kind)
-  const code = (id?: string) => (id ? s.projects.find((p) => p.id === id)?.code ?? id : '—')
-  return (
-    <Panel title="Reconciling rows" subtitle={items.length ? 'The SAP rows behind each difference: in SAP but not posted, posted but no longer in SAP, or posted somewhere other than the mapping table says' : 'Every SAP row matches a posted Crosswalk transaction that landed where the mapping table says'} pad={false}
-      actions={items.length > 0 ? <div className="scroll-x max-w-full"><SegButtons value={kind} onChange={setKind} options={[{ id: 'all' as const, label: `All ${items.length}` }, ...(['sap-only', 'crosswalk-only', 'mapped-differently'] as const).filter((k) => items.some((i) => i.kind === k)).map((k) => ({ id: k, label: RECON_ITEM_LABEL[k] }))]} /></div> : undefined}>
-      {shown.length ? (
-        <div className="scroll-x">
-          <table className="tbl [&_td]:py-1">
-            <thead><tr><th>Row</th><th>Doc · WBS</th><th>Cost element</th><th className="hidden sm:table-cell">Vendor · text</th><th className="num">Amount</th><th className="num">Effect</th><th>Why</th></tr></thead>
-            <tbody>
-              {shown.slice(0, n).map((it) => (
-                <tr key={it.id}>
-                  <td className="whitespace-nowrap"><Badge tone={KIND_TONE[it.kind]}>{RECON_ITEM_LABEL[it.kind]}</Badge><div className="text-[10.5px] text-faint">{fmtMonth(it.period)}</div></td>
-                  <td className="whitespace-nowrap"><div className="font-mono text-[11.5px]">{it.row.docNo || '—'}</div><div className="font-mono text-[10.5px] text-faint">{it.row.sapWbs}</div></td>
-                  <td className="whitespace-nowrap"><span className="font-mono text-[11.5px]">{it.row.costElement}</span><div className="max-w-[160px] truncate text-[10.5px] text-faint" title={it.row.costElementName}>{it.row.costElementName}</div></td>
-                  <td className="hidden max-w-[220px] sm:table-cell"><div className="truncate">{it.row.vendor || <span className="text-faint">Internal</span>}</div><div className="truncate text-[11px] text-muted" title={it.row.text}>{it.row.text}</div></td>
-                  <td className={cx('num whitespace-nowrap', it.row.amount < 0 && 'text-bad')}>{$(it.row.amount)}</td>
-                  <td className="num whitespace-nowrap text-[11.5px]">{Object.entries(it.effect).filter(([, v]) => v).map(([p, v]) => <div key={p}><span className="font-mono text-faint">{code(p)}</span> {signed(Math.round(v))}</div>)}{!Object.values(it.effect).some(Boolean) && <span className="text-faint">lines only</span>}</td>
-                  <td className="min-w-[200px] max-w-[340px] text-[11.5px] text-muted"><div className="line-clamp-3" title={it.note}>{it.note}</div></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {shown.length > n && <div className="flex items-center justify-between border-t border-line px-3 py-2 text-[12px] text-muted">Showing {n} of {shown.length}<Button size="sm" variant="ghost" onClick={() => setN(n + 100)}>Show 100 more</Button></div>}
-        </div>
-      ) : <div className="p-4"><Empty title="No reconciling rows" /></div>}
-    </Panel>
-  )
-}
-
-/** SAP rows with where the current mapping table sends each one. */
-function RowsTable({ s, rows }: { s: AppState; rows: SapRow[] }) {
-  const [n, setN] = useState(100)
-  return (
-    <div className="scroll-x">
-      <table className="tbl [&_td]:py-1">
-        <thead><tr><th>Doc no.</th><th>Posted</th><th>WBS</th><th>Cost element</th><th className="hidden sm:table-cell">Vendor · text</th><th className="num">Amount</th><th>Mapping table</th></tr></thead>
-        <tbody>
-          {rows.slice(0, n).map((r, i) => {
-            const l = ruleLanding(s, r)
-            const line = lineById(s, l.lineId)
-            return (
-              <tr key={`${r.docNo}-${i}`}>
-                <td className="whitespace-nowrap font-mono text-[11.5px]">{r.docNo || '—'}{r.refDoc && <div className="text-[10.5px] text-faint">ref {r.refDoc}</div>}</td>
-                <td className="whitespace-nowrap text-muted">{fmtDate(r.postingDate)}</td>
-                <td className="whitespace-nowrap font-mono text-[11.5px]">{r.sapWbs}</td>
-                <td className="whitespace-nowrap"><span className="font-mono text-[11.5px]">{r.costElement}</span><div className="max-w-[160px] truncate text-[10.5px] text-faint" title={r.costElementName}>{r.costElementName}</div></td>
-                <td className="hidden max-w-[220px] sm:table-cell"><div className="truncate">{r.vendor || <span className="text-faint">Internal</span>}</div><div className="truncate text-[11px] text-muted" title={r.text}>{r.text}</div></td>
-                <td className={cx('num whitespace-nowrap', r.amount < 0 && 'text-bad')}>{$(r.amount)}</td>
-                <td className="whitespace-nowrap text-[11.5px]"><Badge tone={TXN_STATUS[l.status].tone}>{TXN_STATUS[l.status].label}</Badge>{line && <span className="ml-1 text-muted">{line.code}</span>}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-      {rows.length > n && <div className="flex items-center justify-between border-t border-line px-3 py-2 text-[12px] text-muted">Showing {n} of {rows.length}<Button size="sm" variant="ghost" onClick={() => setN(n + 200)}>Show 200 more</Button></div>}
-    </div>
-  )
-}
-
-type DTab = 'lines' | 'functions' | 'ce' | 'items' | 'rows'
-function ProjectDrawer({ s, rec, pid, rows, items, source, onClose }: { s: AppState; rec?: ReconProject; pid: string; rows: SapRow[]; items: ReconItem[]; source: string; onClose: () => void }) {
-  const p = s.projects.find((x) => x.id === pid)
-  const [period, setPeriod] = useState(rec?.periods[rec.periods.length - 1]?.period ?? '')
-  const pp: ReconPeriod | undefined = rec?.periods.find((x) => x.period === period) ?? rec?.periods[0]
-  const [tab, setTab] = useState<DTab>('lines')
-  const myItems = items.filter((it) => it.period === pp?.period && (pid in it.effect || it.sap?.projectId === pid || it.cw?.projectId === pid))
-  const myRows = pp ? rows.filter((r) => r.period === pp.period && ruleLanding(s, r).projectId === pid) : []
-  const lineName = (k: string) => (k === UNPLACED ? <span className="text-bad">No mapping rule (unplaced)</span> : <><span className="font-mono text-[11px] text-faint">{lineById(s, k)?.code}</span> {lineById(s, k)?.name ?? k}</>)
-  const fnName = (k: string) => { if (k === UNPLACED) return <span className="text-bad">No mapping rule (unplaced)</span>; const f = s.settings.wbsFunctions.find((x) => x.id === k); return <><span className="font-mono text-[11px] text-faint">{f?.code}</span> {f?.name ?? k}</> }
-  return (
-    <Drawer open onClose={onClose} width={920} title={<span>{`Reconciliation · ${p?.code ?? pid}`}</span>}
-      footer={<><a href={projectHref(pid, 'forecast')} className="mr-auto self-center text-[12.5px] font-semibold text-link hover:underline">Open forecast</a><Button onClick={onClose}>Close</Button></>}>
-      {!rec || !pp ? <Empty title="Not in this extract">{p?.code} has no rows in {source} for the chosen period.</Empty> : (
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="min-w-0 truncate text-[13px] font-semibold">{p?.name}</span>
-            <span className="font-mono text-[11.5px] text-faint">{p?.erpWbs}</span>
-            {rec.periods.length > 1 && <span className="ml-auto"><SegButtons value={pp.period} onChange={setPeriod} options={rec.periods.map((x) => ({ id: x.period, label: fmtMonth(x.period) }))} /></span>}
-          </div>
-          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-4">
-            <Cell label="SAP rows" value={$(pp.sap.gross)} sub={`${pp.sap.rows} rows · ${fmtMonth(pp.period)}`} />
-            <Cell label="Excluded by rule" value={$(pp.sap.excluded)} sub={pp.sap.unplaced ? `${$(pp.sap.unplaced)} has no rule` : undefined} />
-            <Cell label="SAP project cost" value={$(pp.sap.cost)} />
-            <Cell label="Crosswalk posted" value={pp.posted === undefined ? '—' : $(pp.posted)} sub={pp.posted === undefined ? 'no cost period' : pp.source === 'sap' ? 'from SAP line items' : 'summary actuals'} />
-            <Cell label="Difference" value={signed(pp.diff)} sub="posted − SAP" tone={Math.abs(pp.diff) > RECON_TOLERANCE ? 'bad' : undefined} />
-            <Cell label="Explained by rows" value={signed(pp.explained)} sub={`${signed(pp.diff - pp.explained)} unexplained`} />
-            <Cell label="Forecast" value={pp.forecast.inActuals ? $(pp.forecast.actual ?? 0) : pp.forecast.etc !== undefined ? $(pp.forecast.etc) : '—'} sub={pp.forecast.inActuals ? `as actuals (thru ${fmtMonth(pp.forecast.cutoff!)})` : pp.forecast.cutoff ? `still ETC — actuals thru ${fmtMonth(pp.forecast.cutoff)}` : 'no forecast'} />
-            <div className="flex min-w-0 flex-col justify-center bg-surface px-3 py-2"><div className="eyebrow">Status</div><div><ReconBadge status={pp.status} diff={pp.diff} /></div></div>
-          </div>
-          <StatusNote pp={pp} />
-          <Tabs value={tab} onChange={setTab} tabs={[
-            { id: 'lines', label: 'By line', count: pp.lines.filter((l) => l.diff).length || undefined },
-            { id: 'functions', label: 'By function' },
-            { id: 'ce', label: 'By cost element', count: pp.costElements.length },
-            { id: 'items', label: 'Reconciling rows', count: myItems.length },
-            { id: 'rows', label: 'SAP rows', count: myRows.length },
-          ]} />
-          {tab === 'lines' && <CompareTable rows={pp.lines} name={lineName} what="Forecast line" />}
-          {tab === 'functions' && <CompareTable rows={pp.functions} name={fnName} what="WBS function" />}
-          {tab === 'ce' && (
-            <div className="scroll-x rounded-md border border-line">
-              <table className="tbl [&_td]:py-1">
-                <thead><tr><th>Cost element</th><th className="num">SAP</th><th className="num">Excluded</th><th className="num">Posted</th><th className="num">Difference</th></tr></thead>
-                <tbody>
-                  {pp.costElements.map((c) => (
-                    <tr key={c.costElement}>
-                      <td><span className="font-mono text-[11.5px]">{c.costElement}</span> <span className="text-[11.5px] text-muted">{c.name}</span></td>
-                      <td className="num">{$(c.sap)}</td><td className="num text-muted">{c.excluded ? $(c.excluded) : '–'}</td>
-                      <td className="num">{c.posted === undefined ? <span className="text-faint" title="Crosswalk holds summary actuals for this month — no SAP line items to compare">n/a</span> : $(c.posted)}</td>
-                      <td className={cx('num', c.diff && Math.abs(c.diff) >= 0.5 ? 'font-semibold text-bad' : 'text-faint')}>{c.diff === undefined ? '' : Math.abs(c.diff) >= 0.5 ? signed(c.diff) : '–'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {tab === 'items' && (myItems.length ? <div className="rounded-md border border-line"><Items s={s} items={myItems} /></div> : <Empty title="No reconciling rows">Every SAP row for {fmtMonth(pp.period)} matches a posted transaction that landed where the mapping table says.</Empty>)}
-          {tab === 'rows' && <div className="rounded-md border border-line"><RowsTable s={s} rows={myRows} /></div>}
-        </div>
-      )}
-    </Drawer>
-  )
-}
-
-function StatusNote({ pp }: { pp: ReconPeriod }) {
-  const un = pp.diff - pp.explained
-  if (pp.status === 'ties') return <Callout tone="good">Crosswalk’s {fmtMonth(pp.period)} actuals tie to SAP in total and on every forecast line.</Callout>
-  if (pp.status === 'not-posted') return <Callout tone="warn" title="Not posted">Crosswalk has no actuals for {fmtMonth(pp.period)} on this project. Post the extract to bring them in.</Callout>
-  if (pp.status === 'lines-differ') return <Callout tone="warn" title="Total ties, lines differ">The total agrees with SAP, but some cost sits on different forecast lines than the mapping table sends it — usually a hand resolution. See Reconciling rows.</Callout>
-  return (
-    <Callout tone="bad" title={`Crosswalk ${pp.diff > 0 ? 'is higher' : 'is lower'} than SAP by ${$(Math.abs(pp.diff))}`}>
-      {pp.source === 'summary' ? 'Crosswalk holds monthly summary actuals for this month, not SAP line items; posting the extract replaces them.' : Math.abs(un) <= RECON_TOLERANCE ? 'Every dollar of the gap is explained by the reconciling rows below.' : `${$(Math.abs(un))} is not explained by row-level matching — check for edits to the cost period outside an SAP import.`}
-    </Callout>
-  )
-}
-
-function CompareTable({ rows, name, what }: { rows: { key: string; sap: number; posted: number; diff: number }[]; name: (k: string) => React.ReactNode; what: string }) {
-  return (
-    <div className="scroll-x rounded-md border border-line">
-      <table className="tbl [&_td]:py-1">
-        <thead><tr><th>{what}</th><th className="num">SAP</th><th className="num">Posted</th><th className="num">Difference</th></tr></thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.key}>
-              <td className="min-w-[160px]">{name(r.key)}</td>
-              <td className="num">{$(r.sap)}</td><td className="num">{$(r.posted)}</td>
-              <td className={cx('num', Math.abs(r.diff) > RECON_TOLERANCE ? 'font-semibold text-bad' : 'text-faint')}>{r.diff ? signed(r.diff) : '–'}</td>
-            </tr>
-          ))}
-          <tr className="bg-sunken font-bold"><td>Total</td><td className="num">{$(sum(rows.map((r) => r.sap)))}</td><td className="num">{$(sum(rows.map((r) => r.posted)))}</td><td className="num">{signed(sum(rows.map((r) => r.diff)))}</td></tr>
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function Cell({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: 'bad' }) {
-  return <div className="min-w-0 bg-surface px-3 py-2"><div className="eyebrow truncate">{label}</div><div className={cx('truncate font-semibold tabular-nums', tone === 'bad' && 'text-bad')}>{value}</div>{sub && <div className="truncate text-[11px] text-faint" title={sub}>{sub}</div>}</div>
-}
-
-===== FILE: src/views/admin/Admin.tsx =====
-// Configuration console: how an administrator tailors Crosswalk for a utility.
-import { useEffect, useState } from 'react'
-import { useStore } from '@/core/store'
-import { fmtDateTime } from '@/core/util'
-import { PageHeader, Tabs } from '@/ui/kit'
-import Templates from './Templates'
-import Programs from './Programs'
-import Cbs from './Cbs'
-import Libraries from './Libraries'
-import { CustomFields, PeopleTab } from './People'
-import DataTab from './Data'
-import WbsFunctions from './WbsFunctions'
-import InfoFields from './InfoFields'
-import GisSettings from './GisSettings'
-import ForecastLines from './ForecastLines'
-import SapMappings from './SapMappings'
-import SpreadProfiles from './SpreadProfiles'
-import QuickEstimateSettings from './QuickEstimateSettings'
-import AiSettings from './AiSettings'
-import WorkflowSettings from './WorkflowSettings'
-import Modules from './Modules'
-import { lsGet, lsSet } from './common'
-
-type Tab = 'templates' | 'programs' | 'cbs' | 'wbs' | 'lines' | 'sap' | 'profiles' | 'quick' | 'info' | 'gis' | 'ai' | 'libraries' | 'fields' | 'people' | 'data' | 'notify' | 'modules'
-const CONFIG_ENTITIES = ['gis', 'forecast-line', 'sap-mapping', 'spread-profile', 'historical-cost', 'quick-estimate', 'wbs', 'info-field', 'template', 'program', 'funding', 'doa', 'cost-category', 'settings', 'risk-library', 'hazard-library', 'person', 'role', 'data']
-
-/** Deep link to a Configuration tab, e.g. adminHref('notify') → #admin-notify. */
-export const adminHref = (tab: Tab) => `#admin-${tab}`
-
-export default function Admin({ id }: { projectId?: string; id?: string }) {
-  const s = useStore()
-  const [tab, setTabState] = useState<Tab>(() => (id as Tab) || lsGet<Tab>('crosswalk:admin-tab', 'templates'))
-  const setTab = (t: Tab) => { setTabState(t); lsSet('crosswalk:admin-tab', t) }
-  useEffect(() => { if (id) setTab(id as Tab) }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { document.getElementById('main')?.scrollTo?.({ top: 0 }) }, [tab])
-  const lastConfig = [...s.audit].reverse().find((a) => CONFIG_ENTITIES.includes(a.entity))
-  const tabs: { id: Tab; label: string; count?: number }[] = [
-    { id: 'templates', label: 'Lifecycle templates', count: s.templates.length },
-    { id: 'programs', label: 'Programs & funding', count: s.programs.length },
-    { id: 'cbs', label: 'Cost structure' },
-    { id: 'wbs', label: 'WBS functions', count: s.settings.wbsFunctions.length },
-    { id: 'lines', label: 'Forecast line items', count: s.settings.forecastLines.length },
-    { id: 'sap', label: 'SAP mapping', count: s.settings.sapMappings.length },
-    { id: 'profiles', label: 'Spread profiles', count: s.settings.spreadProfiles.length },
-    { id: 'quick', label: 'Class 5 quick estimate' },
-    { id: 'info', label: 'Project info fields', count: s.settings.infoFields.length },
-    { id: 'gis', label: 'GIS & maps', count: s.settings.gis.layers.length },
-    { id: 'notify', label: 'Workflow notifications' },
-    { id: 'modules', label: 'Modules' },
-    { id: 'ai', label: 'AI assist' },
-    { id: 'libraries', label: 'Libraries', count: s.riskLibrary.length + s.hazards.length },
-    { id: 'fields', label: 'Custom fields', count: s.settings.fieldDefs.length },
-    { id: 'people', label: 'People & roles', count: s.people.length },
-    { id: 'data', label: 'Data' },
-  ]
-  return (
-    <div>
-      <PageHeader eyebrow="Configure" title="Configuration"
-        subtitle={`Tailor ${s.settings.orgName}'s lifecycle, programs, cost structure, libraries and people. Every change is written to the audit log; records already approved are never altered.`}
-        actions={lastConfig && <a href="#audit" className="text-[12px] text-muted hover:text-ink">Last change {fmtDateTime(lastConfig.at)} · view audit log</a>} />
-      <Tabs tabs={tabs} value={tab} onChange={setTab} className="mb-4" />
-      {tab === 'templates' && <Templates />}
-      {tab === 'programs' && <Programs />}
-      {tab === 'cbs' && <Cbs />}
-      {tab === 'wbs' && <WbsFunctions />}
-      {tab === 'lines' && <ForecastLines />}
-      {tab === 'sap' && <SapMappings />}
-      {tab === 'profiles' && <SpreadProfiles />}
-      {tab === 'quick' && <QuickEstimateSettings />}
-      {tab === 'info' && <InfoFields />}
-      {tab === 'gis' && <GisSettings />}
-      {tab === 'notify' && <WorkflowSettings />}
-      {tab === 'modules' && <Modules />}
-      {tab === 'ai' && <AiSettings />}
-      {tab === 'libraries' && <Libraries />}
-      {tab === 'fields' && <CustomFields />}
-      {tab === 'people' && <PeopleTab />}
-      {tab === 'data' && <DataTab />}
-    </div>
-  )
-}
-
-===== FILE: src/views/admin/AiSettings.tsx =====
-// Configuration → AI assist: optional, off by default. Points Crosswalk at the organization's approved LLM gateway.
-import { useState } from 'react'
-import { mutate, useStore } from '@/core/store'
-import type { AiSettings as Ai } from '@/core/types'
-import { ask, aiMessage } from '@/core/ai'
-import { Button, Callout, Checkbox, Field, Input, Panel } from '@/ui/kit'
-import { toast } from '@/ui/toast'
-
-export default function AiSettings() {
-  const ai = useStore((s) => s.settings.ai)
-  const [d, setD] = useState<Ai>(() => ({ ...ai }))
-  const [test, setTest] = useState<{ ok: boolean; text: string } | null>(null)
-  const dirty = JSON.stringify(d) !== JSON.stringify(ai)
-  const save = () => {
-    if (d.enabled && !/^https:\/\//i.test(d.endpoint.trim())) { toast('Endpoint must be an https:// URL', 'bad'); return }
-    mutate((x) => { x.settings.ai = { ...d, endpoint: d.endpoint.trim() } }, { entity: 'settings', entityId: 'ai', action: 'update', summary: `AI assist ${d.enabled ? `enabled (${d.model || 'default model'})` : 'disabled'}` })
-    toast('AI assist settings saved')
-  }
-  const run = async () => {
-    setTest({ ok: true, text: 'Testing…' })
-    try { const t = await ask('Reply with the single word: ready'); setTest({ ok: true, text: `Connected — model replied "${t.trim().slice(0, 40)}"` }) }
-    catch (e) { setTest({ ok: false, text: aiMessage(e) }) }
-  }
-  return (
-    <div className="flex flex-col gap-4">
-      <Callout tone="info" title="Optional — off by default">
-        AI assist drafts text people then review: monthly status narratives, variance explanations, basis-of-estimate wording, risk and safety-control suggestions, permit conditions and portfolio Q&amp;A. Nothing is accepted without a person.
-        When it is off, every AI control is hidden and no project data leaves Crosswalk. Point it at your organization's approved LLM gateway (any OpenAI-compatible chat-completions endpoint, such as Azure OpenAI behind your API gateway).
-      </Callout>
-      <Panel title="Connection" actions={<><Button size="sm" variant="primary" disabled={!dirty} onClick={save}>Save</Button>{dirty && <Button size="sm" variant="ghost" onClick={() => setD({ ...ai })}>Discard</Button>}</>}>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div className="md:col-span-2"><Checkbox checked={d.enabled} onChange={(v) => setD({ ...d, enabled: v })} label="Enable AI assist for all users" /></div>
-          <Field label="Chat-completions endpoint" className="md:col-span-2" hint="e.g. https://api.yourutility.com/llm/v1/chat/completions"><Input className="font-mono text-[12px]" value={d.endpoint} onChange={(e) => setD({ ...d, endpoint: e.target.value })} /></Field>
-          <Field label="Model / deployment name"><Input value={d.model} onChange={(e) => setD({ ...d, model: e.target.value })} /></Field>
-          <Field label="API key (pilot only)" hint="Stored in this browser only. Production authenticates through the gateway with the user's SSO token — leave blank."><Input type="password" value={d.apiKey ?? ''} onChange={(e) => setD({ ...d, apiKey: e.target.value })} /></Field>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <Button size="sm" disabled={!ai.enabled || !ai.endpoint || dirty} onClick={run}>Test connection</Button>
-          {dirty && <span className="text-[12px] text-faint">Save before testing.</span>}
-          {test && <span className={test.ok ? 'text-[12.5px] text-good' : 'text-[12.5px] text-bad'}>{test.text}</span>}
-        </div>
-      </Panel>
-    </div>
-  )
-}
-
-===== FILE: src/views/admin/Cbs.tsx =====
-// Cost breakdown structure, loader rates and escalation.
-import { useMemo } from 'react'
-import type { CostCategory, CostGroup } from '@/core/types'
-import { mutate, useStore } from '@/core/store'
-import { LOADER_CAT, ESC_CAT, CONT_CAT } from '@/core/engine/estimates'
-import { sum, uid } from '@/core/util'
-import { Badge, Button, Input, Panel, Select } from '@/ui/kit'
-import { toast } from '@/ui/toast'
-import { useDraft } from './common'
-
-const GROUPS: CostGroup[] = ['direct', 'indirect', 'escalation', 'contingency']
-const SYSTEM = [LOADER_CAT, ESC_CAT, CONT_CAT]
-
-export default function Cbs() {
-  const s = useStore()
-  const usage = useMemo(() => {
-    const out: Record<string, number> = {}
-    for (const e of s.estimates) for (const l of e.lines) out[l.categoryId] = (out[l.categoryId] || 0) + 1
-    for (const r of s.rates) out[r.categoryId] = (out[r.categoryId] || 0) + 1
-    return out
-  }, [s.estimates, s.rates])
-  const [cats, setCats, dirty, discard] = useDraft(s.categories)
-  const set = (i: number, patch: Partial<CostCategory>) => setCats(cats.map((c, j) => (j === i ? { ...c, ...patch } : c)))
-  const dupCodes = cats.filter((c, i) => cats.findIndex((x) => x.code === c.code) !== i).map((c) => c.code)
-  const save = () => {
-    if (dupCodes.length) { toast(`Duplicate code ${dupCodes[0]}`, 'bad'); return }
-    const added = cats.filter((c) => !s.categories.some((x) => x.id === c.id)).map((c) => c.code)
-    const removed = s.categories.filter((c) => !cats.some((x) => x.id === c.id)).map((c) => c.code)
-    const edited = cats.filter((c) => { const o = s.categories.find((x) => x.id === c.id); return o && JSON.stringify(o) !== JSON.stringify(c) }).map((c) => c.code)
-    mutate((d) => { d.categories = cats }, { entity: 'cost-category', entityId: 'cbs', action: 'update', summary: `Cost breakdown structure updated${added.length ? ` · added ${added.join(', ')}` : ''}${edited.length ? ` · edited ${edited.join(', ')}` : ''}${removed.length ? ` · removed ${removed.join(', ')}` : ''}` })
-    toast('Cost breakdown structure saved')
-  }
-  return (
-    <div className="flex flex-col gap-4">
-      <Panel title="Cost breakdown structure" subtitle="Categories estimates, budgets and actuals roll up to. The ERP cost element maps each category to the general ledger." pad={false}
-        actions={<>{dirty && <Button size="sm" variant="ghost" onClick={discard}>Discard</Button>}<Button size="sm" onClick={() => setCats([...cats, { id: uid('cat'), code: String(Math.max(...cats.map((c) => Number(c.code) || 0)) + 5), name: 'New category', group: 'direct', erpCostElement: '' }])}>Add category</Button><Button size="sm" variant="primary" disabled={!dirty} onClick={save}>Save CBS</Button></>}>
-        <div className="scroll-x">
-          <table className="tbl">
-            <thead><tr><th style={{ width: 90 }}>Code</th><th>Category</th><th style={{ width: 140 }}>Group</th><th style={{ width: 150 }}>ERP cost element</th><th className="num">In use</th><th style={{ width: 90 }} /></tr></thead>
-            <tbody>
-              {cats.map((c, i) => {
-                const sys = SYSTEM.includes(c.id)
-                const used = usage[c.id] || 0
-                return (
-                  <tr key={c.id}>
-                    <td><Input className={`h-7 py-0.5 font-mono ${dupCodes.includes(c.code) ? 'border-bad' : ''}`} value={c.code} onChange={(e) => set(i, { code: e.target.value })} /></td>
-                    <td><div className="flex items-center gap-2"><Input className="h-7 py-0.5" value={c.name} onChange={(e) => set(i, { name: e.target.value })} />{sys && <Badge tone="info" title="Computed by the estimating engine">System</Badge>}</div></td>
-                    <td><Select className="h-7 py-0.5" disabled={sys} value={c.group} onChange={(e) => set(i, { group: e.target.value as CostGroup })} options={GROUPS} /></td>
-                    <td><Input className="h-7 py-0.5 font-mono" value={c.erpCostElement} onChange={(e) => set(i, { erpCostElement: e.target.value })} /></td>
-                    <td className="num text-muted">{used || '—'}</td>
-                    <td>{!sys && !used && <Button size="sm" variant="ghost" className="text-bad" onClick={() => setCats(cats.filter((_, j) => j !== i))}>Remove</Button>}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-        <div className="border-t border-line px-4 py-2 text-[12px] text-muted">Categories referenced by estimate lines or library rates cannot be removed; rename or remap them instead.</div>
-      </Panel>
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Loaders />
-        <Escalation />
-      </div>
-    </div>
-  )
-}
-
-function Loaders() {
-  const rates = useStore((s) => s.settings.loaderRates)
-  const [rows, setRows, dirty, discard] = useDraft(rates)
-  const years = Array.from(new Set(rows.map((r) => r.year))).sort()
-  const save = () => {
-    mutate((d) => { d.settings.loaderRates = rows }, { entity: 'settings', entityId: 'loaderRates', action: 'update', summary: `Loader rates updated: ${rows.map((r) => `${r.year} ${r.name} ${r.pct}%`).join(', ')}` })
-    toast('Loader rates saved')
-  }
-  return (
-    <Panel title="Loader rates" subtitle="Overheads applied to direct cost on new estimates" pad={false}
-      actions={<>{dirty && <Button size="sm" variant="ghost" onClick={discard}>Discard</Button>}<Button size="sm" onClick={() => setRows([...rows, { year: years[years.length - 1] ?? 2026, name: 'New loader', pct: 1 }])}>Add</Button><Button size="sm" variant="primary" disabled={!dirty} onClick={save}>Save</Button></>}>
-      <div className="scroll-x">
-        <table className="tbl">
-          <thead><tr><th style={{ width: 90 }}>Year</th><th>Loader</th><th className="num" style={{ width: 110 }}>Rate %</th><th style={{ width: 80 }} /></tr></thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={i}>
-                <td><Input className="h-7 py-0.5 tabular-nums" type="number" value={r.year} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, year: Number(e.target.value) } : x)))} /></td>
-                <td><Input className="h-7 py-0.5" value={r.name} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} /></td>
-                <td><Input className="h-7 py-0.5 text-right tabular-nums" type="number" step="0.1" value={r.pct} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, pct: Number(e.target.value) } : x)))} /></td>
-                <td><Button size="sm" variant="ghost" className="text-bad" onClick={() => setRows(rows.filter((_, j) => j !== i))}>Remove</Button></td>
-              </tr>
-            ))}
-            {years.map((y) => <tr key={'t' + y}><td className="text-muted">{y}</td><td className="text-muted">Total loaders</td><td className="num font-semibold">{sum(rows.filter((r) => r.year === y).map((r) => r.pct)).toFixed(1)}%</td><td /></tr>)}
-          </tbody>
-        </table>
-      </div>
-    </Panel>
-  )
-}
-
-function Escalation() {
-  const esc = useStore((s) => s.settings.escalationByYear)
-  const [rows, setRows, dirty, discard] = useDraft(esc)
-  const years = Object.keys(rows).sort()
-  const cumulative = (y: string) => years.filter((x) => x <= y).reduce((a, x) => a * (1 + rows[x] / 100), 1)
-  const save = () => {
-    mutate((d) => { d.settings.escalationByYear = rows }, { entity: 'settings', entityId: 'escalationByYear', action: 'update', summary: `Escalation updated: ${years.map((y) => `${y} ${rows[y]}%`).join(', ')}` })
-    toast('Escalation rates saved')
-  }
-  return (
-    <Panel title="Escalation by year" subtitle="Annual cost escalation used to bring library rates to the year of spend" pad={false}
-      actions={<>{dirty && <Button size="sm" variant="ghost" onClick={discard}>Discard</Button>}<Button size="sm" onClick={() => { const y = String(Number(years[years.length - 1] ?? 2025) + 1); setRows({ ...rows, [y]: rows[years[years.length - 1]] ?? 3 }) }}>Add year</Button><Button size="sm" variant="primary" disabled={!dirty} onClick={save}>Save</Button></>}>
-      <div className="scroll-x">
-        <table className="tbl">
-          <thead><tr><th>Year</th><th className="num" style={{ width: 120 }}>Annual %</th><th className="num">Cumulative from {years[0]}</th><th style={{ width: 80 }} /></tr></thead>
-          <tbody>
-            {years.map((y) => (
-              <tr key={y}>
-                <td className="tabular-nums">{y}</td>
-                <td><Input className="h-7 py-0.5 text-right tabular-nums" type="number" step="0.1" value={rows[y]} onChange={(e) => setRows({ ...rows, [y]: Number(e.target.value) })} /></td>
-                <td className="num text-muted">{((cumulative(y) - 1) * 100).toFixed(1)}%</td>
-                <td>{y === years[years.length - 1] && years.length > 1 && <Button size="sm" variant="ghost" className="text-bad" onClick={() => { const n = { ...rows }; delete n[y]; setRows(n) }}>Remove</Button>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Panel>
-  )
-}
-
-===== FILE: src/views/admin/common.tsx =====
-// Small helpers shared by the configuration, planning, audit, permits and records views (builder F).
-import { prefs } from '@/core/data'
-import React, { useEffect, useRef, useState } from 'react'
-import type { AssetType, Condition, ConditionOp, Driver, Project, RoleId, StagePermission, WorkMethod } from '@/core/types'
-import { useStore } from '@/core/store'
-import { cx, describeCondition, evalCondition } from '@/core/util'
-import { Button, Field, Input, Select } from '@/ui/kit'
-
-/** Local editable copy of a value; `dirty` when it differs from the source. Resets when the source changes. */
-export function useDraft<T>(source: T): [T, React.Dispatch<React.SetStateAction<T>>, boolean, () => void] {
-  const key = JSON.stringify(source) ?? 'null'
-  const [d, setD] = useState<T>(() => JSON.parse(key))
-  useEffect(() => { setD(JSON.parse(key)) }, [key])
-  return [d, setD, JSON.stringify(d) !== key, () => setD(JSON.parse(key))]
-}
-
-export const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
-
-/** Chip-style multi-select for short option lists. */
-export function MultiCheck<T extends string>({ options, value, onChange, className }: { options: { id: T; label: string }[]; value: T[]; onChange: (v: T[]) => void; className?: string }) {
-  return (
-    <div className={cx('flex flex-wrap gap-1', className)}>
-      {options.map((o) => {
-        const on = value.includes(o.id)
-        return (
-          <button key={o.id} type="button" aria-pressed={on} onClick={() => onChange(on ? value.filter((x) => x !== o.id) : [...value, o.id])}
-            className={cx('rounded border px-2 py-0.5 text-[12px] font-semibold', on ? 'border-ink bg-ink text-surface' : 'border-line bg-surface text-muted hover:border-ink/40 hover:text-ink')}>
-            {o.label}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-export function RoleSelect({ value, onChange, id, includeEmpty }: { value?: string; onChange: (r: RoleId) => void; id?: string; includeEmpty?: boolean }) {
-  const roles = useStore((s) => s.roles)
-  return <Select id={id} value={value ?? ''} onChange={(e) => onChange(e.target.value as RoleId)} options={[...(includeEmpty ? [{ value: '', label: '— None —' }] : []), ...roles.map((r) => ({ value: r.id, label: r.name }))]} />
-}
-
-export const roleName = (roles: { id: string; name: string }[], id: string) => roles.find((r) => r.id === id)?.name ?? id
-
-/** Button that opens a file picker and hands back the chosen file. */
-export function FileButton({ label, onFile, accept, size = 'sm', variant = 'secondary', disabled }: { label: React.ReactNode; onFile: (f: File) => void; accept?: string; size?: 'sm' | 'md'; variant?: 'secondary' | 'primary' | 'ghost'; disabled?: boolean }) {
-  const ref = useRef<HTMLInputElement>(null)
-  return (
-    <>
-      <input ref={ref} type="file" accept={accept} className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = '' }} />
-      <Button size={size} variant={variant} disabled={disabled} onClick={() => ref.current?.click()}>{label}</Button>
-    </>
-  )
-}
-
-export const lsGet = <T,>(key: string, fallback: T): T => prefs.get(key, fallback)
-export const lsSet = (key: string, v: unknown) => prefs.set(key, v)
-
-// ───────────────────────────── Option lists
-export const ASSET_TYPES: AssetType[] = ['transmission-pipeline', 'distribution-main', 'compressor-station', 'valve-site', 'storage-field', 'regulator-station']
-export const WORK_METHODS: WorkMethod[] = ['replace-open-trench', 'replace-hdd', 'hydrotest', 'abandon', 'valve-automation', 'station-rebuild', 'compressor-replacement', 'inline-inspection']
-export const DRIVERS: Driver[] = ['Safety / compliance', 'Reliability', 'Capacity', 'Customer / new business', 'Relocation', 'Environmental']
-export const PERMISSIONS: { id: StagePermission; label: string }[] = [
-  { id: 'long-lead-release', label: 'Long-lead release' },
-  { id: 'po-over-threshold', label: 'POs over threshold' },
-  { id: 'contract-award', label: 'Contract award' },
-  { id: 'construction-ntp', label: 'Construction NTP' },
-  { id: 'place-in-service', label: 'Place in service' },
-]
-export const humanizeId = (s: string) => s.replace(/-/g, ' ').replace(/^\w/, (c) => c.toUpperCase())
-
-// ───────────────────────────── Condition editor (SG-03)
-type FieldKind = 'bool' | 'enum' | 'number'
-export const CONDITION_FIELDS: { path: string; label: string; kind: FieldKind; values?: string[] }[] = [
-  { path: 'permitsNeeded.ceqa', label: 'CEQA review needed', kind: 'bool' },
-  { path: 'permitsNeeded.encroachment', label: 'Encroachment permit needed', kind: 'bool' },
-  { path: 'permitsNeeded.hydrotestDischarge', label: 'Hydrotest discharge needed', kind: 'bool' },
-  { path: 'location.hca', label: 'In high-consequence area', kind: 'bool' },
-  { path: 'location.dac', label: 'Disadvantaged community', kind: 'bool' },
-  { path: 'asset.type', label: 'Asset type', kind: 'enum', values: ASSET_TYPES },
-  { path: 'workMethod', label: 'Work method', kind: 'enum', values: WORK_METHODS },
-  { path: 'sizeTier', label: 'Size tier', kind: 'enum', values: ['S', 'M', 'L'] },
-  { path: 'location.terrain', label: 'Terrain', kind: 'enum', values: ['urban', 'suburban', 'rural'] },
-  { path: 'asset.recordsStatus', label: 'Records status', kind: 'enum', values: ['complete', 'gaps', 'unknown'] },
-  { path: 'driver', label: 'Driver', kind: 'enum', values: DRIVERS },
-  { path: 'location.classLocation', label: 'Class location', kind: 'number' },
-  { path: 'asset.diameterIn', label: 'Diameter (in)', kind: 'number' },
-  { path: 'asset.maopPsig', label: 'MAOP (psig)', kind: 'number' },
-]
-const OPS: Record<FieldKind, { id: ConditionOp; label: string }[]> = {
-  bool: [{ id: 'truthy', label: 'is yes' }, { id: 'falsy', label: 'is no' }],
-  enum: [{ id: 'eq', label: 'is' }, { id: 'ne', label: 'is not' }, { id: 'in', label: 'is one of' }],
-  number: [{ id: 'gte', label: '≥' }, { id: 'gt', label: '>' }, { id: 'lte', label: '≤' }, { id: 'lt', label: '<' }, { id: 'eq', label: '=' }],
-}
-
-export function ConditionEditor({ value, onChange, projects }: { value?: Condition; onChange: (c: Condition | undefined) => void; projects: Project[] }) {
-  const on = !!value
-  const f = CONDITION_FIELDS.find((x) => x.path === value?.field) ?? CONDITION_FIELDS[0]
-  const setField = (path: string) => {
-    const nf = CONDITION_FIELDS.find((x) => x.path === path)!
-    onChange(nf.kind === 'bool' ? { field: path, op: 'truthy' } : nf.kind === 'enum' ? { field: path, op: 'eq', value: nf.values![0] } : { field: path, op: 'gte', value: 0 })
-  }
-  const hits = value ? projects.filter((p) => evalCondition(value, p)) : projects
-  return (
-    <div className="flex flex-col gap-2 rounded-md border border-line bg-sunken/40 p-3">
-      <label className="flex items-center gap-2 text-[13px] font-semibold">
-        <input type="checkbox" className="h-4 w-4" checked={on} onChange={(e) => (e.target.checked ? setField(CONDITION_FIELDS[0].path) : onChange(undefined))} />
-        Required only when a project attribute matches
-      </label>
-      {on && value && (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <Field label="Project field"><Select value={value.field} onChange={(e) => setField(e.target.value)} options={CONDITION_FIELDS.map((x) => ({ value: x.path, label: `${x.label} (${x.path})` }))} /></Field>
-          <Field label="Operator"><Select value={value.op} onChange={(e) => {
-            const op = e.target.value as ConditionOp
-            onChange({ ...value, op, value: op === 'in' ? (Array.isArray(value.value) ? value.value : [value.value].filter(Boolean)) : Array.isArray(value.value) ? value.value[0] : value.value })
-          }} options={OPS[f.kind].map((o) => ({ value: o.id, label: o.label }))} /></Field>
-          {f.kind === 'enum' && value.op !== 'in' && <Field label="Value"><Select value={String(value.value ?? '')} onChange={(e) => onChange({ ...value, value: e.target.value })} options={f.values!} /></Field>}
-          {f.kind === 'number' && <Field label="Value"><Input type="number" value={String(value.value ?? 0)} onChange={(e) => onChange({ ...value, value: Number(e.target.value) })} /></Field>}
-          {f.kind === 'enum' && value.op === 'in' && (
-            <div className="sm:col-span-3"><MultiCheck options={f.values!.map((v) => ({ id: v, label: v }))} value={(value.value as string[]) ?? []} onChange={(v) => onChange({ ...value, value: v })} /></div>
-          )}
-        </div>
-      )}
-      <div className="text-[12px] text-muted">
-        <span className="font-mono text-ink">{describeCondition(value)}</span>
-        <span className="mx-1.5">·</span>
-        Applies to <b className="text-ink">{hits.length}</b> of {projects.length} projects on this template
-        {value && hits.length > 0 && <span className="text-faint"> ({hits.slice(0, 8).map((p) => p.code).join(', ')}{hits.length > 8 ? '…' : ''})</span>}
-      </div>
-    </div>
-  )
-}
-
-/** Construction window milestones (standard or condensed template). */
-export function constructionStart(p: Project): string | undefined {
-  const m = p.milestones.find((x) => x.name === 'Construction start') ?? p.milestones.find((x) => x.name === 'Construction authorized')
-  return m?.actual ?? m?.forecast
-}
-export function inServiceDate(p: Project): string | undefined {
-  const m = p.milestones.find((x) => x.name === 'In service') ?? p.milestones.find((x) => x.name === 'In service & closed')
-  return m?.actual ?? m?.forecast
 }
