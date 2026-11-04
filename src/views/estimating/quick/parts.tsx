@@ -35,7 +35,7 @@ export function RangeLegend({ source = 'Historical' }: { source?: string }) {
 }
 
 /** Headline total, $/unit and the range bar. */
-export function QuickHeadline({ total, low, high, perUnit, unit, size = 'lg', source = 'Historical' }: { total: number; low: number; high: number; perUnit: number; unit: HistUnit; size?: 'lg' | 'md'; source?: 'Historical' | 'Model' }) {
+export function QuickHeadline({ total, low, high, perUnit, unit, size = 'lg', source = 'Historical' }: { total: number; low: number; high: number; perUnit: number; unit: HistUnit; size?: 'lg' | 'md'; source?: string }) {
   const a = aaceCompare({ total, low, high })
   return (
     <div className="flex flex-col gap-1.5">
@@ -51,7 +51,7 @@ export function QuickHeadline({ total, low, high, perUnit, unit, size = 'lg', so
       <RangeLegend source={source} />
       <p className="text-[12px] text-muted">
         {source} spread {pct(a.lo)} / +{pct(a.hi)} around the estimate{' '}
-        {a.inside ? <>sits <b className="text-good">inside</b> the AACE Class 5 range ({pct(a.aaceLo)} / +{pct(a.aaceHi)}: {money(a.aaceLow)}–{money(a.aaceHigh)}).</> : <>is <b className="text-warn">wider than</b> the AACE Class 5 range ({pct(a.aaceLo)} / +{pct(a.aaceHi)}): treat the {source === 'Model' ? 'model range' : 'history'} as thin.</>}
+        {a.inside ? <>sits <b className="text-good">inside</b> the AACE Class 5 range ({pct(a.aaceLo)} / +{pct(a.aaceHi)}: {money(a.aaceLow)}–{money(a.aaceHigh)}).</> : <>is <b className="text-warn">wider than</b> the AACE Class 5 range ({pct(a.aaceLo)} / +{pct(a.aaceHi)}): treat the {source === 'Historical' ? 'history' : `${source.toLowerCase()} range`} as thin.</>}
       </p>
     </div>
   )
