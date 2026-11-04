@@ -320,6 +320,7 @@ export interface Estimate {
   method: 'parametric' | 'line-item' | 'quick'
   quick?: QuickEstimate // Class 5 quick estimate from the historical cost table
   factor?: FactorEstimateRecord // set when the quick estimate was priced with the Class 5 factor model
+  parametric?: ParametricRecord // set when the quick estimate was priced from the rate table + risk items (PM request)
   createdAt: ISODateTime
   createdById: ID
   approvedAt?: ISODateTime
@@ -1065,6 +1066,46 @@ export interface EstimatingConfig {
   maturityItems: { key: string; label: string; forClass: AaceClass; hint: string }[]
   rateTableVersion: number
   rateTableHistory: { version: number; at: ISODateTime; byId: ID; note: string }[]
+  /** Risk items a PM rates Low/Medium/High on a Class 5 request (defaults in engine/parametric.ts when absent). */
+  riskItems?: RiskItemDef[]
+}
+
+// ───────────────────────────── Class 5 parametric request (rate table + risk items + Monte Carlo)
+export type RiskLevel = 'low' | 'medium' | 'high'
+/** Cost impact of a risk item at one level: triangular % of rate-table direct cost, and what the level means. */
+export interface RiskImpact { label: string; min: number; mode: number; max: number }
+/** A physical, legal or logistical risk to the cost of pipeline work (never a demographic or wealth attribute). */
+export interface RiskItemDef { id: string; name: string; help: string; levels: Record<RiskLevel, RiskImpact> }
+/** What a PM enters: the pipe and work from the project record, length, location, and a level per risk item. */
+export interface ParametricInputs {
+  assetType: AssetType
+  workMethod: WorkMethod
+  diameterIn: number
+  lengthFt: number
+  region: string
+  midpointYear: number
+  risks: Record<string, RiskLevel>
+  taxPct?: number // used only when there is no project (else the project's county split)
+}
+export interface ParametricMonteCarlo {
+  iterations: number
+  seed: number
+  p: { P10: Money; P50: Money; P80: Money; P90: Money }
+  mean: Money
+  histogram: { x: number; n: number }[]
+  scurve: { pct: number; value: Money }[]
+  tornado: { id: string; label: string; low: Money; high: Money; swing: Money; share: number }[]
+}
+export interface ParametricRecord {
+  inputs: ParametricInputs
+  rateTableVersion: number
+  rateDirect: Money // rate-table direct cost at P50 (region-adjusted), before risk allowances
+  rateSpread: { p10: Money; p90: Money } // the same lines at the rows' P10 and P90
+  risks: { id: string; name: string; level: RiskLevel; pct: number; amount: Money }[] // most-likely allowance per item
+  base: Money // deterministic total before contingency
+  mc: Omit<ParametricMonteCarlo, 'histogram' | 'scurve' | 'tornado'>
+  contingencyPct: number // risk-based: P80 − base, as % of base
+  adjustment?: { pct: number; reason: string; byId: ID; at: ISODateTime; fromTotal: Money; toTotal: Money; changed: string[] }
 }
 
 /** Optional AI assist via the organization's approved LLM gateway (OpenAI-compatible chat completions). Off by default. */
