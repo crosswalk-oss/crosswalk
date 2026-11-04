@@ -406,9 +406,9 @@ function ParametricAdjustPanel({ s, e }: { s: AppState; e: Estimate }) {
   }
   return (
     <Panel className="border-marker/70" title="Review and adjust (estimating team)" subtitle="Change any risk rating and/or apply a ± % to direct cost. The Monte Carlo re-runs; pick a reason. Kept with the estimate, in its BOE and in the audit trail.">
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,300px)]">
+      <div className="flex flex-col gap-4">
         <div className="flex min-w-0 flex-col gap-3">
-          <RiskRatings s={s} value={risks} onChange={setRisks} result={r} original={par.inputs.risks} idPrefix="adj-risk" />
+          <RiskRatings s={s} value={risks} onChange={setRisks} result={r} original={par.requestedRisks ?? par.inputs.risks} idPrefix="adj-risk" />
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Adjustment % of direct" className="w-36"><NumInput id="adj-pct" value={pctAdj} onChange={(v) => setPct(Math.max(-50, Math.min(100, Math.round(v * 10) / 10)))} /></Field>
             <div className="flex flex-wrap gap-1 pb-0.5">{[-10, -5, 0, 5, 10, 15].map((v) => <button key={v} type="button" onClick={() => setPct(v)} className={cx('rounded border px-1.5 py-0.5 text-[11.5px] tabular-nums', pctAdj === v ? 'border-ink bg-ink text-surface' : 'border-line text-muted hover:text-ink')}>{v > 0 ? '+' : ''}{v}%</button>)}</div>
@@ -422,7 +422,7 @@ function ParametricAdjustPanel({ s, e }: { s: AppState; e: Estimate }) {
             <span className="text-[12px] text-muted">Then approve or return below.</span>
           </div>
         </div>
-        <div className="flex flex-col gap-2 self-start rounded-md border border-line bg-sunken/40 p-3">
+        <div className="flex flex-col gap-2 rounded-md border border-line bg-sunken/40 p-3 sm:max-w-sm">
           <div className="eyebrow">Before → after (P80)</div>
           <div className="flex flex-wrap items-baseline gap-2 font-display tabular-nums">
             <span className="text-[17px] text-muted line-through decoration-faint">{money(before)}</span><span aria-hidden className="text-muted">→</span><span className="text-[22px] font-bold">{money(after)}</span>

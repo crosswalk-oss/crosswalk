@@ -56,7 +56,7 @@ export function QuickTab() {
   return (
     <div className="flex flex-col gap-4">
       {waitingMine > 0 && <Callout tone="marker" title={`${waitingMine} quick estimate${waitingMine > 1 ? 's' : ''} waiting on you`}>Open one below to check the drivers and the rate-table cross-check, adjust it with an override reason if needed, and approve or return it.</Callout>}
-      <Panel title="Request a Class 5 quick estimate" subtitle="Pick a few values and confirm the site drivers; the published Class 5 factor model gives a forward-looking number with every driver itemized and its P10–P90 range. Sending it routes it to the estimating team for approval or adjustment.">
+      <Panel title="Request a Class 5 quick estimate" subtitle="Enter the length of pipe, the location and how risky each item is. The rate table prices it automatically and a Monte Carlo gives the P10–P90 range. Sending it routes it to the estimating team, who review it and adjust it if needed.">
         {sent && <div className="mb-3"><Callout tone="good" title="Sent to the estimating team">Track it on <button className="font-semibold text-link" onClick={() => openEstimate(sent.pid, sent.eid)}>{s.projects.find((p) => p.id === sent.pid)?.code} estimates</button> or in the list below.</Callout></div>}
         <QuickRequest allowPicker projectId={pid} onDone={(eid, p) => setSent({ eid, pid: p })} />
       </Panel>
