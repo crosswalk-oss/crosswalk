@@ -91,7 +91,7 @@ export default function Estimates({ projectId }: { projectId: string }) {
 
       {showNew5 && <NewParametric project={p} onClose={() => setShowNew5(false)} onCreated={(id) => { setSel(id); setShowNew5(false) }} />}
       {showQuick && (
-        <Modal open wide onClose={() => setShowQuick(false)} title={`Request Class 5 quick estimate · ${p.code}`}>
+        <Modal open xl onClose={() => setShowQuick(false)} title={`Request Class 5 quick estimate · ${p.code}`}>
           <QuickRequest projectId={p.id} onCancel={() => setShowQuick(false)} onDone={(id) => { setSel(id); setShowQuick(false) }} />
         </Modal>
       )}

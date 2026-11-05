@@ -126,7 +126,7 @@ export function QuickEstimateView({ estimate: e, project, onCopy, inbox }: { est
       {!inbox && e.workflowInstanceId && <WorkflowStatus instanceId={e.workflowInstanceId} compact={e.status !== 'in-review'} />}
 
       {revise && (
-        <Modal open wide onClose={() => setRevise(false)} title={`Revise quick estimate v${e.version}`}>
+        <Modal open xl onClose={() => setRevise(false)} title={`Revise quick estimate v${e.version}`}>
           <QuickRequest reviseId={e.id} onCancel={() => setRevise(false)} onDone={() => setRevise(false)} />
         </Modal>
       )}
