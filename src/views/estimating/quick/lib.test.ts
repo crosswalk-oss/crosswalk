@@ -2,6 +2,7 @@ import { produce } from 'immer'
 import type { AppState } from '@/core/types'
 import { buildSeed } from '@/core/seed'
 import { estimateTotals } from '@/core/engine/estimates'
+import { createFactorEstimate, factorInputsFromProject } from '@/core/engine/factorModel'
 import { computeQuick, findHistorical, inputsFromProject } from '@/core/engine/quick'
 import { actOnWorkflow, recallWorkflow, tasksFor } from '@/core/engine/workflow'
 import { toCSV } from '@/core/download'
@@ -92,15 +93,18 @@ describe('quick estimate lib', () => {
   })
 
   test('adjusting reprices on the model version it was created with, even after a newer one is published', () => {
-    const e = seed.estimates.find((x) => x.method === 'quick' && x.status === 'in-review')!
+    const fp = seed.projects.find((x) => x.code === 'PRJ-1014')!
+    let fid = ''
+    const seedF = produce(seed, (d) => { fid = createFactorEstimate(d, fp.id, factorInputsFromProject(d, d.projects.find((x) => x.id === fp.id)!), 'x', 'u-pm1')!.id })
+    const e = seedF.estimates.find((x) => x.id === fid)!
     expect(e.factor?.modelVersion).toBe(2)
     // publish the draft v3: v2 retired
-    const s = produce(seed, (d) => { for (const m of d.factorModels) m.status = m.version === 3 ? 'published' : m.status === 'published' ? 'retired' : m.status })
+    const s = produce(seedF, (d) => { for (const m of d.factorModels) m.status = m.version === 3 ? 'published' : m.status === 'published' ? 'retired' : m.status })
     const s2 = produce(s, (d) => applyAdjustment(d, e.id, { pct: 0, basis: 'p90', reason: 'Known market or vendor pricing' }, 'u-est1'))
     const e2 = s2.estimates.find((x) => x.id === e.id)!
     expect(e2.factor?.modelVersion).toBe(2)
     expect(estimateTotals(e2).total).toBeGreaterThan(estimateTotals(e).total)
-    expect(estimateTotals(e2).total).toBe(previewAdjust(seed, e, 'p90', 0)!.total)
+    expect(estimateTotals(e2).total).toBe(previewAdjust(seedF, e, 'p90', 0)!.total)
     expect(e2.basis.assumptions.join(' ')).toMatch(/priced at P90: Known market or vendor pricing/)
   })
 

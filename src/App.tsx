@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useStore, useMe, mutate, getState, personName } from './core/store'
+import { useStore, useMe, mutate, getState, personName, useSync } from './core/store'
+import { startAppSync } from './core/syncClient'
+import { Connecting, PasscodeModal, SyncBanner, SyncStatusChip, useUploadGuard } from './views/shared/SyncUi'
 import { go, projectHref, useRoute } from './core/router'
 import { tasksFor } from './core/engine/workflow'
 import { planReminders, runReminders } from './core/engine/notify'
@@ -64,7 +66,7 @@ const CHAT_PATH = 'M4 5h16v11H9l-5 4zM8 9h8M8 12h5'
 
 /** Send workflow reminders and escalations that are due (idempotent). */
 function remindIfDue() {
-  if (planReminders(getState()).length) mutate((d) => { runReminders(d) })
+  if (planReminders(getState()).length) mutate((d) => { runReminders(d) }, undefined, { background: true })
 }
 
 function PhaseTwo({ name }: { name: string }) {
@@ -78,7 +80,14 @@ function PhaseTwo({ name }: { name: string }) {
 export default function App() {
   const route = useRoute()
   const features = useStore((s) => s.settings.features)
-  useEffect(() => { remindIfDue() }, [])
+  const sync = useSync()
+  const [unlockOpen, setUnlockOpen] = useState(false)
+  useEffect(() => {
+    const s = startAppSync((m) => toast(m, 'info'))
+    void s.start().then(remindIfDue)
+    return () => s.stop()
+  }, [])
+  useUploadGuard()
   const [askOpen, setAskOpen] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
   useEffect(() => setNavOpen(false), [route.view, route.id, route.tab])
@@ -108,6 +117,7 @@ export default function App() {
         return <Portfolio />
     }
   })()
+  if (sync.mode === 'connecting') return <Connecting />
   const activeNav = route.view === 'project' ? 'projects' : route.view === 'workflow' ? 'workflows' : route.view === 'new-project' ? 'projects' : isMessagesView(route.view) ? 'messages' : route.view.startsWith('admin-') ? 'admin' : route.view
   return (
     <div className="flex h-full">
@@ -116,12 +126,13 @@ export default function App() {
       </aside>
       {navOpen && <div className="fixed inset-0 z-30 bg-steel/50 lg:hidden" onClick={() => setNavOpen(false)} />}
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar onMenu={() => setNavOpen(true)} onAsk={() => setAskOpen(true)} />
+        <TopBar onMenu={() => setNavOpen(true)} onAsk={() => setAskOpen(true)} onUnlock={() => setUnlockOpen(true)} />
         <main id="main" className="min-w-0 flex-1 overflow-y-auto" style={{ paddingLeft: 'max(16px, env(safe-area-inset-left))', paddingRight: 'max(16px, env(safe-area-inset-right))' }}>
-          <div className="mx-auto max-w-[1440px] py-5 sm:px-2" style={{ paddingBottom: 'max(40px, env(safe-area-inset-bottom))' }}>{view}</div>
+          <div className="mx-auto max-w-[1440px] py-5 sm:px-2" style={{ paddingBottom: 'max(40px, env(safe-area-inset-bottom))' }}><SyncBanner onUnlock={() => setUnlockOpen(true)} />{view}</div>
         </main>
       </div>
       <AskPanel open={askOpen} onClose={() => setAskOpen(false)} />
+      <PasscodeModal open={unlockOpen} onClose={() => setUnlockOpen(false)} />
       <Toaster />
     </div>
   )
@@ -135,6 +146,8 @@ function Sidebar({ active }: { active: string }) {
   const org = useStore((s) => s.settings.orgName)
   const asOf = useStore((s) => s.settings.asOf)
   const reset = useStore((s) => s.reset)
+  const sync = useSync()
+  const sharedView = sync.mode === 'shared' && !sync.canEdit
   return (
     <>
       <a href="#portfolio" className="flex items-center gap-2.5 px-4 pb-3 pt-4">
@@ -161,14 +174,14 @@ function Sidebar({ active }: { active: string }) {
       </nav>
       <div className="border-t border-white/10 px-4 py-3 text-[11px] text-steelink/60" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
         <div className="font-semibold text-steelink/80">{org}</div>
-        <div>Demo data · as of {fmtDate(asOf)}</div>
-        <div className="mt-2"><ConfirmButton size="sm" variant="ghost" confirmLabel="Reset all data" onConfirm={() => { reset(); remindIfDue(); toast('Demo data reset'); go('#portfolio') }}>Reset demo data</ConfirmButton></div>
+        <div>{sync.mode === 'shared' ? 'Shared demo data' : 'Demo data'} · as of {fmtDate(asOf)}</div>
+        {!sharedView && <div className="mt-2"><ConfirmButton size="sm" variant="ghost" confirmLabel={sync.mode === 'shared' ? 'Reset for everyone' : 'Reset all data'} onConfirm={() => { reset(); toast(sync.mode === 'shared' ? 'Demo data reset for everyone' : 'Demo data reset'); go('#portfolio') }}>Reset demo data</ConfirmButton></div>}
       </div>
     </>
   )
 }
 
-function TopBar({ onMenu, onAsk }: { onMenu: () => void; onAsk: () => void }) {
+function TopBar({ onMenu, onAsk, onUnlock }: { onMenu: () => void; onAsk: () => void; onUnlock: () => void }) {
   const me = useMe()
   const people = useStore((s) => s.people)
   const setUser = useStore((s) => s.setUser)
@@ -193,6 +206,7 @@ function TopBar({ onMenu, onAsk }: { onMenu: () => void; onAsk: () => void }) {
         )}
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+        <SyncStatusChip onUnlock={onUnlock} />
         {ai && <Button variant="marker" size="sm" onClick={onAsk} icon={<span aria-hidden>✦</span>}>Ask</Button>}
         <div className="relative">
           <button onClick={() => setBell(!bell)} className="relative rounded p-1.5 text-muted hover:bg-sunken" aria-label="Notifications"><Icon name="bell" className="h-5 w-5" />{unread > 0 && <span className="absolute -right-0.5 -top-0.5 rounded-full bg-bad px-1 text-[10px] font-bold text-white">{unread}</span>}</button>

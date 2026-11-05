@@ -1,0 +1,64 @@
+# Test, then deploy the demo as one Neon Function (page + API) next to its Neon Postgres database.
+# Every push to main: typecheck, tests, license check, build, then `neon deploy`. Migrations run on the
+# function's first API request (plain SQL from migrations/, applied once each).
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   NEON_API_KEY      Neon → Account settings → API keys
+#   NEON_PROJECT_ID   the Neon project id (e.g. cold-term-78724510)
+#   EDIT_PASSCODE     the passcode people type to edit the shared demo
+# Until those are set, the workflow only runs the checks.
+name: Deploy
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: node scripts/embed-page.mjs   # the function bundles the built page, so typecheck after it
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run licenses
+  deploy:
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+      EDIT_PASSCODE: ${{ secrets.EDIT_PASSCODE }}
+    steps:
+      - name: Secrets present?
+        id: ready
+        run: |
+          if [ -n "$NEON_API_KEY" ] && [ -n "$NEON_PROJECT_ID" ] && [ -n "$EDIT_PASSCODE" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Deploy skipped: add NEON_API_KEY, NEON_PROJECT_ID and EDIT_PASSCODE as repository secrets."
+          fi
+      - if: steps.ready.outputs.ok == 'true'
+        uses: actions/checkout@v4
+      - if: steps.ready.outputs.ok == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.ready.outputs.ok == 'true'
+        run: npm ci && npm run build && node scripts/embed-page.mjs
+      - name: Deploy to Neon
+        if: steps.ready.outputs.ok == 'true'
+        run: npx --yes neon@8.17.1 deploy --project-id "$NEON_PROJECT_ID" --no-env-pull --yes

@@ -1,8 +1,9 @@
-// Class 5 quick estimate request on the factor model: a handful of dropdowns pre-filled from the project scope and its
-// cost drivers, a live forward-looking number with every driver itemized, the rate-table cross-check and the generated
-// BOE, and one button that sends it to the estimating team (class5-review workflow).
+// Class 5 request a PM fills in: length of pipe, location and a Low / Medium / High risk rating per risk item, priced
+// automatically from the rate table with a Monte Carlo, and one button that sends it to the estimating team
+// (class5-review workflow). The factor-model pieces below are kept for the estimator's model check and older records.
 import { useMemo, useState } from 'react'
-import type { AppState, AssetType, DiameterBand, FactorInputs, FactorModel, Project, QuickInputs, Terrain, WorkMethod } from '@/core/types'
+import type { AppState, AssetType, DiameterBand, FactorInputs, FactorModel, ParametricInputs, Project, QuickInputs, Terrain, WorkMethod } from '@/core/types'
+import { parametricInputsFromProject, priceParametric } from '@/core/engine/parametric'
 import { mutate, useMe, useStore } from '@/core/store'
 import { DIAMETER_BANDS, QUICK_CATALOG, UNIT_LABEL } from '@/core/engine/quick'
 import { factorBoe, factorInputsFromProject, priceFactor, publishedModel, rateTableEstimate, taxForDistrict } from '@/core/engine/factorModel'
@@ -12,9 +13,10 @@ import { cx } from '@/core/util'
 import { Badge, Button, Callout, Field, Input, Panel, Select, TextArea } from '@/ui/kit'
 import { toast } from '@/ui/toast'
 import { NumInput } from '../parts'
-import { METHOD_LABEL, TERRAIN_LABEL, bandLabel, blankInputs, catalogOf, districtsOf, normalizeInputs, quickEligibility, canRevise, reviseQuickRequest, submitQuickRequest, toFactorInputs, type RequestResult } from './lib'
+import { ASSET_LABEL, METHOD_LABEL, TERRAIN_LABEL, bandLabel, blankInputs, catalogOf, districtsOf, normalizeInputs, quickEligibility, canRevise, reviseQuickRequest, submitQuickRequest, toFactorInputs, type RequestResult } from './lib'
 import { QuickBadge, QuickHeadline } from './parts'
 import { BoeText, DriverInputs, DriverTable, FactorBuildUp, MonteCarloToggle, RateTableCompare, buildOf } from './factorParts'
+import { ParametricResultView, RiskRatings } from './parametricParts'
 
 const PURPOSES = ['Screening number for the GRC forecast', 'Planning budget for the Gate 1 business case', 'Portfolio plan placeholder until a route is selected']
 export const NEW_NEED = '__new'
@@ -68,33 +70,38 @@ export function ModelLine({ model, r, inputs }: { model: FactorModel; r: ReturnT
   )
 }
 
+const PIPE_SIZES = [2, 3, 4, 6, 8, 10, 12, 16, 20, 24, 30, 36]
+
 /**
- * Full request: optional project picker (or a new need with no project), scope and driver inputs pre-filled from the
- * project, purpose, need-by, live result, "Send to estimating team". With `reviseId` it reprices a returned quick
+ * PM request for a Class 5 estimate: length of pipe, location and a Low / Medium / High risk rating per risk item.
+ * The pipe and work method come from the project record. Priced automatically from the rate table with a Monte
+ * Carlo; only the estimating team adjusts it, in the next workflow step. With `reviseId` it reprices a returned
  * estimate in place and routes it again.
  */
 export function QuickRequest({ projectId, allowPicker, reviseId, onDone, onCancel }: { projectId?: string; allowPicker?: boolean; reviseId?: string; onDone?: (estimateId: string, projectId: string) => void; onCancel?: () => void }) {
   const s = useStore()
   const me = useMe()
-  const model = publishedModel(s)
   const revising = reviseId ? s.estimates.find((e) => e.id === reviseId) : undefined
   const [pid, setPid] = useState<string>(revising?.projectId ?? projectId ?? NEW_NEED)
   const project = s.projects.find((p) => p.id === pid)
-  const initial = (id: string): FactorInputs => {
-    const p = s.projects.find((x) => x.id === id)
-    if (revising?.quick) return toFactorInputs(s, p, revising.quick.inputs)
-    return p && catalogOf(p.asset.type) ? (normalizeInputs(factorInputsFromProject(s, p)) as FactorInputs) : toFactorInputs(s, undefined, blankInputs(s))
+  const initial = (id: string): ParametricInputs => {
+    if (revising?.parametric) return JSON.parse(JSON.stringify(revising.parametric.inputs))
+    return parametricInputsFromProject(s, s.projects.find((x) => x.id === id))
   }
-  const [inputs, setInputsRaw] = useState<FactorInputs>(() => initial(pid))
-  const setInputs = (v: FactorInputs) => setInputsRaw(!project && v.district !== inputs.district ? { ...v, taxPct: taxForDistrict(s, v.district) } : v)
+  const [inputs, setInputs] = useState<ParametricInputs>(() => initial(pid))
+  const [pipeOpen, setPipeOpen] = useState(false)
   const [note, setNote] = useState(revising?.quick?.requestNote ?? '')
   const [needBy, setNeedBy] = useState(revising?.quick?.needBy ?? '')
-  const pickProject = (id: string) => { setPid(id); setInputsRaw(initial(id)) }
+  const pickProject = (id: string) => { setPid(id); setInputs(initial(id)) }
+  const set = (patch: Partial<ParametricInputs>) => setInputs((v) => ({ ...v, ...patch }))
+  const r = useMemo(() => priceParametric(s, inputs, project), [s, inputs, project])
   const elig = revising ? { ok: canRevise(s, revising), reason: canRevise(s, revising) ? undefined : 'Only a returned or recalled estimate can be revised' } : project ? quickEligibility(s, project.id) : { ok: false, reason: undefined }
-  const fromProject = project && catalogOf(project.asset.type) ? (normalizeInputs(factorInputsFromProject(s, project)) as FactorInputs) : undefined
-  const differs = fromProject ? (['assetType', 'workMethod', 'diameterBand', 'terrain', 'district', 'qty', 'midpointYear'] as const).filter((k) => fromProject[k] !== inputs[k]) : []
-  const driverDiffs = fromProject ? (Object.keys(inputs.site) as (keyof FactorInputs['site'])[]).filter((k) => fromProject.site[k] !== inputs.site[k]) : []
-  const problems = [!model && 'No published factor model', !inputs.qty && 'Enter a quantity', !note.trim() && 'Say what the estimate is for', !elig.ok && elig.reason].filter(Boolean) as string[]
+  const fromProject = project ? parametricInputsFromProject(s, project) : undefined
+  const changedRisks = fromProject ? Object.keys(inputs.risks).filter((k) => inputs.risks[k] !== fromProject.risks[k]).length : 0
+  const pipeCats = QUICK_CATALOG.filter((c) => c.unit === 'ft')
+  const methods = catalogOf(inputs.assetType)?.methods ?? []
+  const y = Number(s.settings.asOf.slice(0, 4))
+  const problems = [!inputs.lengthFt && 'Enter the length of pipe', inputs.lengthFt > 0 && !r && 'The rate table has no rows for this pipe and work method — ask the estimating team', !note.trim() && 'Say what the estimate is for', !elig.ok && elig.reason].filter(Boolean) as string[]
   const send = () => {
     if (problems.length || !project) return
     let res: RequestResult = { ok: false, message: '' }
@@ -113,12 +120,31 @@ export function QuickRequest({ projectId, allowPicker, reviseId, onDone, onCance
             <Select id="q-project" value={pid} onChange={(e) => pickProject(e.target.value)} options={[{ value: NEW_NEED, label: 'New need — no project yet' }, ...s.projects.filter((p) => p.status === 'active' || p.status === 'on-hold').map((p) => ({ value: p.id, label: `${p.code} · ${p.name}` }))]} />
           </Field>
         )}
-        <QuickInputsForm s={s} value={inputs} onChange={setInputs} />
-        {differs.length > 0 && <div className="flex flex-wrap items-center gap-2 text-[11.5px] text-muted"><span>Differs from the project record ({differs.join(', ').replace('assetType', 'asset').replace('workMethod', 'method').replace('diameterBand', 'band').replace('midpointYear', 'midpoint')}).</span><button className="font-semibold text-link" onClick={() => setInputsRaw({ ...fromProject!, site: inputs.site })}>Reset scope to project</button></div>}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Length of pipe (feet)"><NumInput id="q-length" value={inputs.lengthFt} min={0} onChange={(v) => set({ lengthFt: Math.max(0, Math.round(v)) })} /></Field>
+          <Field label="Location (region)"><Select id="q-region" value={inputs.region} onChange={(e) => set({ region: e.target.value })} options={s.settings.estimating.regions.map((g) => ({ value: g, label: `${g} · ×${(s.settings.estimating.regionFactors[g] ?? 1).toFixed(2)}` }))} /></Field>
+        </div>
+        <div className="rounded border border-line bg-sunken/40 px-3 py-2 text-[12.5px]">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span><span className="text-muted">Pipe and work:</span> <b>{inputs.diameterIn}" {ASSET_LABEL[inputs.assetType].toLowerCase()}</b> · {METHOD_LABEL[inputs.workMethod].toLowerCase()} · {inputs.midpointYear} spend midpoint <span className="text-faint">{project ? '(from the project record)' : ''}</span></span>
+            <button type="button" className="font-semibold text-link" onClick={() => setPipeOpen((v) => !v)}>{pipeOpen ? 'Done' : 'Change'}</button>
+          </div>
+          {pipeOpen && (
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Field label="Pipe type"><Select id="q-asset" value={inputs.assetType} onChange={(e) => { const a = e.target.value as AssetType; set({ assetType: a, workMethod: catalogOf(a)?.methods.includes(inputs.workMethod) ? inputs.workMethod : catalogOf(a)!.methods[0] }) }} options={pipeCats.map((c) => ({ value: c.asset, label: c.label }))} /></Field>
+              <Field label="Work method"><Select id="q-method" value={inputs.workMethod} onChange={(e) => set({ workMethod: e.target.value as WorkMethod })} options={methods.map((m) => ({ value: m, label: METHOD_LABEL[m] }))} /></Field>
+              <Field label="Pipe size"><Select id="q-dia" value={String(inputs.diameterIn)} onChange={(e) => set({ diameterIn: Number(e.target.value) })} options={[...new Set([...PIPE_SIZES, inputs.diameterIn])].sort((a, b) => a - b).map((d) => ({ value: String(d), label: `${d}"` }))} /></Field>
+              <Field label="Spend midpoint year"><Select id="q-mid" value={String(inputs.midpointYear)} onChange={(e) => set({ midpointYear: Number(e.target.value) })} options={Array.from({ length: 7 }, (_, k) => String(y + k))} /></Field>
+            </div>
+          )}
+        </div>
         <div className="flex flex-col gap-2 rounded-md border border-line p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2"><span className="eyebrow">Site cost drivers</span>{project && <span className="text-[11.5px] text-muted">{driverDiffs.length ? <>{driverDiffs.length} changed from the project record · <button className="font-semibold text-link" onClick={() => setInputsRaw({ ...inputs, site: { ...fromProject!.site } })}>Reset drivers</button></> : 'From the project record'}</span>}</div>
-          <DriverInputs value={inputs} onChange={setInputs} fromProject={fromProject} />
-          <p className="text-[11.5px] text-muted">Physical, legal and logistical conditions only. Community demographics and income are never model inputs.</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="eyebrow">Risks that drive the estimate</span>
+            {fromProject && <span className="text-[11.5px] text-muted">{changedRisks ? <>{changedRisks} changed from the project record · <button className="font-semibold text-link" onClick={() => set({ risks: { ...fromProject.risks } })}>Reset</button></> : 'Pre-filled from the project record'}</span>}
+          </div>
+          <RiskRatings s={s} value={inputs.risks} onChange={(risks) => set({ risks })} result={r} idPrefix="q-risk" />
+          <p className="text-[11.5px] text-muted">Physical, legal and logistical conditions only. Community demographics and income are never estimate inputs.</p>
         </div>
         {pid !== NEW_NEED && <>
           <Field label="What is it for">
@@ -129,7 +155,7 @@ export function QuickRequest({ projectId, allowPicker, reviseId, onDone, onCance
         </>}
         {pid !== NEW_NEED ? (
           <div className="flex flex-col gap-2 rounded-md border border-marker/60 bg-marker/5 p-3">
-            <div className="text-[12.5px] text-muted">Routes to the estimating team (any estimator) to check the drivers and the rate-table cross-check, adjust with a reason from the override list if needed, and approve. The approved number becomes the project's Class 5 estimate of record.</div>
+            <div className="text-[12.5px] text-muted">Goes to the estimating team (any estimator). They check the risk ratings and the rate table, adjust with a reason if needed, and approve. The approved number becomes the project's Class 5 estimate of record.</div>
             {problems.length > 0 && <ul className="text-[12px] text-warn">{problems.map((p) => <li key={p}>· {p}</li>)}</ul>}
             <div className="flex flex-wrap gap-2">
               <Button variant="primary" disabled={problems.length > 0} onClick={send}>{revising ? 'Resubmit to estimating team' : 'Send to estimating team'}</Button>
@@ -137,11 +163,11 @@ export function QuickRequest({ projectId, allowPicker, reviseId, onDone, onCance
             </div>
           </div>
         ) : (
-          <Callout tone="info" title="No project yet">This number is not saved. When the need is confirmed, <button className="font-semibold text-link" onClick={() => go('#new-project')}>start a new project</button>, then request the quick estimate on it so the estimating team can review it.</Callout>
+          <Callout tone="info" title="No project yet">This number is not saved. When the need is confirmed, <button className="font-semibold text-link" onClick={() => go('#new-project')}>start a new project</button>, then request the Class 5 estimate on it so the estimating team can review it.</Callout>
         )}
       </div>
-      <Panel className="min-w-0 self-start" title={<span className="inline-flex items-center gap-2">Live estimate <QuickBadge /></span>} subtitle={project ? `${project.code} · ${project.name}` : 'Unsaved — new need'}>
-        {model ? <FactorResultView s={s} model={model} inputs={inputs} project={project} /> : <Callout tone="bad" title="No published factor model">The estimating lead has to publish a factor model (Estimating → Administration → Factor model) before quick estimates can be priced.</Callout>}
+      <Panel className="min-w-0 self-start" title={<span className="inline-flex items-center gap-2">Live estimate <Badge tone="info">Class 5 · parametric</Badge></span>} subtitle={project ? `${project.code} · ${project.name}` : 'Unsaved — new need'}>
+        {r ? <ParametricResultView r={r} /> : <Callout tone={inputs.lengthFt ? 'bad' : 'info'} title={inputs.lengthFt ? 'No rate-table rows' : 'Enter the length of pipe'}>{inputs.lengthFt ? `The rate table has no rows for ${METHOD_LABEL[inputs.workMethod].toLowerCase()} on ${ASSET_LABEL[inputs.assetType].toLowerCase()}. Ask the estimating team to add them.` : 'The estimate fills in from the rate table as soon as there is a length.'}</Callout>}
       </Panel>
     </div>
   )

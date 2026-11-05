@@ -14,6 +14,7 @@ import { Badge, Button, Callout, ConfirmButton, Empty, Field, Input, Modal, Page
 import { toast } from '@/ui/toast'
 import { Icon } from '@/ui/icons'
 import { FileButton, lsGet, lsSet } from '../admin/common'
+import { useUploadsLocked } from '../shared/SyncUi'
 import { TxnTable } from './Drill'
 import Reconciliation, { SAMPLE_CSV, SAMPLE_SOURCE, takeReconHandoff } from './Reconcile'
 import { exceptionReason, importFigures, importTxns, isException, projectLineRollup, ruleLabel, testRow, TXN_STATUS, type ProjectRoll } from './lib'
@@ -25,6 +26,7 @@ const IMP_LABEL: Record<ActualsImport['status'], string> = { staged: 'Staged', p
 type PageTab = 'imports' | 'recon'
 
 export default function Actuals(props: { projectId?: string }) {
+  const uploadsLocked = useUploadsLocked()
   const s = useStore()
   const me = useMe()
   const [handoff] = useState(() => takeReconHandoff())
@@ -79,8 +81,8 @@ export default function Actuals(props: { projectId?: string }) {
       <PageHeader eyebrow="Cost control" title="SAP actuals"
         subtitle={`Actual cost arrives from SAP as line items by WBS element and cost element. The mapping table translates each row to a forecast line item, project controls resolves what doesn’t map, and posting rebuilds each project-period’s actuals by line — the actuals every forecast and EAC is built on.`}
         actions={<>
-          <FileButton label={<><Icon name="download" className="h-3.5 w-3.5 rotate-180" />Upload extract</>} accept=".csv,.txt,.tsv,text/csv,text/plain" onFile={onFile} variant="primary" />
-          <Button size="sm" onClick={() => setPasteOpen(true)}>Paste rows</Button>
+          {!uploadsLocked && <FileButton label={<><Icon name="download" className="h-3.5 w-3.5 rotate-180" />Upload extract</>} accept=".csv,.txt,.tsv,text/csv,text/plain" onFile={onFile} variant="primary" />}
+          {!uploadsLocked && <Button size="sm" onClick={() => setPasteOpen(true)}>Paste rows</Button>}
           <Button size="sm" variant="ghost" onClick={loadSample} title={`Bundled with the demo: samples/${FICTIONAL_SAMPLE_FILE}`}>Load the fictional sample file</Button>
         </>} />
 
@@ -119,7 +121,7 @@ function FictionalOnly() {
   return (
     <div className="mb-4 flex items-start gap-2 rounded-md border border-warn/40 bg-warn/[0.06] px-3 py-2 text-[12.5px]" role="note">
       <Icon name="alert" className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
-      <div><b>Fictional data only.</b> This public demo may only load the bundled fictional sample ({FICTIONAL_SAMPLE_FILE}) or rows you made up. Never upload or paste a real SAP extract, real cost-element or vendor mapping, or anything Confidential — everything here stays in this browser and is not approved for company data.</div>
+      <div><b>Fictional data only.</b> This public demo may only load the bundled fictional sample ({FICTIONAL_SAMPLE_FILE}) or rows you made up. Never upload or paste a real SAP extract, real cost-element or vendor mapping, or anything Confidential. This demo is not approved for company data.</div>
     </div>
   )
 }

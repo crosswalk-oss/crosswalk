@@ -244,7 +244,7 @@ export function MoneyInput({ value, onChange, ...rest }: { value: number; onChan
 }
 
 // ───────────────────────────── Overlays
-export function Modal({ open, onClose, title, children, footer, wide }: { open: boolean; onClose: () => void; title: React.ReactNode; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean }) {
+export function Modal({ open, onClose, title, children, footer, wide, xl }: { open: boolean; onClose: () => void; title: React.ReactNode; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean; /** Near full-screen, for data-heavy forms. */ xl?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
@@ -255,13 +255,13 @@ export function Modal({ open, onClose, title, children, footer, wide }: { open: 
   }, [open, onClose])
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-steel/50 p-4 pt-[max(5vh,env(safe-area-inset-top))]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={ref} role="dialog" aria-modal="true" className={cx('fadein w-full rounded-md border border-line bg-surface shadow-xl', wide ? 'max-w-4xl' : 'max-w-xl')}>
+    <div className={cx('fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-steel/50', xl ? 'p-2 pt-[max(2vh,env(safe-area-inset-top))] sm:p-4 sm:pt-[max(2vh,env(safe-area-inset-top))]' : 'p-4 pt-[max(5vh,env(safe-area-inset-top))]')} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div ref={ref} role="dialog" aria-modal="true" className={cx('fadein w-full rounded-md border border-line bg-surface shadow-xl', xl ? 'max-w-[1440px]' : wide ? 'max-w-4xl' : 'max-w-xl')}>
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <h2 className="font-display text-[17px] font-semibold">{title}</h2>
           <button onClick={onClose} className="rounded p-1 text-muted hover:bg-sunken hover:text-ink" aria-label="Close">✕</button>
         </div>
-        <div className="max-h-[70vh] overflow-y-auto px-4 py-4">{children}</div>
+        <div className={cx('overflow-y-auto px-4 py-4', xl ? (footer ? 'max-h-[calc(96vh-120px)]' : 'max-h-[calc(96vh-60px)]') : 'max-h-[70vh]')}>{children}</div>
         {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-line px-4 py-3">{footer}</div>}
       </div>
     </div>
