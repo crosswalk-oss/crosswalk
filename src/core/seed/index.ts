@@ -16,8 +16,9 @@ import { computeClass, estimateTotals, MATURITY_ITEMS, parametricLines, spreadBy
 import { decideGate, ensureDeliverables, readiness, templateFor } from '../engine/gates'
 import { actOnWorkflow, startWorkflow } from '../engine/workflow'
 import { position, takeSnapshot, thresholdBreaches } from '../engine/position'
+import { DEFAULT_ALLOCATION, authorizedFunding } from '../engine/allocation'
 
-export const SCHEMA_VERSION = 9
+export const SCHEMA_VERSION = 10
 export const AS_OF = '2026-10-28'
 
 type Spec = {
@@ -58,6 +59,39 @@ const SPECS: Spec[] = [
   S(1029, 'Valve Automation — Line AV-26 MLV 8 & 11', 'prg-vap', 'valve-site', 'valve-automation', 24, 0, 'rural', 'South', 'Laguna Ciega', 2, { sites: 2 }),
   S(1030, 'Line AV-24 Abandon & Replace — Ironwood', 'prg-pse', 'transmission-pipeline', 'replace-open-trench', 12, 5600, 'rural', 'South', 'Ironwood', 1, { hold: true }),
 ]
+
+// Capital allocation: quantified benefit per project (fictional; VERIFY with the integrity risk model and hydraulic studies).
+// [safety $K/yr risk reduced, added capacity MMcfd, customers gaining a second feed, basis]
+const BENEFITS: Record<number, [number, number, number, string]> = {
+  1001: [2400, 0, 0, 'TIMP risk model 2026 run; replacement removes legacy seam threat'],
+  1002: [450, 0, 0, 'TIMP risk model 2026 run; MAOP records established'],
+  1003: [1300, 0, 0, 'TIMP risk model 2026 run; river crossing exposure'],
+  1004: [300, 0, 0, 'TIMP risk model 2026 run'],
+  1005: [1900, 4, 0, 'TIMP risk model 2026 run; 16→20 in. upsizing per hydraulic study HS-114'],
+  1006: [600, 0, 0, 'TIMP risk model 2026 run'],
+  1007: [900, 25, 0, 'TIMP risk model 2026 run; looping adds capacity per hydraulic study HS-109'],
+  1008: [500, 0, 0, 'TIMP risk model 2026 run'],
+  1010: [700, 0, 0, 'TIMP risk model 2026 run; MAOP reconfirmation'],
+  1011: [1100, 0, 0, 'TIMP risk model 2026 run; HCA segment'],
+  1012: [380, 0, 0, 'TIMP risk model 2026 run'],
+  1013: [950, 0, 0, 'TIMP risk model 2026 run; HCA segment'],
+  1014: [650, 0, 0, 'TIMP risk model 2026 run; scour exposure at creek'],
+  1015: [520, 1.5, 3200, 'DIMP risk model 2026 run; tie-in creates a second feed to the tract'],
+  1016: [640, 1, 4800, 'DIMP risk model 2026 run; new loop closes a dead end'],
+  1017: [700, 2, 6500, 'DIMP risk model 2026 run; downtown grid tied to a second regulator station'],
+  1018: [820, 3, 9000, 'DIMP risk model 2026 run; loop closes the north feed'],
+  1019: [160, 0, 1100, 'DIMP risk model 2026 run'],
+  1020: [3000, 120, 60000, 'Station risk assessment SRA-20; hydraulic study HS-101'],
+  1021: [2600, 180, 140000, 'Station risk assessment SRA-21; storage withdrawal study HS-121 (winter peak)'],
+  1022: [1500, 40, 20000, 'Station risk assessment SRA-22; hydraulic study HS-122'],
+  1023: [2200, 110, 55000, 'Station risk assessment SRA-23; hydraulic study HS-123'],
+  1024: [650, 0, 0, 'Rupture consequence model; isolation time cut from 60 to 10 minutes'],
+  1025: [380, 0, 0, 'Rupture consequence model'],
+  1026: [900, 0, 0, 'Rupture consequence model; three valves on an HCA line'],
+  1027: [260, 0, 0, 'Rupture consequence model'],
+  1029: [300, 0, 0, 'Rupture consequence model'],
+  1030: [300, 0, 0, 'TIMP risk model 2026 run'],
+}
 
 const DISTRICT_BOX: Record<string, [number, number, number, number]> = {
   West: [90, 300, 330, 540], East: [360, 260, 620, 500], South: [650, 220, 930, 520], North: [260, 50, 720, 210],
@@ -254,6 +288,8 @@ export function buildSeed(): AppState {
       customFields: sp.prog === 'prg-pse' ? { pseSegment: `PSE-${lineNo}-${R.int(1, 40)}` } : sp.prog === 'prg-csm' ? { airDistrictPermit: `ADP-${R.int(20000, 29999)}` } : { grcWorkpaper: `WP-${R.int(1000, 9999)}` },
     }
     s.projects.push(p)
+    const bf = BENEFITS[sp.n]
+    if (bf) p.benefits = { safetyK: bf[0], capacityMmcfd: bf[1], redundancyCustomers: bf[2], basis: bf[3], updatedById: 'u-me', updatedAt: initiated }
     p.info = infoFor(p, sp, R, target)
 
     // ── replay history
@@ -327,6 +363,7 @@ export function buildSeed(): AppState {
   seedMessages(s)
   pin(s, AS_OF)
   seedFunding(s)
+  s.settings.allocation = { ...DEFAULT_ALLOCATION, budget: authorizedFunding(s).amount, decisions: {} }
   health(s)
   // keep only the demo user's recent notifications
   s.notifications = s.notifications.filter((n) => n.at >= addDays(AS_OF, -14)).slice(-60)

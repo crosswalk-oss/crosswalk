@@ -13,6 +13,7 @@ import { AskPanel } from './views/shared/AskPanel'
 import { useAiAvailable } from './core/ai'
 import ProjectView from './views/project/ProjectView'
 import Portfolio from './views/portfolio/Portfolio'
+import Allocation from './views/allocation/Allocation'
 import Projects from './views/projects/Projects'
 import NewProject from './views/projects/NewProject'
 import Gates from './views/gates/Gates'
@@ -39,6 +40,7 @@ const NAV: { group: string; items: { id: string; label: string; icon: IconName }
     { id: 'inbox', label: 'My work', icon: 'inbox' },
     { id: 'messages', label: 'Messages', icon: 'chat' },
     { id: 'portfolio', label: 'Portfolio', icon: 'grid' },
+    { id: 'allocation', label: 'Capital allocation', icon: 'scale' },
     { id: 'projects', label: 'Projects', icon: 'list' },
     { id: 'map', label: 'Map', icon: 'map' },
     { id: 'gates', label: 'Gate reviews', icon: 'gate' },
@@ -111,6 +113,7 @@ export default function App() {
       case 'forecast': return <ForecastCycle />
       case 'map': return <MapPage />
       case 'actuals': return <Actuals />
+      case 'allocation': return <Allocation />
       default:
         if (isMessagesView(route.view)) return <Messages view={route.view} />
         if (route.view.startsWith('admin-')) return <Admin id={route.view.slice(6)} />

@@ -168,6 +168,8 @@ export interface Project {
   customFields: Record<string, string>
   lastStatusNote?: string
   info: Record<string, string> // Project Information record values for fields without a `bind`
+  /** Quantified benefit the project delivers when complete (capital allocation). Engineering and system measures only. */
+  benefits?: ProjectBenefits
   /** Financial accounts: the WOA and internal orders (IOs) that charges land on. Key facts display them; the Finance tab manages them. */
   finance?: { woa?: string; ios: InternalOrder[] }
   /** Counties the work sits in, with the share of the work in each (drives sales tax on material in estimates). */
@@ -1050,6 +1052,8 @@ export interface Settings {
   factorModel: FactorModelSettings
   workflow: { reminderDays: number; escalateAfterDays: number } // reminder before/at due; escalate to the assignee's manager this many days overdue
   features: { fieldTailboard: boolean; portfolioPlanning: boolean; opQual: boolean } // phase-2 modules, off for the pilot
+  /** Capital allocation: benefit weights, scoring scale, capital available and per-project decisions. */
+  allocation?: AllocationSettings
   ai: AiSettings
 }
 
@@ -1175,3 +1179,24 @@ export interface AppState {
 }
 
 export type CollectionKey = { [K in keyof AppState]: AppState[K] extends Array<{ id: ID }> ? K : never }[keyof AppState]
+
+// ── Capital allocation (portfolio optimization by quantified benefit)
+export type AllocationCriterion = 'safety' | 'capacity' | 'redundancy'
+/** Benefit when the project is complete. Engineering and system measures only: never demographic or income data. */
+export interface ProjectBenefits {
+  safetyK: number // monetized safety risk reduced, $K per year (likelihood × consequence, before vs after)
+  capacityMmcfd: number // added system capacity, million cubic feet per day
+  redundancyCustomers: number // customers that gain a second feed (no longer on a single source)
+  basis?: string // where the numbers come from (risk model run, hydraulic study, …)
+  updatedById?: ID
+  updatedAt?: ISODate
+}
+/** auto = the optimizer decides; must = fund regardless; exclude = never fund in this plan. */
+export type AllocationDecision = 'auto' | 'must' | 'exclude'
+export interface AllocationSettings {
+  weights: Record<AllocationCriterion, number> // relative importance, any scale (normalized to 100%)
+  fullCredit: Record<AllocationCriterion, number> // the amount of each measure worth 100 benefit points
+  budget: Money // capital available for the projects' cost to complete
+  lockCommitted: boolean // projects with a control budget in force are funded first
+  decisions: Record<ID, AllocationDecision>
+}
