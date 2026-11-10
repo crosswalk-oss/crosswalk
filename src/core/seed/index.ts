@@ -18,7 +18,7 @@ import { actOnWorkflow, startWorkflow } from '../engine/workflow'
 import { position, takeSnapshot, thresholdBreaches } from '../engine/position'
 import { DEFAULT_ALLOCATION, authorizedFunding } from '../engine/allocation'
 
-export const SCHEMA_VERSION = 10
+export const SCHEMA_VERSION = 11
 export const AS_OF = '2026-10-28'
 
 type Spec = {
@@ -61,36 +61,36 @@ const SPECS: Spec[] = [
 ]
 
 // Capital allocation: quantified benefit per project (fictional; VERIFY with the integrity risk model and hydraulic studies).
-// [safety $K/yr risk reduced, added capacity MMcfd, customers gaining a second feed, basis]
-const BENEFITS: Record<number, [number, number, number, string]> = {
-  1001: [2400, 0, 0, 'TIMP risk model 2026 run; replacement removes legacy seam threat'],
-  1002: [450, 0, 0, 'TIMP risk model 2026 run; MAOP records established'],
-  1003: [1300, 0, 0, 'TIMP risk model 2026 run; river crossing exposure'],
-  1004: [300, 0, 0, 'TIMP risk model 2026 run'],
-  1005: [1900, 4, 0, 'TIMP risk model 2026 run; 16→20 in. upsizing per hydraulic study HS-114'],
-  1006: [600, 0, 0, 'TIMP risk model 2026 run'],
-  1007: [900, 25, 0, 'TIMP risk model 2026 run; looping adds capacity per hydraulic study HS-109'],
-  1008: [500, 0, 0, 'TIMP risk model 2026 run'],
-  1010: [700, 0, 0, 'TIMP risk model 2026 run; MAOP reconfirmation'],
-  1011: [1100, 0, 0, 'TIMP risk model 2026 run; HCA segment'],
-  1012: [380, 0, 0, 'TIMP risk model 2026 run'],
-  1013: [950, 0, 0, 'TIMP risk model 2026 run; HCA segment'],
-  1014: [650, 0, 0, 'TIMP risk model 2026 run; scour exposure at creek'],
-  1015: [520, 1.5, 3200, 'DIMP risk model 2026 run; tie-in creates a second feed to the tract'],
-  1016: [640, 1, 4800, 'DIMP risk model 2026 run; new loop closes a dead end'],
-  1017: [700, 2, 6500, 'DIMP risk model 2026 run; downtown grid tied to a second regulator station'],
-  1018: [820, 3, 9000, 'DIMP risk model 2026 run; loop closes the north feed'],
-  1019: [160, 0, 1100, 'DIMP risk model 2026 run'],
-  1020: [3000, 120, 60000, 'Station risk assessment SRA-20; hydraulic study HS-101'],
-  1021: [2600, 180, 140000, 'Station risk assessment SRA-21; storage withdrawal study HS-121 (winter peak)'],
-  1022: [1500, 40, 20000, 'Station risk assessment SRA-22; hydraulic study HS-122'],
-  1023: [2200, 110, 55000, 'Station risk assessment SRA-23; hydraulic study HS-123'],
-  1024: [650, 0, 0, 'Rupture consequence model; isolation time cut from 60 to 10 minutes'],
-  1025: [380, 0, 0, 'Rupture consequence model'],
-  1026: [900, 0, 0, 'Rupture consequence model; three valves on an HCA line'],
-  1027: [260, 0, 0, 'Rupture consequence model'],
-  1029: [300, 0, 0, 'Rupture consequence model'],
-  1030: [300, 0, 0, 'TIMP risk model 2026 run'],
+// [safety $K/yr risk reduced, added capacity MMcfd, customers gaining a second feed, outage cust-hrs/yr avoided, tCO2e/yr reduced, O&M $K/yr saved, basis]
+const BENEFITS: Record<number, [number, number, number, number, number, number, string]> = {
+  1001: [2400, 0, 0, 5000, 150, 120, 'TIMP risk model 2026 run; replacement removes legacy seam threat'],
+  1002: [450, 0, 0, 0, 0, 20, 'TIMP risk model 2026 run; MAOP records established'],
+  1003: [1300, 0, 0, 8000, 80, 60, 'TIMP risk model 2026 run; river crossing exposure'],
+  1004: [300, 0, 0, 0, 0, 15, 'TIMP risk model 2026 run'],
+  1005: [1900, 4, 0, 6000, 120, 90, 'TIMP risk model 2026 run; 16→20 in. upsizing per hydraulic study HS-114'],
+  1006: [600, 0, 0, 2000, 40, 30, 'TIMP risk model 2026 run'],
+  1007: [900, 25, 0, 20000, 200, 100, 'TIMP risk model 2026 run; looping adds capacity per hydraulic study HS-109'],
+  1008: [500, 0, 0, 0, 0, 25, 'TIMP risk model 2026 run'],
+  1010: [700, 0, 0, 0, 0, 40, 'TIMP risk model 2026 run; MAOP reconfirmation'],
+  1011: [1100, 0, 0, 3000, 60, 70, 'TIMP risk model 2026 run; HCA segment'],
+  1012: [380, 0, 0, 0, 0, 20, 'TIMP risk model 2026 run'],
+  1013: [950, 0, 0, 2500, 50, 60, 'TIMP risk model 2026 run; HCA segment'],
+  1014: [650, 0, 0, 6000, 30, 40, 'TIMP risk model 2026 run; scour exposure at creek'],
+  1015: [520, 1.5, 3200, 12000, 450, 260, 'DIMP risk model 2026 run; tie-in creates a second feed to the tract'],
+  1016: [640, 1, 4800, 15000, 600, 320, 'DIMP risk model 2026 run; new loop closes a dead end'],
+  1017: [700, 2, 6500, 22000, 800, 380, 'DIMP risk model 2026 run; downtown grid tied to a second regulator station'],
+  1018: [820, 3, 9000, 30000, 900, 450, 'DIMP risk model 2026 run; loop closes the north feed'],
+  1019: [160, 0, 1100, 4000, 180, 90, 'DIMP risk model 2026 run'],
+  1020: [3000, 120, 60000, 150000, 18000, 1800, 'Station risk assessment SRA-20; hydraulic study HS-101'],
+  1021: [2600, 180, 140000, 400000, 22000, 2400, 'Station risk assessment SRA-21; storage withdrawal study HS-121 (winter peak)'],
+  1022: [1500, 40, 20000, 60000, 9000, 1200, 'Station risk assessment SRA-22; hydraulic study HS-122'],
+  1023: [2200, 110, 55000, 140000, 15000, 1600, 'Station risk assessment SRA-23; hydraulic study HS-123'],
+  1024: [650, 0, 0, 1500, 120, 10, 'Rupture consequence model; isolation time cut from 60 to 10 minutes'],
+  1025: [380, 0, 0, 800, 80, 8, 'Rupture consequence model'],
+  1026: [900, 0, 0, 2500, 200, 15, 'Rupture consequence model; three valves on an HCA line'],
+  1027: [260, 0, 0, 600, 60, 6, 'Rupture consequence model'],
+  1029: [300, 0, 0, 700, 70, 7, 'Rupture consequence model'],
+  1030: [300, 0, 0, 1000, 60, 40, 'TIMP risk model 2026 run'],
 }
 
 const DISTRICT_BOX: Record<string, [number, number, number, number]> = {
@@ -289,7 +289,8 @@ export function buildSeed(): AppState {
     }
     s.projects.push(p)
     const bf = BENEFITS[sp.n]
-    if (bf) p.benefits = { safetyK: bf[0], capacityMmcfd: bf[1], redundancyCustomers: bf[2], basis: bf[3], updatedById: 'u-me', updatedAt: initiated }
+    // delivery confidence rises as the project matures (scope, permits and contracts settle)
+    if (bf) p.benefits = { values: { safety: bf[0], capacity: bf[1], redundancy: bf[2], reliability: bf[3], emissions: bf[4], om: bf[5] }, confidence: [70, 80, 90, 95, 95][Math.min(4, sp.stage)], basis: bf[6], updatedById: 'u-me', updatedAt: initiated }
     p.info = infoFor(p, sp, R, target)
 
     // ── replay history
@@ -363,7 +364,7 @@ export function buildSeed(): AppState {
   seedMessages(s)
   pin(s, AS_OF)
   seedFunding(s)
-  s.settings.allocation = { ...DEFAULT_ALLOCATION, budget: authorizedFunding(s).amount, decisions: {} }
+  s.settings.allocation = { ...JSON.parse(JSON.stringify(DEFAULT_ALLOCATION)), budget: authorizedFunding(s).amount }
   health(s)
   // keep only the demo user's recent notifications
   s.notifications = s.notifications.filter((n) => n.at >= addDays(AS_OF, -14)).slice(-60)

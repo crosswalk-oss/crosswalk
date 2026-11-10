@@ -1181,12 +1181,25 @@ export interface AppState {
 export type CollectionKey = { [K in keyof AppState]: AppState[K] extends Array<{ id: ID }> ? K : never }[keyof AppState]
 
 // ── Capital allocation (portfolio optimization by quantified benefit)
-export type AllocationCriterion = 'safety' | 'capacity' | 'redundancy'
-/** Benefit when the project is complete. Engineering and system measures only: never demographic or income data. */
+/** Measure id, e.g. 'safety'. Measures are configured in settings.allocation.criteria. */
+export type AllocationCriterion = string
+/** Which consequence attribute a measure belongs to (the risk framework's safety / reliability / financial, plus environmental). */
+export type AllocationAttribute = 'safety' | 'reliability' | 'financial' | 'environmental' | 'other'
+export interface AllocationCriterionDef {
+  id: AllocationCriterion
+  label: string
+  unit: string
+  help: string
+  attribute: AllocationAttribute
+  fullCredit: number // the amount of this measure worth 100 benefit points
+  weight: number // relative importance (normalized to 100% across active measures)
+  active: boolean
+}
+export interface AllocationPreset { id: string; name: string; weights: Record<AllocationCriterion, number> }
+/** Benefit when the project is complete. Engineering, system and financial measures only: never demographic or income data. */
 export interface ProjectBenefits {
-  safetyK: number // monetized safety risk reduced, $K per year (likelihood × consequence, before vs after)
-  capacityMmcfd: number // added system capacity, million cubic feet per day
-  redundancyCustomers: number // customers that gain a second feed (no longer on a single source)
+  values: Record<AllocationCriterion, number> // amount per measure, in the measure's unit
+  confidence?: number // % likelihood the benefit is delivered as planned (scope, schedule, permits)
   basis?: string // where the numbers come from (risk model run, hydraulic study, …)
   updatedById?: ID
   updatedAt?: ISODate
@@ -1194,9 +1207,10 @@ export interface ProjectBenefits {
 /** auto = the optimizer decides; must = fund regardless; exclude = never fund in this plan. */
 export type AllocationDecision = 'auto' | 'must' | 'exclude'
 export interface AllocationSettings {
-  weights: Record<AllocationCriterion, number> // relative importance, any scale (normalized to 100%)
-  fullCredit: Record<AllocationCriterion, number> // the amount of each measure worth 100 benefit points
+  criteria: AllocationCriterionDef[]
+  presets: AllocationPreset[]
   budget: Money // capital available for the projects' cost to complete
   lockCommitted: boolean // projects with a control budget in force are funded first
+  useConfidence: boolean // multiply each project's benefit by its delivery confidence
   decisions: Record<ID, AllocationDecision>
 }

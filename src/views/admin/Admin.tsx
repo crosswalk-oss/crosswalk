@@ -19,10 +19,11 @@ import QuickEstimateSettings from './QuickEstimateSettings'
 import AiSettings from './AiSettings'
 import WorkflowSettings from './WorkflowSettings'
 import Modules from './Modules'
+import AllocationSettingsTab from './AllocationSettings'
 import { lsGet, lsSet } from './common'
 
-type Tab = 'templates' | 'programs' | 'cbs' | 'wbs' | 'lines' | 'sap' | 'profiles' | 'quick' | 'info' | 'gis' | 'ai' | 'libraries' | 'fields' | 'people' | 'data' | 'notify' | 'modules'
-const CONFIG_ENTITIES = ['gis', 'forecast-line', 'sap-mapping', 'spread-profile', 'historical-cost', 'quick-estimate', 'wbs', 'info-field', 'template', 'program', 'funding', 'doa', 'cost-category', 'settings', 'risk-library', 'hazard-library', 'person', 'role', 'data']
+type Tab = 'templates' | 'allocation' | 'programs' | 'cbs' | 'wbs' | 'lines' | 'sap' | 'profiles' | 'quick' | 'info' | 'gis' | 'ai' | 'libraries' | 'fields' | 'people' | 'data' | 'notify' | 'modules'
+const CONFIG_ENTITIES = ['gis', 'forecast-line', 'sap-mapping', 'spread-profile', 'historical-cost', 'quick-estimate', 'wbs', 'info-field', 'template', 'program', 'funding', 'doa', 'cost-category', 'settings', 'risk-library', 'hazard-library', 'person', 'role', 'data', 'capital-allocation']
 
 /** Deep link to a Configuration tab, e.g. adminHref('notify') → #admin-notify. */
 export const adminHref = (tab: Tab) => `#admin-${tab}`
@@ -43,6 +44,7 @@ export default function Admin({ id }: { projectId?: string; id?: string }) {
     { id: 'sap', label: 'SAP mapping', count: s.settings.sapMappings.length },
     { id: 'profiles', label: 'Spread profiles', count: s.settings.spreadProfiles.length },
     { id: 'quick', label: 'Class 5 quick estimate' },
+    { id: 'allocation', label: 'Capital allocation', count: (s.settings.allocation?.criteria ?? []).filter((c) => c.active).length || undefined },
     { id: 'info', label: 'Project info fields', count: s.settings.infoFields.length },
     { id: 'gis', label: 'GIS & maps', count: s.settings.gis.layers.length },
     { id: 'notify', label: 'Workflow notifications' },
@@ -67,6 +69,7 @@ export default function Admin({ id }: { projectId?: string; id?: string }) {
       {tab === 'sap' && <SapMappings />}
       {tab === 'profiles' && <SpreadProfiles />}
       {tab === 'quick' && <QuickEstimateSettings />}
+      {tab === 'allocation' && <AllocationSettingsTab />}
       {tab === 'info' && <InfoFields />}
       {tab === 'gis' && <GisSettings />}
       {tab === 'notify' && <WorkflowSettings />}
