@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { produce } from 'immer'
 import { buildSeed } from '../seed'
 import type { AllocationSettings } from '../types'
-import { DEFAULT_CRITERIA, activeCriteria, allocationOf, authorizedFunding, describeAllocationChange, optimize, saveAllocation, scoreBenefits, setBenefits, validateAllocation } from './allocation'
+import { DEFAULT_CRITERIA, activeCriteria, allocationOf, annualLimitDefault, authorizedFunding, costByYear, costToComplete, dependencyLoop, describeAllocationChange, optimize, saveAllocation, scoreBenefits, setBenefits, timeFactor, validateAllocation } from './allocation'
 
 const S = buildSeed()
-const A = allocationOf(S)
+const A0 = allocationOf(S)
+// most tests exercise the single-total knapsack; prerequisites get their own tests
+const A = { ...A0, dependencies: [] }
 const fundedCodes = (r: ReturnType<typeof optimize>) => r.rows.filter((x) => x.status === 'funded' || x.status === 'committed' || x.status === 'must').map((x) => x.project.code).sort()
 const withWeights = (a: AllocationSettings, w: Record<string, number>): AllocationSettings => ({ ...a, criteria: a.criteria.map((c) => ({ ...c, weight: w[c.id] ?? 0 })) })
 
@@ -136,5 +138,110 @@ describe('capital allocation', () => {
     expect(validateAllocation(broken)).toHaveLength(3)
     const ch = describeAllocationChange(A, { ...a2, criteria: a2.criteria.map((c) => (c.id === 'om' ? { ...c, active: false } : c)).filter((c) => c.id !== 'emissions') })
     expect(ch).toEqual(expect.arrayContaining(['Safety weight 35 → 80', 'O&M savings switched off', 'removed measure Emissions reduced', 'risk-adjust by delivery confidence off']))
+  })
+
+  it('spreads cost to complete by year from this year on, and defaults yearly limits from authorized funding', () => {
+    const y0 = Number(S.settings.asOf.slice(0, 4))
+    for (const p of S.projects.filter((x) => x.status === 'active')) {
+      const c = costToComplete(S, p), by = costByYear(S, p, c)
+      expect(Object.values(by).reduce((a, b) => a + b, 0), p.code).toBe(c)
+      for (const y of Object.keys(by)) expect(Number(y)).toBeGreaterThanOrEqual(y0)
+    }
+    const spent = S.costPeriods.filter((c) => c.period.startsWith(`${y0}-`)).reduce((a, c) => a + c.actual, 0)
+    const auth = (y: number) => S.funding.filter((f) => f.year === y).reduce((a, f) => a + f.authorized, 0)
+    expect(annualLimitDefault(S, String(y0)).amount).toBe(Math.max(0, auth(y0) - spent))
+    expect(annualLimitDefault(S, String(y0 + 1)).amount).toBe(auth(y0 + 1))
+    expect(annualLimitDefault(S, String(y0 + 5)).basis).toMatch(/Planning assumption/)
+  })
+
+  it('limits by year: never over a year\'s limit, deferral moves spend later, and allowing deferral never lowers benefit', () => {
+    const r0 = optimize(S, { ...A, annual: { ...A.annual, on: true, maxDeferYears: 0 } })
+    const r1 = optimize(S, { ...A, annual: { ...A.annual, on: true, maxDeferYears: 1 } })
+    for (const r of [r0, r1]) {
+      expect(r.mode).toBe('annual')
+      expect(r.exact).toBe(true)
+      for (const y of r.yearly) expect(y.funded + y.deferred, y.year).toBeLessThanOrEqual(Math.max(0, (y.limit ?? 0) - y.committed) + 1)
+    }
+    expect(r0.deferred).toBe(0)
+    expect(r1.benefit).toBeGreaterThanOrEqual(r0.benefit - 1e-9)
+    expect(r1.rows.some((x) => x.defer > 0)).toBe(true)
+    const d = r1.rows.find((x) => x.defer > 0)!
+    expect(d.counted).toBeLessThan(d.benefit) // later in service → discounted
+  })
+
+  it('prerequisites: never funds a project without its prerequisite, or earlier than it', () => {
+    const pid = (c: string) => S.projects.find((p) => p.code === c)!.id
+    const deps = [{ projectId: pid('PRJ-1021'), requiresId: pid('PRJ-1022') }, { projectId: pid('PRJ-1018'), requiresId: pid('PRJ-1017') }]
+    for (const a of [{ ...A, budget: 1_200e6, dependencies: deps }, { ...A, dependencies: deps, annual: { ...A.annual, on: true, maxDeferYears: 2 } }]) {
+      const r = optimize(S, a)
+      expect(r.method).toBe('search')
+      const st = (id: string) => r.rows.find((x) => x.project.id === id)!
+      for (const dep of deps) {
+        const x = st(dep.projectId), q = st(dep.requiresId)
+        if (x.status === 'funded') { expect(['funded', 'committed', 'must']).toContain(q.status); expect(q.defer).toBeLessThanOrEqual(x.defer) }
+      }
+    }
+    // 1021 needs 1022 at $1.2B: the optimizer would rather skip both than fund the pair
+    const r = optimize(S, { ...A, budget: 1_200e6, dependencies: deps.slice(0, 1) })
+    const x = r.rows.find((y) => y.project.code === 'PRJ-1021')!
+    expect(x.status).toBe('unfunded')
+    expect(x.note).toMatch(/Needs PRJ-1022/)
+    // a committed project's prerequisite is funded too
+    const c = optimize(S, { ...A, dependencies: [{ projectId: pid('PRJ-1001'), requiresId: pid('PRJ-1022') }] }).rows.find((y) => y.project.code === 'PRJ-1022')!
+    expect(c.status).toBe('must')
+    expect(c.note).toMatch(/Needed by PRJ-1001/)
+    expect(dependencyLoop(deps, pid('PRJ-1022'), pid('PRJ-1021'))).toBe(true)
+    expect(dependencyLoop(deps, pid('PRJ-1021'), pid('PRJ-1017'))).toBe(false)
+  })
+
+  it('the search finds the best plan with yearly limits, deferral and prerequisites (matches brute force)', () => {
+    const base = optimize(S, A).rows.filter((x) => !x.locked).map((x) => x.project.id)
+    const keep = base.slice(0, 8)
+    const exclude = Object.fromEntries(base.filter((id) => !keep.includes(id)).map((id) => [id, 'exclude' as const]))
+    const y0 = Number(S.settings.asOf.slice(0, 4))
+    for (const scale of [0.35, 0.6]) {
+      const limits = Object.fromEntries(Array.from({ length: 9 }, (_, i) => [String(y0 + i), annualLimitDefault(S, String(y0 + i)).amount * scale]))
+      const a = { ...A, decisions: exclude, dependencies: [{ projectId: keep[0], requiresId: keep[3] }, { projectId: keep[5], requiresId: keep[1] }], annual: { on: true, maxDeferYears: 1, limits } }
+      const r = optimize(S, a)
+      expect(r.exact).toBe(true)
+      const items = r.rows.filter((x) => keep.includes(x.project.id))
+      const locked = r.rows.filter((x) => x.locked)
+      const years = r.yearly.map((y) => y.year)
+      const capY = Object.fromEntries(years.map((y) => [y, Math.max(0, (r.yearly.find((q) => q.year === y)!.limit ?? 0) - locked.reduce((s2, x) => s2 + (x.byYear[y] ?? 0), 0))]))
+      let best = 0
+      const choice = new Array(items.length).fill(-1)
+      const rec = (i: number) => {
+        if (i === items.length) {
+          const use: Record<string, number> = {}
+          let b = 0
+          for (let k = 0; k < items.length; k++) {
+            const d = choice[k]; if (d < 0) continue
+            for (const [y, v] of Object.entries(items[k].byYear)) { const yy = String(Number(y) + d); if (!(yy in capY)) return; use[yy] = (use[yy] ?? 0) + v }
+            b += items[k].beforeTiming * timeFactor(S, a, items[k].inService, d)
+          }
+          for (const y of Object.keys(use)) if (use[y] > capY[y] + 1e-6) return
+          for (const dep of a.dependencies) {
+            const i1 = items.findIndex((x) => x.project.id === dep.projectId), i2 = items.findIndex((x) => x.project.id === dep.requiresId)
+            if (choice[i1] >= 0 && (choice[i2] < 0 || choice[i2] > choice[i1])) return
+          }
+          if (b > best) best = b
+          return
+        }
+        for (const d of [-1, 0, 1]) { choice[i] = d; rec(i + 1) }
+      }
+      rec(0)
+      const lockedB = locked.reduce((s2, x) => s2 + x.benefit, 0)
+      expect(r.benefit, `scale ${scale}`).toBeCloseTo(lockedB + best, 6)
+    }
+  })
+
+  it('timing discounts benefit by the years until it is in service; off means no discount', () => {
+    const a = { ...A, timing: { on: true, discountPct: 10 } }
+    const y0 = Number(S.settings.asOf.slice(0, 4))
+    expect(timeFactor(S, a, y0)).toBe(1)
+    expect(timeFactor(S, a, y0 + 2)).toBeCloseTo(1 / 1.21)
+    expect(timeFactor(S, a, y0 + 2, 1)).toBeCloseTo(1 / 1.331)
+    expect(timeFactor(S, { ...a, timing: { on: false, discountPct: 10 } }, y0 + 5)).toBe(1)
+    expect(optimize(S, { ...A, timing: { on: false, discountPct: 5 } }).maxBenefit).toBeGreaterThan(optimize(S, A).maxBenefit)
   })
 })

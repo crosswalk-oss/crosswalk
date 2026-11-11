@@ -7,11 +7,11 @@ import AllocationSettingsTab from '@/views/admin/AllocationSettings'
 describe('Capital allocation views', () => {
   test('page: weights for every measure, presets, capital available, frontier, delivered benefit and the project table', () => {
     const html = renderToString(<Allocation />)
-    for (const t of ['Capital allocation', 'Weighting', 'Safety', 'Outages avoided', 'Added capacity', 'Redundancy', 'Emissions reduced', 'O&amp;M savings', 'Safety first', 'Emissions', 'Capital available', 'Use authorized funding', 'Risk-adjust benefit by delivery confidence', 'Benefit for each level of capital', 'What the funded plan delivers', 'Cost to complete', 'Confidence', 'Pts per $M', 'PRJ-1021', 'Committed', 'Not funded', 'Must fund', 'Measures and scale — verify', 'Configure measures']) expect(html).toContain(t)
+    for (const t of ['Capital allocation', 'Weighting', 'Safety', 'Outages avoided', 'Added capacity', 'Redundancy', 'Emissions reduced', 'O&amp;M savings', 'Safety first', 'Emissions', 'Capital available', 'Use authorized funding', 'Risk-adjust benefit by delivery confidence', 'Benefit for each level of capital', 'What the funded plan delivers', 'Cost to complete', 'Confidence', 'Pts per $M', 'PRJ-1021', 'Committed', 'Not funded', 'Must fund', 'Measures and scale — verify', 'Configure measures', 'One total', 'Limit by year', 'Count benefit from its in-service year', 'Spend by year', 'In service', 'Needs', '+ needs…']) expect(html).toContain(t)
     expect(html).not.toMatch(/disadvantaged community/i)
   })
   test('Configuration tab: measures table, presets, funding rules and a live preview', () => {
     const html = renderToString(<AllocationSettingsTab />)
-    for (const t of ['Benefit measures', '+ Add measure', 'Restore defaults', '100 points =', 'Weight', 'Share', 'Group', 'Reliability', 'Financial', 'Environmental', 'Weighting presets', '+ Add preset from current weights', 'Funding rules', 'Fund committed projects first', 'Risk-adjust benefit by delivery confidence', 'Preview with these settings', 'Projects funded']) expect(html).toContain(t)
+    for (const t of ['Benefit measures', '+ Add measure', 'Restore defaults', '100 points =', 'Weight', 'Share', 'Group', 'Reliability', 'Financial', 'Environmental', 'Weighting presets', '+ Add preset from current weights', 'Funding rules', 'Fund committed projects first', 'Risk-adjust benefit by delivery confidence', 'Preview with these settings', 'Projects funded', 'Limit spend year by year', 'Projects may start up to', 'Rate — verify with finance', 'Prerequisites', 'Add prerequisite', 'Looping only adds capacity once Las Lomas compression is rebuilt']) expect(html).toContain(t)
   })
 })

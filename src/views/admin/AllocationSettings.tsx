@@ -1,10 +1,10 @@
 // Configuration → Capital allocation: the benefit measures projects are scored on (name, group, unit, 100-point
 // amount, weight, on/off), the weighting presets, and the funding rules. One audited save.
-import { useMemo } from 'react'
-import type { AllocationAttribute, AllocationCriterionDef, AllocationSettings } from '@/core/types'
+import { useMemo, useState } from 'react'
+import type { AllocationAttribute, AllocationCriterionDef, AllocationSettings, Project } from '@/core/types'
 import { mutate, useStore } from '@/core/store'
 import {
-  ATTRIBUTE_LABEL, DEFAULT_CRITERIA, DEFAULT_PRESETS, activeCriteria, allocationOf, authorizedFunding, describeAllocationChange, optimize, validateAllocation, weightShares,
+  ATTRIBUTE_LABEL, DEFAULT_CRITERIA, DEFAULT_PRESETS, activeCriteria, allocationOf, annualLimits, authorizedFunding, dependencyLoop, isAllocCandidate, describeAllocationChange, optimize, validateAllocation, weightShares,
 } from '@/core/engine/allocation'
 import { Badge, Button, Callout, Input, Panel, Select, Stat } from '@/ui/kit'
 import { toast } from '@/ui/toast'
@@ -26,6 +26,9 @@ export default function AllocationSettingsTab() {
   const act = activeCriteria(d)
   const preview = useMemo(() => (problems.length ? null : optimize(s, { ...d, decisions })), [s, JSON.stringify(d)]) // eslint-disable-line react-hooks/exhaustive-deps
   const auth = authorizedFunding(s)
+  const candidates = s.projects.filter(isAllocCandidate)
+  const codeOf = (id: string) => s.projects.find((p) => p.id === id)?.code ?? id
+  const nameOf = (id: string) => s.projects.find((p) => p.id === id)?.name ?? ''
 
   const setC = (i: number, patch: Partial<AllocationCriterionDef>) => D.set((x) => { x.criteria[i] = { ...x.criteria[i], ...patch }; return x })
   const addMeasure = () => D.set((x) => {
@@ -121,6 +124,35 @@ export default function AllocationSettingsTab() {
             </div>
             <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-[rgb(var(--ink))]" checked={d.lockCommitted} onChange={(e) => D.set((x) => ({ ...x, lockCommitted: e.target.checked }))} /><span>Fund committed projects first <span className="text-muted">— a control budget is in force and work is under contract, so stopping it costs more than it saves.</span></span></label>
             <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-[rgb(var(--ink))]" checked={d.useConfidence} onChange={(e) => D.set((x) => ({ ...x, useConfidence: e.target.checked }))} /><span>Risk-adjust benefit by delivery confidence <span className="text-muted">— each project's points × the chance its scope, permits and schedule hold, so early-stage promises don't outrank work that is ready to build.</span></span></label>
+            <div className="flex flex-wrap items-start gap-2">
+              <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-[rgb(var(--ink))]" checked={d.timing.on} onChange={(e) => D.set((x) => ({ ...x, timing: { ...x.timing, on: e.target.checked } }))} /><span>Count benefit from its in-service year, discounted at</span></label>
+              <span className="flex items-center gap-1"><CommitNum ariaLabel="Discount rate percent a year" className="w-14 py-0.5" value={d.timing.discountPct} disabled={!d.timing.on} onCommit={(v) => D.set((x) => ({ ...x, timing: { ...x.timing, discountPct: Math.min(20, Math.max(0, v)) } }))} /><span>% a year</span></span>
+              <span className="basis-full pl-6 text-muted">A benefit that starts in four years is worth less than one that starts next year. <Badge tone="marker">Rate — verify with finance</Badge></span>
+            </div>
+            <div className="border-t border-line pt-3">
+              <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-[rgb(var(--ink))]" checked={d.annual.on} onChange={(e) => D.set((x) => ({ ...x, annual: { ...x.annual, on: e.target.checked } }))} /><span className="font-semibold">Limit spend year by year <span className="font-normal text-muted">instead of one total, the way rate-case funding is authorized</span></span></label>
+              <div className={d.annual.on ? 'mt-2 pl-6' : 'mt-2 pl-6 opacity-50'}>
+                <table className="w-full text-[12.5px]">
+                  <thead><tr className="text-left text-[11px] uppercase tracking-wide text-faint"><th className="py-1">Year</th><th className="py-1">Limit</th><th className="py-1">Basis</th></tr></thead>
+                  <tbody>
+                    {(preview?.yearly ?? []).map((y) => {
+                      const lim = annualLimits(s, d, [y.year])[y.year]
+                      return (
+                        <tr key={y.year} className="border-t border-line">
+                          <td className="py-1 font-semibold">{y.year}</td>
+                          <td className="py-1"><span className="flex items-center gap-1">$<CommitNum ariaLabel={`${y.year} limit in millions`} className="w-24 py-0.5" value={Math.round(lim.amount / 1e5) / 10} onCommit={(v) => D.set((x) => ({ ...x, annual: { ...x.annual, limits: { ...x.annual.limits, [y.year]: Math.max(0, v) * 1e6 } } }))} />M</span></td>
+                          <td className="py-1 text-[11.5px] text-muted">{lim.custom ? <>Set by the portfolio team · <button type="button" className="text-link" onClick={() => D.set((x) => { const { [y.year]: _, ...rest } = x.annual.limits; return { ...x, annual: { ...x.annual, limits: rest } } })}>reset</button></> : lim.basis}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+                <label className="mt-2 flex items-center gap-2">Projects may start up to
+                  <Select aria-label="Most years a project may start later" className="w-16 py-0.5" value={String(d.annual.maxDeferYears)} onChange={(e) => D.set((x) => ({ ...x, annual: { ...x.annual, maxDeferYears: Number(e.target.value) } }))} options={[0, 1, 2, 3].map((n) => ({ value: String(n), label: String(n) }))} />
+                  years later to fit a year's limit (their spend and benefit move with them).
+                </label>
+              </div>
+            </div>
           </div>
         </Panel>
         <Panel title="Preview with these settings" subtitle="Before saving: what the optimizer funds with the decisions already made on the Capital allocation page.">
@@ -136,10 +168,48 @@ export default function AllocationSettingsTab() {
         </Panel>
       </div>
 
+      <Panel pad={false} title="Prerequisites" subtitle="A project that only delivers its benefit once another is done. The optimizer never funds it without its prerequisite, and never starts it earlier than the prerequisite. Also editable in the Needs column on the Capital allocation page.">
+        <div className="scroll-x">
+          <table className="tbl min-w-[760px]">
+            <thead><tr><th>Project</th><th>Needs</th><th>Why</th><th style={{ width: 30 }} /></tr></thead>
+            <tbody>
+              {d.dependencies.map((dep, i) => (
+                <tr key={`${dep.projectId}-${dep.requiresId}`}>
+                  <td className="text-[12.5px]"><b className="font-mono text-[12px]">{codeOf(dep.projectId)}</b> <span className="text-muted">{nameOf(dep.projectId)}</span></td>
+                  <td className="text-[12.5px]"><b className="font-mono text-[12px]">{codeOf(dep.requiresId)}</b> <span className="text-muted">{nameOf(dep.requiresId)}</span></td>
+                  <td><Input aria-label="Why" className={cellInp} value={dep.note ?? ''} placeholder="e.g. ties into the new regulator station" onChange={(e) => D.set((x) => { x.dependencies[i] = { ...x.dependencies[i], note: e.target.value }; return x })} /></td>
+                  <td><button className="text-muted hover:text-bad" aria-label={`Remove ${codeOf(dep.projectId)} needs ${codeOf(dep.requiresId)}`} onClick={() => D.set((x) => ({ ...x, dependencies: x.dependencies.filter((_, k) => k !== i) }))}>✕</button></td>
+                </tr>
+              ))}
+              {!d.dependencies.length && <tr><td colSpan={4} className="text-[12.5px] text-muted">No prerequisites yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <AddDependency projects={candidates} onAdd={(projectId, requiresId) => {
+          if (dependencyLoop(d.dependencies, projectId, requiresId)) { toast('That would make a loop: the other project already needs this one'); return }
+          if (d.dependencies.some((x) => x.projectId === projectId && x.requiresId === requiresId)) return
+          D.set((x) => ({ ...x, dependencies: [...x.dependencies, { projectId, requiresId }] }))
+        }} />
+      </Panel>
+
       {problems.length > 0 && <Callout tone="bad" title="Fix before saving"><ul>{problems.map((p) => <li key={p}>{p}</li>)}</ul></Callout>}
       <div className="sticky bottom-0 z-10 overflow-hidden rounded-md border border-line bg-surface empty:hidden">
         <SaveBar dirty={D.dirty} onSave={save} onDiscard={D.reset} disabled={problems.length > 0} note="Saving changes how every project is scored for everyone, and is written to the audit log." />
       </div>
+    </div>
+  )
+}
+
+function AddDependency({ projects, onAdd }: { projects: Project[]; onAdd: (projectId: string, requiresId: string) => void }) {
+  const [a, setA] = useState('')
+  const [b, setB] = useState('')
+  const opts = [{ value: '', label: 'Choose a project' }, ...projects.map((p) => ({ value: p.id, label: `${p.code} · ${p.name}` }))]
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2.5 text-[12.5px]">
+      <Select aria-label="Project" className="max-w-[300px] py-1" value={a} onChange={(e) => setA(e.target.value)} options={opts} />
+      <span className="text-muted">needs</span>
+      <Select aria-label="Prerequisite" className="max-w-[300px] py-1" value={b} onChange={(e) => setB(e.target.value)} options={opts} />
+      <Button size="sm" disabled={!a || !b || a === b} onClick={() => { onAdd(a, b); setA(''); setB('') }}>Add prerequisite</Button>
     </div>
   )
 }

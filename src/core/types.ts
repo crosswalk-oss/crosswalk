@@ -1206,6 +1206,8 @@ export interface ProjectBenefits {
 }
 /** auto = the optimizer decides; must = fund regardless; exclude = never fund in this plan. */
 export type AllocationDecision = 'auto' | 'must' | 'exclude'
+/** Project `projectId` only delivers its benefit if `requiresId` is also done (funded, and not later). */
+export interface AllocationDependency { projectId: ID; requiresId: ID; note?: string }
 export interface AllocationSettings {
   criteria: AllocationCriterionDef[]
   presets: AllocationPreset[]
@@ -1213,4 +1215,9 @@ export interface AllocationSettings {
   lockCommitted: boolean // projects with a control budget in force are funded first
   useConfidence: boolean // multiply each project's benefit by its delivery confidence
   decisions: Record<ID, AllocationDecision>
+  /** Limit spend year by year instead of one total; projects may start up to maxDeferYears later to fit. */
+  annual: { on: boolean; limits: Record<string, Money>; maxDeferYears: number }
+  /** Count benefit from the in-service year, discounted to today at discountPct a year. */
+  timing: { on: boolean; discountPct: number }
+  dependencies: AllocationDependency[]
 }

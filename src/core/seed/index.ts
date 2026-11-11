@@ -364,7 +364,17 @@ export function buildSeed(): AppState {
   seedMessages(s)
   pin(s, AS_OF)
   seedFunding(s)
-  s.settings.allocation = { ...JSON.parse(JSON.stringify(DEFAULT_ALLOCATION)), budget: authorizedFunding(s).amount }
+  {
+    const pid = (code: string) => s.projects.find((p) => p.code === code)?.id ?? code
+    s.settings.allocation = {
+      ...JSON.parse(JSON.stringify(DEFAULT_ALLOCATION)), budget: authorizedFunding(s).amount,
+      // fictional prerequisite links (VERIFY with system planning)
+      dependencies: [
+        { projectId: pid('PRJ-1007'), requiresId: pid('PRJ-1023'), note: 'Looping only adds capacity once Las Lomas compression is rebuilt' },
+        { projectId: pid('PRJ-1018'), requiresId: pid('PRJ-1017'), note: 'North loop ties into the downtown grid regulator station' },
+      ],
+    }
+  }
   health(s)
   // keep only the demo user's recent notifications
   s.notifications = s.notifications.filter((n) => n.at >= addDays(AS_OF, -14)).slice(-60)
