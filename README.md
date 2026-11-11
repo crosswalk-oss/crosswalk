@@ -14,6 +14,8 @@ Every dollar, date and scope change traces back to an approved decision and its 
 
 **Live demo: [crosswalk-oss.github.io/crosswalk](https://crosswalk-oss.github.io/crosswalk/)**, which rebuilds on every push to `main`.
 
+**Overview video (under 4 minutes): [crosswalk-oss.github.io/crosswalk/#overview](https://crosswalk-oss.github.io/crosswalk/#overview)**
+
 > **All data in this repository is fictional.** The demo runs a made-up utility, **Arroyo Valley Gas**:
 > 30 projects on five programs, with lines named AV-11 to AV-28 and vendors such as "Delta Pipeline Co.".
 > No real company's projects, costs, people, vendors or systems are included, and none may be added.
@@ -75,7 +77,9 @@ npm run sample:sap       # regenerate the fictional SAP sample extract
 
 ## Host the public demo (free)
 
-The demo is one static file with no server, so any static host works. `index.html` carries a strict
+The demo is one static file with no server, so any static host works. The overview video
+(`public/crosswalk-overview.mp4`) is the one extra file. It is served from the same origin and is requested
+only when a viewer presses play. `index.html` carries a strict
 Content-Security-Policy (`connect-src 'self'`), so the browser itself blocks any outside call wherever it is hosted.
 
 - **GitHub Pages:** free for public repositories. In the repository, open Settings → Pages → Source and
