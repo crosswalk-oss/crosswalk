@@ -9,14 +9,15 @@ import { Icon } from '@/ui/icons'
 const VIDEO_SRC = 'crosswalk-overview.mp4'
 
 const CHAPTERS: { at: number; title: string }[] = [
-  { at: 0, title: 'The question' },
-  { at: 18, title: 'One trail' },
-  { at: 34, title: 'The lifecycle' },
-  { at: 53, title: 'A Class 5 in minutes, with its range' },
-  { at: 74, title: 'Estimate to budget, actuals to forecast' },
-  { at: 121, title: 'Putting capital where it does the most good' },
-  { at: 158, title: 'Fewer systems, not another silo' },
-  { at: 193, title: 'What it means' },
+  { at: 0, title: 'Two sides of the street' },
+  { at: 10, title: 'The question' },
+  { at: 28, title: 'One trail' },
+  { at: 44, title: 'The lifecycle' },
+  { at: 63, title: 'A Class 5 in minutes, with its range' },
+  { at: 84, title: 'Estimate to budget, actuals to forecast' },
+  { at: 130, title: 'Putting capital where it does the most good' },
+  { at: 168, title: 'Fewer systems, not another silo' },
+  { at: 203, title: 'What it means' },
 ]
 
 const NEXT: { href: string; label: string; note: string }[] = [
@@ -44,7 +45,7 @@ export default function Overview() {
 
   return (
     <div>
-      <PageHeader eyebrow="Start here" title="Crosswalk in three and a half minutes" subtitle="One trail from estimate to forecast. A narrated overview with captions, using demo data from the fictional Arroyo Valley Gas." />
+      <PageHeader eyebrow="Start here" title="Crosswalk in under four minutes" subtitle="One trail from estimate to forecast. A narrated overview with captions, using demo data from the fictional Arroyo Valley Gas." />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <Panel pad={false} className="overflow-hidden">
           <div className="relative aspect-video w-full bg-steel">
@@ -64,7 +65,7 @@ export default function Overview() {
               <button type="button" onClick={() => playFrom(0)} className="group absolute inset-0 flex h-full w-full flex-col items-center justify-center gap-4 text-steelink" aria-label="Play the overview video">
                 <span className="flex h-16 w-16 items-center justify-center rounded-full bg-marker text-markerink transition-transform group-hover:scale-105"><Icon name="play" className="ml-1 h-7 w-7" /></span>
                 <span className="px-4 text-center font-display text-[22px] font-bold leading-tight text-white sm:text-[28px]">Crosswalk: one trail from estimate to forecast</span>
-                <span className="text-[13px] text-steelink/70">3 min 30 s · narrated · captions on screen</span>
+                <span className="text-[13px] text-steelink/70">3 min 39 s · narrated · captions on screen</span>
               </button>
             )}
           </div>

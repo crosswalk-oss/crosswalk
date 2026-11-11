@@ -14,7 +14,7 @@ Every dollar, date and scope change traces back to an approved decision and its 
 
 **Live demo: [crosswalk-oss.github.io/crosswalk](https://crosswalk-oss.github.io/crosswalk/)**, which rebuilds on every push to `main`.
 
-**Overview video (3½ minutes): [crosswalk-oss.github.io/crosswalk/#overview](https://crosswalk-oss.github.io/crosswalk/#overview)**
+**Overview video (under 4 minutes): [crosswalk-oss.github.io/crosswalk/#overview](https://crosswalk-oss.github.io/crosswalk/#overview)**
 
 > **All data in this repository is fictional.** The demo runs a made-up utility, **Arroyo Valley Gas**:
 > 30 projects on five programs, with lines named AV-11 to AV-28 and vendors such as "Delta Pipeline Co.".
