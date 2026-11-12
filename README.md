@@ -23,11 +23,11 @@ Every dollar, date and scope change traces back to an approved decision and its 
 
 - **Hosted demo:** everyone shares one dataset in a Postgres database. Anyone with the link can look around;
   changes need the edit passcode and are saved for everyone, with every change kept in the database's history.
+- **Offline copy:** download [`Crosswalk.html`](Crosswalk.html) and double-click it. It is the whole app in one
+  file and makes no network calls. It isn't connected to the database, so changes there are not saved.
 - **Deliverables that inherit and redact:** an answer given on an earlier deliverable is offered on later ones that
   ask the same thing, with its source shown. Fields can be tagged (personal, commercial, security, third party) in
   Configuration, and any record can be downloaded as a redacted copy with a log of what was withheld.
-- **Offline copy:** download [`Crosswalk.html`](Crosswalk.html) and double-click it. It is the whole app in one
-  file and makes no network calls. It isn't connected to the database, so changes there are not saved.
 - **Run locally with the database:**
 
   ```bash
