@@ -6,11 +6,13 @@ export type Exec = (sql: string, params?: unknown[]) => Promise<Record<string, u
 export interface Generation { id: number; schemaVersion: number; startedAt: string; startedBy: string; reason: string }
 export interface ChangeRow { seq: number; at: string; actor: string; summary: string; patches: string }
 export interface SnapshotRow { seq: number; stateGz: string }
+export interface MaterialRow { id: number; name: string; title: string; contentType: string; bytes: number; chunks: number; sort: number; meta: string; uploadedAt: string }
 
 export class Conflict extends Error { constructor() { super('conflict') } }
 
 const n = (v: unknown) => Number(v)
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v))
+const material = (m: Record<string, unknown>): MaterialRow => ({ id: n(m.id), name: String(m.name), title: String(m.title), contentType: String(m.content_type), bytes: n(m.bytes), chunks: n(m.chunks), sort: n(m.sort), meta: String(m.meta), uploadedAt: iso(m.uploaded_at) })
 
 export function sqlRepo(exec: Exec) {
   return {
@@ -51,6 +53,41 @@ export function sqlRepo(exec: Exec) {
     },
     async addSnapshot(generationId: number, seq: number, stateGz: string): Promise<void> {
       await exec('insert into snapshots (generation_id, seq, state_gz) values ($1, $2, $3) on conflict do nothing', [generationId, seq, stateGz])
+    },
+
+    // ---- private materials (migrations/002_materials.sql) ----
+    /** Every fully uploaded material, newest upload per name. */
+    async listMaterials(): Promise<MaterialRow[]> {
+      const r = await exec(`select m.id, m.name, m.title, m.content_type, m.bytes, m.chunks, m.sort, m.meta, m.uploaded_at from materials m
+        where m.chunks = (select count(*) from material_chunks c where c.material_id = m.id) order by m.sort, m.name, m.id desc`)
+      const seen = new Set<string>()
+      return r.map(material).filter((m) => (seen.has(m.name) ? false : (seen.add(m.name), true)))
+    },
+    async material(id: number): Promise<MaterialRow | null> {
+      const r = await exec('select id, name, title, content_type, bytes, chunks, sort, meta, uploaded_at from materials where id = $1', [id])
+      return r.length ? material(r[0]) : null
+    },
+    /** Start an upload; the material stays hidden until every chunk has arrived. */
+    async startMaterial(m: { name: string; title: string; contentType: string; bytes: number; chunks: number; sort: number; meta: string; by: string }): Promise<number> {
+      const r = await exec('insert into materials (name, title, content_type, bytes, chunks, sort, meta, uploaded_by) values ($1, $2, $3, $4, $5, $6, $7, $8) returning id',
+        [m.name, m.title, m.contentType, m.bytes, m.chunks, m.sort, m.meta, m.by])
+      return n(r[0].id)
+    },
+    /** Store one chunk. When it completes the upload, older uploads with the same name are deleted. Returns true when complete. */
+    async addMaterialChunk(m: MaterialRow, idx: number, data: string): Promise<boolean> {
+      await exec('insert into material_chunks (material_id, idx, data) values ($1, $2, $3) on conflict do nothing', [m.id, idx, data])
+      const have = n((await exec('select count(*) as c from material_chunks where material_id = $1', [m.id]))[0].c)
+      if (have < m.chunks) return false
+      await exec('delete from materials where name = $1 and id < $2', [m.name, m.id])
+      return true
+    },
+    async materialChunk(id: number, idx: number): Promise<string | null> {
+      const r = await exec('select data from material_chunks where material_id = $1 and idx = $2', [id, idx])
+      return r.length ? String(r[0].data) : null
+    },
+    /** Remove a material (every upload of that name) for good. Returns how many uploads were removed. */
+    async deleteMaterial(name: string): Promise<number> {
+      return (await exec('delete from materials where name = $1 returning id', [name])).length
     },
   }
 }
