@@ -20,6 +20,9 @@ import { PersonSelect } from '../../shared/pickers'
 import { gatePacketHtml } from '../../portfolio/reports'
 import { latestApprovedEstimate, latestEstimate } from '../../portfolio/lib'
 import { ScheduleReviewModal } from '../../gates/ScheduleReview'
+import { DeliverableFormModal, RecordStatus, recordTone } from '../../records/DeliverableForm'
+import { allFields, formFor, formValues, missingFields } from '@/core/engine/forms'
+import { RECORD_STATUS_LABEL, submissionsFor } from '@/core/engine/records'
 
 const PERM_LABEL: Record<StagePermission, { label: string; desc: string }> = {
   'long-lead-release': { label: 'Long-lead material release', desc: 'Order pipe, valves and major equipment ahead of authorization' },
@@ -231,6 +234,12 @@ function DeliverableRow({ s, p, def, d, open, onToggle, onWaiver }: { s: AppStat
   const done = status === 'accepted' || status === 'waived'
   const busy = wf?.status === 'running' || waiverWf?.status === 'running'
   const audit = { entity: 'deliverable', entityId: d?.id ?? def.id, projectId: p.id }
+  const [formOpen, setFormOpen] = useState(false)
+  const tpl = formFor(def.id)
+  const formMissing = tpl && d ? missingFields(tpl, formValues(s, p, tpl, d.form?.data ?? {})) : []
+  const formRequired = tpl ? allFields(tpl).filter((f) => f.required && !f.readOnly).length : 0
+  const formDone = !!tpl && !!d?.form && formMissing.length === 0
+  const rec = d ? submissionsFor(s, d.id)[0] : undefined
 
   const setStatus = (st: Deliverable['status'], summary: string) => {
     if (!d) return
@@ -253,14 +262,14 @@ function DeliverableRow({ s, p, def, d, open, onToggle, onWaiver }: { s: AppStat
     mutate((x) => { const y = x.deliverables.find((z) => z.id === d.id)!; y.evidence = y.evidence.filter((e) => e.id !== id); y.updatedAt = nowISO() }, { ...audit, action: 'evidence-remove', summary: `${def.name}: removed ${name} before submission` })
     toast(`Removed ${name}`)
   }
-  const submit = () => {
+  const submit = (fromForm = false) => {
     if (!d) return
-    if (!d.evidence.length) { toast('Attach evidence before submitting', 'bad'); return }
+    if (!fromForm && !d.evidence.length && !formDone) { toast('Complete the form or attach evidence before submitting', 'bad'); return }
     mutate((x) => {
       const y = x.deliverables.find((z) => z.id === d.id)!
       y.version = y.status === 'returned' || y.version === 0 ? y.version + 1 : y.version
       const inst = startWorkflow(x, 'deliverable-review', { title: `${p.code} ${def.name} v${y.version}`, recordType: 'deliverable', recordId: d.id, projectId: p.id, data: { deliverable: def.name, version: y.version, acceptance: def.acceptance } })
-      autoSubmit(x, inst, `Submitted v${y.version} with ${y.evidence.length} evidence file(s)`)
+      autoSubmit(x, inst, `Submitted v${y.version}${formDone || fromForm ? ' with the completed form' : ''}${y.evidence.length ? ` and ${y.evidence.length} evidence file(s)` : ''}`)
     }, { ...audit, action: 'submit', summary: `${def.name} submitted for review` })
     toast('Submitted for review')
   }
@@ -283,11 +292,13 @@ function DeliverableRow({ s, p, def, d, open, onToggle, onWaiver }: { s: AppStat
             {d && d.version > 0 && <span className="text-[11px] text-faint">v{d.version}</span>}
             {overdue && <Badge tone="bad">Overdue</Badge>}
             {busy && <Badge tone="marker">In workflow</Badge>}
+            {rec && <Badge tone={recordTone(rec.status)} title={rec.folder}>{rec.status === 'filed' ? `Filed · node ${rec.nodeId}` : RECORD_STATUS_LABEL[rec.status]}</Badge>}
           </div>
           <div className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-muted">
             <span>Owner {personName(s, d?.ownerId)}</span><span>Reviewer {personName(s, d?.reviewerId)}</span>
             <span className={cx(overdue && 'font-semibold text-bad')}>Due {fmtDate(d?.due)}</span>
             <span>{d?.evidence.length ?? 0} evidence</span>
+            {tpl && <span className={cx(formDone ? 'text-good' : d?.form ? 'text-warn' : '')}>Form {d?.form ? `${formRequired - formMissing.length}/${formRequired}` : 'not started'}</span>}
           </div>
         </div>
         <span className="mt-1 text-[11px] text-faint">{open ? '▲' : '▼'}</span>
@@ -299,6 +310,7 @@ function DeliverableRow({ s, p, def, d, open, onToggle, onWaiver }: { s: AppStat
             <div><div className="eyebrow mb-0.5">Acceptance criteria</div>{def.acceptance}</div>
           </div>
           {d.waiverReason && <Callout tone="warn" title="Waived">{d.waiverReason}</Callout>}
+          {tpl && <RecordStatus s={s} d={d} />}
           <div>
             <div className="eyebrow mb-1">Evidence</div>
             {d.evidence.length ? (
@@ -323,8 +335,9 @@ function DeliverableRow({ s, p, def, d, open, onToggle, onWaiver }: { s: AppStat
           <div className="flex flex-wrap items-center gap-2">
             <input ref={file} type="file" multiple className="hidden" onChange={(e) => attach(e.target.files)} />
             {(status === 'not-started' || status === 'returned') && !busy && <Button size="sm" onClick={() => setStatus('in-progress', `${def.name} marked in progress`)}>Mark in progress</Button>}
+            {tpl && <Button size="sm" variant={!done && !busy && !formDone ? 'primary' : 'secondary'} icon={<Icon name="doc" className="h-3.5 w-3.5" />} onClick={() => setFormOpen(true)}>{done || busy || status === 'submitted' ? 'View form' : d.form ? 'Continue form' : 'Open form'}</Button>}
             {!done && !busy && <Button size="sm" icon={<Icon name="plus" className="h-3.5 w-3.5" />} onClick={() => file.current?.click()}>Attach evidence</Button>}
-            {!done && !busy && <Button size="sm" variant="primary" disabled={!d.evidence.length} onClick={submit} title={d.evidence.length ? '' : 'Attach evidence first'}>Submit for review</Button>}
+            {!done && !busy && <Button size="sm" variant={formDone || d.evidence.length ? 'primary' : 'secondary'} disabled={!d.evidence.length && !formDone} onClick={() => submit()} title={d.evidence.length || formDone ? '' : 'Complete the form or attach evidence first'}>Submit for review</Button>}
             {!done && !busy && <Button size="sm" variant="ghost" onClick={onWaiver}>Request waiver</Button>}
             {linkTab && <a href={projectHref(p.id, linkTab)} className="text-[12px] font-semibold text-link hover:underline">Open {humanize(linkTab)} →</a>}
             {done && me.roles.includes('admin') && <span className="text-[11px] text-faint">Accepted deliverables are locked; a new version starts if the gate recycles.</span>}
@@ -333,6 +346,7 @@ function DeliverableRow({ s, p, def, d, open, onToggle, onWaiver }: { s: AppStat
           {waiverWf && <WorkflowStatus instanceId={waiverWf.id} compact={waiverWf.status !== 'running'} />}
         </div>
       )}
+      {formOpen && d && tpl && <DeliverableFormModal s={s} p={p} def={def} d={d} busy={busy} onClose={() => setFormOpen(false)} onSubmit={!done && !busy ? () => submit(true) : undefined} />}
     </li>
   )
 }

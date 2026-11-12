@@ -229,7 +229,12 @@ export interface Deliverable {
   notes?: string
   waiverReason?: string
   updatedAt: ISODateTime
+  /** Answers to the deliverable's form (templates in engine/forms.ts). */
+  form?: { templateId: string; templateVersion: number; data: Record<string, FormValue>; savedAt: ISODateTime; savedById: ID }
+  verifiedById?: ID // records verification, when filing waits for it
+  verifiedAt?: ISODateTime
 }
+export type FormValue = string | number | boolean | Record<string, { v: string; note?: string }> | Record<string, string | number>[]
 
 export type GateOutcome = 'go' | 'go-with-conditions' | 'recycle' | 'hold' | 'cancel'
 
@@ -1054,6 +1059,8 @@ export interface Settings {
   features: { fieldTailboard: boolean; portfolioPlanning: boolean; opQual: boolean } // phase-2 modules, off for the pilot
   /** Capital allocation: benefit weights, scoring scale, capital available and per-project decisions. */
   allocation?: AllocationSettings
+  /** Where approved deliverable records are filed (OpenText or similar). */
+  records?: RecordsSettings
   ai: AiSettings
 }
 
@@ -1159,6 +1166,7 @@ export interface AppState {
   monteCarlo: MonteCarloResult[]
   hazards: HazardItem[]
   safetyPlans: SafetyPlan[]
+  recordsSubmissions?: RecordsSubmission[]
   tailboards: Tailboard[]
   safetyEvents: SafetyEvent[]
   workflowDefs: WorkflowDef[]
@@ -1220,4 +1228,37 @@ export interface AllocationSettings {
   /** Count benefit from the in-service year, discounted to today at discountPct a year. */
   timing: { on: boolean; discountPct: number }
   dependencies: AllocationDependency[]
+}
+
+// ── Records hand-off (deliverable record → enterprise records system, e.g. OpenText Content Server)
+export interface RecordsMapping { docType: string; recordsClass: string; retention: string }
+export interface RecordsSettings {
+  system: string // e.g. 'OpenText Content Server'
+  baseUrl: string // REST endpoint of the records system (fictional in the demo)
+  rootFolder: string // folder path; {program} and {project} are filled in
+  trigger: 'approval' | 'verification' // file when the reviewer accepts, or after records verifies
+  verifierRole: RoleId
+  mode: 'simulated' | 'live' // the demo never calls out; 'live' is a placeholder for a real connector
+  mappings: Record<ID, RecordsMapping> // by deliverable def id; missing → defaults by deliverable kind
+  paused?: boolean // hold filing (used while the demo data is generated)
+}
+export type RecordsSubmissionStatus = 'awaiting-verification' | 'queued' | 'filed' | 'failed'
+export interface RecordsSubmission {
+  id: ID
+  projectId: ID
+  deliverableId: ID
+  defId: ID
+  version: number
+  status: RecordsSubmissionStatus
+  trigger: 'approval' | 'verification'
+  createdAt: ISODateTime
+  createdById: ID
+  fileName: string
+  folder: string
+  metadata: Record<string, string>
+  /** The form as approved, frozen with the submission so the filed PDF can always be rebuilt exactly. */
+  snapshot: { templateId: string; templateVersion: number; data: Record<string, FormValue>; ownerId?: ID; reviewerId?: ID; acceptedAt?: ISODateTime; verifiedById?: ID; verifiedAt?: ISODateTime }
+  sentAt?: ISODateTime
+  nodeId?: string // id the records system returned
+  error?: string
 }

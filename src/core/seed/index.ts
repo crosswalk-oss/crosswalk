@@ -2,7 +2,7 @@
 // engine (gates, estimates, workflows, snapshots) with a pinned clock, so every number ties out.
 import type { AppState, AssetType, Estimate, EstimateLine, InternalOrder, Project, Risk, WorkMethod, Terrain, Milestone, SafetyPlan } from '../types'
 import { addDays, addMonths, argmax, daysBetween, monthKey, monthRange, rng, setClock, sum, uid } from '../util'
-import { CATEGORIES, CONTRACTORS, DOA, HAZARDS, INFO_FIELDS, INFO_SECTIONS, PEOPLE, PROGRAMS, RATES, RISK_LIBRARY, ROLES, TEMPLATES, WBS_FUNCTIONS, FORECAST_LINES, SAP_MAPPINGS, SPREAD_PROFILES, REGION_FACTORS, REGIONS, TAX_RATES, UNITS, QUANTITY_TYPES, SCOPE_LIBRARY, buildHistoricalCosts } from './reference'
+import { CATEGORIES, CONTRACTORS, DOA, HAZARDS, INFO_FIELDS, INFO_SECTIONS, PEOPLE, PROGRAMS, RATES, RISK_LIBRARY, ROLES, TEMPLATES, WBS_FUNCTIONS, FORECAST_LINES, SAP_MAPPINGS, SPREAD_PROFILES, REGION_FACTORS, REGIONS, TAX_RATES, UNITS, QUANTITY_TYPES, SCOPE_LIBRARY, buildHistoricalCosts, ADDED_DELIVERABLES } from './reference'
 import { applyProfile, defaultLineSpread, linesOfFunction, rollupGrid, syncForecast, toLines, splitExact } from '../engine/lines'
 import { postImport, stageImport, resolveTxn, type SapRow } from '../engine/sap'
 import { createFactorEstimate, adjustFactorEstimate, factorInputsFromProject } from '../engine/factorModel'
@@ -17,8 +17,10 @@ import { decideGate, ensureDeliverables, readiness, templateFor } from '../engin
 import { actOnWorkflow, startWorkflow } from '../engine/workflow'
 import { position, takeSnapshot, thresholdBreaches } from '../engine/position'
 import { DEFAULT_ALLOCATION, authorizedFunding } from '../engine/allocation'
+import { DEFAULT_RECORDS } from '../engine/records'
+import { seedRecords } from './records'
 
-export const SCHEMA_VERSION = 11
+export const SCHEMA_VERSION = 12
 export const AS_OF = '2026-10-28'
 
 type Spec = {
@@ -167,7 +169,7 @@ function emptyState(): AppState {
     },
     roles: ROLES, people: PEOPLE, programs: PROGRAMS, funding: [], templates: TEMPLATES, projects: [], deliverables: [], gateDecisions: [], gateReviews: [], actions: [],
     categories: CATEGORIES, rates: RATES, estimates: [], budgets: [], snapshots: [], changes: [], costPeriods: [], forecasts: [], infoRevisions: [], historicalCosts: hist, factorModels: buildFactorModels(hist), backtestProjects: [], actualTxns: [], actualsImports: [], commitmentChanges: [], channels: [], messages: [], variances: [], risks: [], riskLibrary: RISK_LIBRARY,
-    contingencyDraws: [], monteCarlo: [], hazards: HAZARDS, safetyPlans: [], tailboards: [], safetyEvents: [], workflowDefs: workflowDefs(), doaMatrices: DOA, workflows: [],
+    contingencyDraws: [], monteCarlo: [], hazards: HAZARDS, safetyPlans: [], recordsSubmissions: [], tailboards: [], safetyEvents: [], workflowDefs: workflowDefs(), doaMatrices: DOA, workflows: [],
     permits: [], landRights: [], contracts: [], longLead: [], records: [], decisions: [], outreach: [], lessons: [], documents: [], closeout: [], audit: [], notifications: [],
   }
 }
@@ -196,7 +198,10 @@ export function buildSeed(): AppState {
   const s = emptyState()
   s.backtestProjects = buildBacktestProjects(s)
   s.audit.push(...factorModelAudit(s.factorModels))
+  s.settings.records = { ...DEFAULT_RECORDS, paused: true } // no filing while the history is generated
   const R = rng(20261028)
+  const R2 = rng(4510) // added deliverables draw from their own stream, so the rest of the demo data is unchanged
+  const Rd = (defId: string) => (ADDED_DELIVERABLES.has(defId) ? R2 : R)
   const at = (d: string) => pin(s, d, d < AS_OF ? addDays(d, 18) : AS_OF)
 
   for (const sp of SPECS) {
@@ -312,8 +317,9 @@ export function buildSeed(): AppState {
       }
       at(addDays(gDate, -3))
       for (const dl of s.deliverables.filter((x) => x.projectId === p.id && x.stageIndex === g)) {
-        dl.status = 'accepted'; dl.version = 1 + (R.chance(0.3) ? 1 : 0)
-        dl.evidence = [{ id: uid('evd'), name: evidenceName(s, dl.defId), sizeKb: R.int(180, 4200), uploadedAt: `${addDays(gDate, -R.int(5, 30))}T10:00:00.000Z`, byId: dl.ownerId ?? pm }]
+        const Rx = Rd(dl.defId)
+        dl.status = 'accepted'; dl.version = 1 + (Rx.chance(0.3) ? 1 : 0)
+        dl.evidence = [{ id: uid('evd'), name: evidenceName(s, dl.defId), sizeKb: Rx.int(180, 4200), uploadedAt: `${addDays(gDate, -Rx.int(5, 30))}T10:00:00.000Z`, byId: dl.ownerId ?? pm }]
       }
       at(gDate)
       const withConditions = R.chance(0.3)
@@ -343,9 +349,10 @@ export function buildSeed(): AppState {
       ensureDeliverables(s, p)
       const cur = s.deliverables.filter((x) => x.projectId === p.id && x.stageIndex === p.stageIndex)
       cur.forEach((dl, i) => {
-        const roll = R.next()
+        const Rx = Rd(dl.defId)
+        const roll = Rx.next()
         dl.status = roll < 0.45 ? 'accepted' : roll < 0.6 ? 'submitted' : roll < 0.85 ? 'in-progress' : 'not-started'
-        if (dl.status !== 'not-started') { dl.version = 1; dl.evidence = [{ id: uid('evd'), name: evidenceName(s, dl.defId), sizeKb: R.int(150, 3000), uploadedAt: `${addDays(AS_OF, -R.int(2, 40))}T15:00:00.000Z`, byId: dl.ownerId ?? pm }] }
+        if (dl.status !== 'not-started') { dl.version = 1; dl.evidence = [{ id: uid('evd'), name: evidenceName(s, dl.defId), sizeKb: Rx.int(150, 3000), uploadedAt: `${addDays(AS_OF, -Rx.int(2, 40))}T15:00:00.000Z`, byId: dl.ownerId ?? pm }] }
         dl.due = addDays(AS_OF, -10 + i * 9)
       })
     }
@@ -358,6 +365,7 @@ export function buildSeed(): AppState {
   seedFinance(s)
   seedSapActuals(s)
   seedGeometry(s)
+  seedRecords(s)
   seedInfoRevisions(s, R)
   seedLiveWorkflows(s, R)
   seedCommitmentChanges(s)
@@ -668,7 +676,7 @@ function seedLiveWorkflows(s: AppState, R: ReturnType<typeof rng>) {
   }
   for (const p of active.filter((p) => !s.gateReviews.some((g) => g.projectId === p.id)).slice(0, 5)) s.gateReviews.push({ id: uid('gr'), projectId: p.id, stageIndex: p.stageIndex, scheduled: addDays(s.settings.asOf, R.int(20, 110)), board: [p.team.sponsor!, 'u-pmo2'], status: 'scheduled' })
   // deliverable reviews waiting on PMO
-  const submitted = s.deliverables.filter((d) => d.status === 'submitted').slice(0, 7)
+  const submitted = s.deliverables.filter((d) => d.status === 'submitted' && !ADDED_DELIVERABLES.has(d.defId)).slice(0, 7)
   for (const d of submitted) {
     const p = s.projects.find((x) => x.id === d.projectId)!
     pin(s, addDays(AS_OF, -R.int(3, 14)))
@@ -743,7 +751,7 @@ function seedLiveWorkflows(s: AppState, R: ReturnType<typeof rng>) {
   // waiver and initiation waiting on PMO
   const wp = active.find((p) => p.stageIndex === 1)
   if (wp) {
-    const d = s.deliverables.find((x) => x.projectId === wp.id && x.stageIndex === wp.stageIndex && x.status !== 'accepted')
+    const d = s.deliverables.find((x) => x.projectId === wp.id && x.stageIndex === wp.stageIndex && x.status !== 'accepted' && !ADDED_DELIVERABLES.has(x.defId))
     pin(s, addDays(AS_OF, -R.int(3, 14)))
       const inst = startWorkflow(s, 'waiver', { title: `${wp.code} early release of long-lead pipe`, recordType: 'waiver', recordId: wp.id, projectId: wp.id, data: { reason: 'Mill lead time is 38 weeks; releasing the pipe order before Gate 2 protects the outage window.', permission: 'long-lead-release', deliverableId: d?.id }, startedById: wp.team.pm })
     if (inst) advance(s, inst.id, 1)

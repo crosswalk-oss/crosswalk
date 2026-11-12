@@ -208,6 +208,8 @@ export const TEMPLATES: LifecycleTemplate[] = [
             D('d-est5', 'Class 5 estimate', 'estimate', 'estimator', 'estimating-lead', 'Parametric estimate with range', 'Approved estimate at Class 5 or better'),
             D('d-risk1', 'High-level risk assessment', 'risk-register', 'pm', 'project-controls', 'Top risks with owners', 'At least five risks scored'),
             D('d-recovery', 'Revenue recovery strategy', 'document', 'program-manager', 'finance', 'GRC, balancing account or memo account path', 'Mechanism and proceeding named'),
+            D('d-recrev', 'Pipeline records review (MAOP basis)', 'records', 'engineer', 'records', 'Traceable, verifiable and complete records for the segments in scope; gaps flagged', 'Every segment has a records status; gaps have a plan', { field: 'asset.type', op: 'in', value: ['transmission-pipeline', 'distribution-main'] }),
+            D('d-screen', 'Environmental, land & permit screen', 'document', 'environmental', 'pm', 'Early look at sensitive areas, parcels, jurisdictions and permits likely needed', 'Each topic marked clear, watch or issue'),
           ],
         },
       },
@@ -222,6 +224,9 @@ export const TEMPLATES: LifecycleTemplate[] = [
             D('d-sched', 'Baseline schedule (Level 3)', 'schedule', 'scheduler', 'project-controls', 'Logic-linked schedule through in-service', 'No open ends; critical path identified'),
             D('d-longlead', 'Long-lead material list', 'checklist', 'engineer', 'pm', 'Pipe, valves, major equipment with need dates', 'Need dates tied to schedule'),
             D('d-ceqa', 'CEQA determination', 'permit', 'environmental', 'pm', 'Exemption or initial study path', 'Determination documented', { field: 'permitsNeeded.ceqa', op: 'truthy' }),
+            D('d-bod', 'Basis of design (30%)', 'document', 'engineer', 'pm', 'Design pressure, MAOP, class location, pipe spec, routing and tie-in concept', 'Design basis signed by the engineer of record'),
+            D('d-constr', 'Constructability review', 'checklist', 'construction-manager', 'engineer', 'Access, staging, traffic, outage windows and crossing methods reviewed with construction', 'Findings logged with owners'),
+            D('d-outreach', 'Stakeholder & customer outreach plan', 'document', 'pm', 'program-manager', 'Agencies, customers and community notices with timing', 'Notices and owners scheduled'),
           ],
         },
       },
@@ -238,6 +243,9 @@ export const TEMPLATES: LifecycleTemplate[] = [
             D('d-award', 'Construction contract award recommendation', 'document', 'pm', 'program-manager', 'Bid tab, target price, award memo', 'Bid within estimate range or explained'),
             D('d-jssp', 'Job-specific safety plan', 'safety-plan', 'construction-manager', 'safety-advisor', 'Approved plan for first work package', 'Plan approved by safety advisor'),
             D('d-hydro', 'Hydrotest plan & discharge permit', 'permit', 'engineer', 'environmental', 'Test sections, water source, discharge', 'Plan approved', { field: 'permitsNeeded.hydrotestDischarge', op: 'truthy' }),
+            D('d-dreview', 'Design review sign-off (60 / 90 / IFC)', 'checklist', 'engineer', 'pm', 'Formal reviews by operations, integrity, construction and safety at each design milestone', 'All comments closed or dispositioned'),
+            D('d-itp', 'Inspection & test plan', 'document', 'engineer', 'construction-manager', 'Hold and witness points, NDE scope, test pressures and acceptance criteria', 'Plan accepted by construction'),
+            D('d-precon', 'Pre-construction readiness', 'checklist', 'construction-manager', 'pm', 'Permits on hand, materials received, crews qualified, outage approved, notices sent', 'Every item ready or waived'),
           ],
         },
       },
@@ -250,6 +258,9 @@ export const TEMPLATES: LifecycleTemplate[] = [
             D('d-notice', 'Notice of operation', 'document', 'pm', 'program-manager', 'Date of operation recorded', 'Signed notice'),
             D('d-training', 'Operations turnover & training', 'checklist', 'pm', 'construction-manager', 'O&M handover', 'Ops sign-off'),
             D('d-demob', 'Demobilization & restoration inspection', 'checklist', 'construction-manager', 'pm', 'Restoration accepted by jurisdiction', 'Final inspection passed'),
+            D('d-mc', 'Mechanical completion & punch list', 'checklist', 'construction-manager', 'engineer', 'Installed per IFC; punch items listed by priority', 'No priority-A punch items open'),
+            D('d-pssr', 'Pre-start-up safety review', 'checklist', 'engineer', 'safety-advisor', 'Equipment, procedures, training and hazards confirmed before gas is introduced', 'All PSSR items closed', { field: 'asset.type', op: 'in', value: ['compressor-station', 'regulator-station', 'storage-field'] }),
+            D('d-maop', 'MAOP validation record', 'records', 'engineer', 'records', 'Test pressure, class location and component ratings support the MAOP', 'MAOP supported by test record', { field: 'asset.type', op: 'eq', value: 'transmission-pipeline' }),
           ],
         },
       },
@@ -263,6 +274,8 @@ export const TEMPLATES: LifecycleTemplate[] = [
             D('d-fincl', 'Financial closeout', 'checklist', 'project-controls', 'finance', 'Final cost, accruals cleared, WBS closed', 'Zero open commitments'),
             D('d-lessons', 'Lessons learned', 'document', 'pm', 'pmo', 'Lessons captured and tagged', 'At least three lessons'),
             D('d-rrpkg', 'Reasonableness-review evidence package', 'document', 'project-controls', 'pmo', 'Baselines, changes, variances, estimate classes', 'Package frozen'),
+            D('d-permitclose', 'Permit & environmental closeout', 'checklist', 'environmental', 'pm', 'Permits closed, mitigation complete, final reports filed', 'All permits closed'),
+            D('d-turnover', 'Permanent records turnover', 'records', 'pm', 'records', 'Project file indexed and turned over to records management', 'Records manager accepts the index'),
           ],
         },
       },
@@ -304,12 +317,16 @@ export const TEMPLATES: LifecycleTemplate[] = [
             D('ds-records', 'In-service records', 'records', 'construction-manager', 'records', 'Test and weld records', 'Verified'),
             D('ds-fincl', 'Financial closeout', 'checklist', 'project-controls', 'finance', 'Costs closed', 'Closed'),
             D('ds-lessons', 'Lessons learned', 'document', 'pm', 'pmo', 'Lessons', 'Captured'),
+            D('ds-mc', 'Mechanical completion & punch list', 'checklist', 'construction-manager', 'engineer', 'Installed per IFC; punch items listed', 'No priority-A punch items open'),
           ],
         },
       },
     ],
   },
 ]
+
+/** Deliverables added for the records proof of concept. Seeded from their own random stream so the rest of the demo data is unchanged. */
+export const ADDED_DELIVERABLES = new Set(['d-recrev', 'd-screen', 'd-bod', 'd-constr', 'd-outreach', 'd-dreview', 'd-itp', 'd-precon', 'd-mc', 'd-pssr', 'd-maop', 'd-permitclose', 'd-turnover', 'ds-mc'])
 
 export const DOA: DoaMatrix[] = [
   {
