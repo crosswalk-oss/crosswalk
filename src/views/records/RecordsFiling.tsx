@@ -11,6 +11,8 @@ import { RECORD_STATUS_LABEL, recordsOf, requestPreview, retryRecord, verifyDeli
 import { Badge, Button, Callout, PageHeader, Panel, SegButtons, Stat } from '@/ui/kit'
 import { toast } from '@/ui/toast'
 import { recordPdf } from './pdf'
+import { FORM_TEMPLATES } from '@/core/engine/forms'
+import { redactedCopy } from '@/core/engine/redaction'
 import { recordTone } from './DeliverableForm'
 
 type Filter = 'all' | 'filed' | 'awaiting-verification' | 'failed'
@@ -27,6 +29,13 @@ export default function RecordsFiling() {
   const count = (st: RecordsSubmission['status']) => subs.filter((x) => x.status === st).length
 
   const pdf = async (sub: RecordsSubmission) => { const r = await saveFile(sub.fileName, recordPdf(s, sub), 'application/pdf'); if (r === 'saved') toast(`Downloaded ${sub.fileName}`) }
+  const redactedPdf = async (sub: RecordsSubmission) => {
+    const t = FORM_TEMPLATES.find((x) => x.id === sub.snapshot.templateId)
+    if (!t) return
+    const name = sub.fileName.replace(/\.pdf$/, '_REDACTED.pdf')
+    const r = await saveFile(name, recordPdf(s, sub, redactedCopy(s, t, sub.snapshot.data)), 'application/pdf')
+    if (r === 'saved') toast(`Downloaded ${name}`)
+  }
   const verify = (sub: RecordsSubmission) => {
     mutate((d) => { verifyDeliverable(d, sub.deliverableId, d.currentUserId) }, { entity: 'deliverable', entityId: sub.deliverableId, projectId: sub.projectId, action: 'verify', summary: `${sub.metadata.Deliverable} v${sub.version}: verified for records and filed to ${rec.system}` })
     toast(`Verified and filed to ${rec.system}`)
@@ -74,6 +83,7 @@ export default function RecordsFiling() {
                           {x.status === 'awaiting-verification' && <Button size="sm" variant="primary" onClick={() => verify(x)}>Verify and file</Button>}
                           {x.status === 'failed' && <Button size="sm" onClick={() => retry(x)}>Retry</Button>}
                           <Button size="sm" variant="ghost" onClick={() => pdf(x)}>PDF</Button>
+                          <Button size="sm" variant="ghost" onClick={() => redactedPdf(x)} title="The same record with the tagged fields withheld and a redaction log">Redacted</Button>
                         </td>
                       </>}
                       detail={<SubmissionDetail sub={x} />} />

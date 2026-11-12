@@ -1061,6 +1061,8 @@ export interface Settings {
   allocation?: AllocationSettings
   /** Where approved deliverable records are filed (OpenText or similar). */
   records?: RecordsSettings
+  /** Which deliverable-form fields are withheld from a redacted copy (defaults in engine/redaction.ts). */
+  redaction?: RedactionSettings
   ai: AiSettings
 }
 
@@ -1229,6 +1231,11 @@ export interface AllocationSettings {
   timing: { on: boolean; discountPct: number }
   dependencies: AllocationDependency[]
 }
+
+// ── Redaction of deliverable forms (a redacted copy for discovery or a data request)
+export type RedactionTag = 'personal' | 'commercial' | 'security' | 'third-party'
+/** An administrator's choices, by "form id.field key[.column key]"; 'none' removes a default tag. */
+export interface RedactionSettings { overrides: Record<string, RedactionTag | 'none'> }
 
 // ── Records hand-off (deliverable record → enterprise records system, e.g. OpenText Content Server)
 export interface RecordsMapping { docType: string; recordsClass: string; retention: string }
