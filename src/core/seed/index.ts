@@ -19,6 +19,7 @@ import { position, takeSnapshot, thresholdBreaches } from '../engine/position'
 import { DEFAULT_ALLOCATION, authorizedFunding } from '../engine/allocation'
 import { DEFAULT_RECORDS } from '../engine/records'
 import { seedRecords } from './records'
+import { seedCarryExamples } from './carry'
 
 export const SCHEMA_VERSION = 12
 export const AS_OF = '2026-10-28'
@@ -366,6 +367,7 @@ export function buildSeed(): AppState {
   seedSapActuals(s)
   seedGeometry(s)
   seedRecords(s)
+  seedCarryExamples(s)
   seedInfoRevisions(s, R)
   seedLiveWorkflows(s, R)
   seedCommitmentChanges(s)

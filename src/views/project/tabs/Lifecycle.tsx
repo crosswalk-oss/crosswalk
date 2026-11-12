@@ -21,7 +21,8 @@ import { gatePacketHtml } from '../../portfolio/reports'
 import { latestApprovedEstimate, latestEstimate } from '../../portfolio/lib'
 import { ScheduleReviewModal } from '../../gates/ScheduleReview'
 import { DeliverableFormModal, RecordStatus, recordTone } from '../../records/DeliverableForm'
-import { allFields, formFor, formValues, missingFields } from '@/core/engine/forms'
+import { allFields, formFor, missingFields } from '@/core/engine/forms'
+import { formValuesFor } from '@/core/engine/carry'
 import { RECORD_STATUS_LABEL, submissionsFor } from '@/core/engine/records'
 
 const PERM_LABEL: Record<StagePermission, { label: string; desc: string }> = {
@@ -236,7 +237,7 @@ function DeliverableRow({ s, p, def, d, open, onToggle, onWaiver }: { s: AppStat
   const audit = { entity: 'deliverable', entityId: d?.id ?? def.id, projectId: p.id }
   const [formOpen, setFormOpen] = useState(false)
   const tpl = formFor(def.id)
-  const formMissing = tpl && d ? missingFields(tpl, formValues(s, p, tpl, d.form?.data ?? {})) : []
+  const formMissing = tpl && d ? missingFields(tpl, formValuesFor(s, p, d, tpl)) : []
   const formRequired = tpl ? allFields(tpl).filter((f) => f.required && !f.readOnly).length : 0
   const formDone = !!tpl && !!d?.form && formMissing.length === 0
   const rec = d ? submissionsFor(s, d.id)[0] : undefined

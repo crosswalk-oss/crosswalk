@@ -8,7 +8,7 @@ import { DEFAULT_RECORDS, queueRecord } from '../engine/records'
 type R = ReturnType<typeof rng>
 
 /** Written answers for the most-shown forms; everything else gets sensible generic values. */
-function curated(p: Project, t: DocFormTemplate, asOf: string): Record<string, FormValue> | undefined {
+export function curated(p: Project, t: DocFormTemplate, asOf: string): Record<string, FormValue> | undefined {
   const line = p.asset.lineId
   switch (t.id) {
     case 'f-charter': return {
@@ -49,7 +49,7 @@ function curated(p: Project, t: DocFormTemplate, asOf: string): Record<string, F
 }
 
 /** Plausible values for any field not curated. */
-function generic(s: AppState, p: Project, t: DocFormTemplate, R: R): Record<string, FormValue> {
+export function generic(s: AppState, p: Project, t: DocFormTemplate, R: R): Record<string, FormValue> {
   const out: Record<string, FormValue> = {}
   for (const f of allFields(t)) {
     if (f.readOnly) continue
