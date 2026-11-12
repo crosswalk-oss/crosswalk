@@ -5,7 +5,7 @@ import { execSync } from 'node:child_process'
 
 const MAX = 340_000 // characters per part (~85k tokens)
 const all = execSync('git ls-files', { encoding: 'utf8' }).split('\n').filter(Boolean)
-  .filter((f) => !/^(Crosswalk\.html|package-lock\.json|copilot\/)/.test(f) && !/\.(png|jpe?g|ico|woff2?|mp4)$/.test(f))
+  .filter((f) => !/^(Crosswalk\.html|package-lock\.json|copilot\/)/.test(f) && !/\.(png|jpe?g|ico|woff2?)$/.test(f))
 const isTest = (f) => /\.test\./.test(f)
 const area = (f) => (/\.md$/.test(f) || !f.includes('/') ? '0-docs-config' : f.startsWith('src/core') ? '1-core' : f.startsWith('src/ui') || f.startsWith('src/App') || f.startsWith('src/main') || f.startsWith('src/index') || f.startsWith('src/types') ? '2-shell-ui' : f.startsWith('src/views/') ? '3-' + f.split('/')[2] : '4-other')
 const block = (f) => `===== FILE: ${f} =====\n${fs.readFileSync(f, 'utf8').trimEnd()}\n`
