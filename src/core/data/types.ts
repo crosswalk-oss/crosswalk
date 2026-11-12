@@ -10,6 +10,8 @@
 export interface RemoteChange { seq: number; actor: string; summary: string; patches: string }
 export interface RemoteState { generation: number | null; snapshotGz: string | null; snapshotSeq: number; changes: RemoteChange[]; head: number }
 export type CommitResult = 'ok' | 'conflict' | 'unauthorized' | 'error'
+/** A private material (a video, a slide image) kept in the database and returned only with the passcode. */
+export interface MaterialInfo { id: number; name: string; title: string; contentType: string; bytes: number; chunks: number; sort: number; meta: string; uploadedAt: string }
 
 export interface DataAccess {
   readonly kind: 'shared'
@@ -23,6 +25,10 @@ export interface DataAccess {
   addSnapshot(passcode: string, generation: number, seq: number, stateGz: string): Promise<boolean>
   /** Start a new generation from a full snapshot (first edit, or "Reset demo data"). Returns its id. */
   startGeneration(passcode: string, schemaVersion: number, reason: string, actor: string, stateGz: string): Promise<number | null>
+  /** Private materials; null when the passcode is refused or the API can't be reached. */
+  listMaterials(passcode: string): Promise<MaterialInfo[] | null>
+  /** One chunk of a material's bytes. */
+  materialChunk(passcode: string, id: number, idx: number): Promise<ArrayBuffer | null>
   /** Small per-user UI preferences (last tab, filters, passcode). Raw string values, kept in this browser. */
   getPref(key: string): string | null
   setPref(key: string, value: string): void
