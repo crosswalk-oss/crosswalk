@@ -32,12 +32,14 @@ import Audit from './views/audit/Audit'
 import ForecastCycle from './views/forecast/ForecastCycle'
 import MapPage from './views/map/MapPage'
 import Actuals from './views/actuals/Actuals'
+import Materials from './views/materials/Materials'
 import Messages from './views/messages/Messages'
 import { isMessagesView, unreadCount } from './views/messages/lib'
 import type { AppState, Person } from './core/types'
 
 const NAV: { group: string; items: { id: string; label: string; icon: IconName }[] }[] = [
   { group: 'Work', items: [
+    { id: 'materials', label: 'Private materials', icon: 'play' },
     { id: 'inbox', label: 'My work', icon: 'inbox' },
     { id: 'messages', label: 'Messages', icon: 'chat' },
     { id: 'portfolio', label: 'Portfolio', icon: 'grid' },
@@ -116,6 +118,7 @@ export default function App() {
       case 'map': return <MapPage />
       case 'actuals': return <Actuals />
       case 'allocation': return <Allocation />
+      case 'materials': return <Materials onUnlock={() => setUnlockOpen(true)} />
       case 'filing': return <RecordsFiling />
       default:
         if (isMessagesView(route.view)) return <Messages view={route.view} />
@@ -165,7 +168,7 @@ function Sidebar({ active }: { active: string }) {
         {NAV.map((g) => (
           <div key={g.group} className="mb-3">
             <div className="px-2 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-steelink/50">{g.group}</div>
-            {g.items.filter((it) => !NAV_FEATURE[it.id] || features?.[NAV_FEATURE[it.id]]).map((it) => (
+            {g.items.filter((it) => (!NAV_FEATURE[it.id] || features?.[NAV_FEATURE[it.id]]) && (it.id !== 'materials' || (sync.mode === 'shared' && sync.canEdit))).map((it) => (
               <a key={it.id} href={`#${it.id}`} className={cx('flex items-center gap-2.5 rounded px-2 py-1.5 text-[13px] font-medium', active === it.id ? 'bg-white/10 text-white' : 'text-steelink/85 hover:bg-white/5 hover:text-white')}>
                 {it.icon === 'chat'
                   ? <svg viewBox="0 0 24 24" className={cx('h-4 w-4', active === it.id ? 'text-marker' : 'text-steelink/60')} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={CHAT_PATH} /></svg>

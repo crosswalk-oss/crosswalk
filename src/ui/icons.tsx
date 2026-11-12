@@ -21,6 +21,7 @@ const P: Record<string, string> = {
   check: 'M5 12l5 5 9-10',
   x: 'M6 6l12 12M18 6L6 18',
   arrow: 'M5 12h14M13 6l6 6-6 6',
+  play: 'M7 4l13 8-13 8z',
   doc: 'M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6',
   map: 'M9 4l-6 2v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14',
   chart: 'M4 20V10M10 20V4M16 20v-8M22 20H2',
