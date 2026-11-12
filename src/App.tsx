@@ -14,6 +14,7 @@ import { useAiAvailable } from './core/ai'
 import ProjectView from './views/project/ProjectView'
 import Portfolio from './views/portfolio/Portfolio'
 import Allocation from './views/allocation/Allocation'
+import RecordsFiling from './views/records/RecordsFiling'
 import Projects from './views/projects/Projects'
 import NewProject from './views/projects/NewProject'
 import Gates from './views/gates/Gates'
@@ -51,6 +52,7 @@ const NAV: { group: string; items: { id: string; label: string; icon: IconName }
     { id: 'estimating', label: 'Estimating', icon: 'calc' },
     { id: 'forecast', label: 'Forecast cycle', icon: 'chart' },
     { id: 'actuals', label: 'SAP actuals', icon: 'layers' },
+    { id: 'filing', label: 'Records filing', icon: 'doc' },
     { id: 'risk', label: 'Risk', icon: 'alert' },
     { id: 'safety', label: 'Safety', icon: 'shield' },
     { id: 'field', label: 'Field tailboard', icon: 'phone' },
@@ -117,6 +119,7 @@ export default function App() {
       case 'actuals': return <Actuals />
       case 'allocation': return <Allocation />
       case 'materials': return <Materials onUnlock={() => setUnlockOpen(true)} />
+      case 'filing': return <RecordsFiling />
       default:
         if (isMessagesView(route.view)) return <Messages view={route.view} />
         if (route.view.startsWith('admin-')) return <Admin id={route.view.slice(6)} />
