@@ -51,7 +51,7 @@ const RAG = ['Low', 'Medium', 'High']
 const YNNA = ['Yes', 'No', 'N/A']
 
 // VERIFY: form contents are a starting point drafted for the demo; the PMO and each discipline owner confirm them.
-export const FORM_TEMPLATES: DocFormTemplate[] = [
+const DRAFT_TEMPLATES: DocFormTemplate[] = [
   { id: 'f-charter', name: 'Project charter', version: 1, purpose: 'Why the project exists, what it will deliver and who decides.', sections: [
     PROJECT,
     { title: 'Need', fields: [RO('driver', 'Driver', 'driver'), RO('citation', 'Regulatory citation', 'citation'), A('problem', 'Problem statement', { required: true, help: 'What happens if we do nothing?' }), A('objectives', 'Objectives', { required: true })] },
@@ -81,7 +81,7 @@ export const FORM_TEMPLATES: DocFormTemplate[] = [
   { id: 'f-recrev', name: 'Pipeline records review', version: 1, purpose: 'Confirms the records behind the MAOP are traceable, verifiable and complete, and plans for any gaps.', sections: [
     PROJECT,
     { title: 'Segments', fields: [RO('maop', 'Current MAOP', 'maop'), RO('vintage', 'Vintage', 'vintage'), TB('segments', 'Segments reviewed', [col('seg', 'Segment'), col('stations', 'Stations (from–to)'), col('status', 'Records', 'select', ['Complete', 'Gaps', 'Missing']), col('basis', 'MAOP basis', 'select', ['Pressure test', 'Prior operation', 'Engineering assessment', 'Unknown'])], { required: true })] },
-    { title: 'Records located', fields: [C('found', 'Records located', ['Pressure test records', 'Material test reports (MTRs)', 'Design and class location records', 'Construction and weld records'], { required: true }), A('gapPlan', 'Plan for gaps', { help: 'Required when any segment has gaps or missing records.' })] },
+    { title: 'Records located', fields: [C('found', 'Records located', ['Pressure test records', 'Material test reports (MTRs)', 'Design and class location records', 'Construction and weld records'], { required: true }), A('gapPlan', 'Plan for gaps', { help: 'Write "None" if every segment is complete.' })] },
   ] },
   { id: 'f-screen', name: 'Environmental, land & permit screen', version: 1, purpose: 'An early look at what could slow the project down.', sections: [
     PROJECT,
@@ -224,6 +224,18 @@ export const FORM_TEMPLATES: DocFormTemplate[] = [
   ] },
 ]
 
+/**
+ * Every answer on a deliverable form is required; read-only fields come from Crosswalk. Yes/no questions are explicit
+ * Yes / No choices so an unanswered question can't pass as "No". Where nothing applies, the owner writes "None" or "N/A".
+ */
+export const FORM_TEMPLATES: DocFormTemplate[] = DRAFT_TEMPLATES.map((t) => ({
+  ...t,
+  sections: t.sections.map((sec) => ({
+    ...sec,
+    fields: sec.fields.map((f): DocField => (f.readOnly ? f : f.type === 'boolean' ? { ...f, type: 'select', options: ['Yes', 'No'], required: true } : { ...f, required: true })),
+  })),
+}))
+
 /** Which template each deliverable uses. */
 export const FORM_FOR_DEF: Record<string, string> = {
   'd-charter': 'f-charter', 'ds-charter': 'f-charter', 'd-feas': 'f-feas', 'd-est5': 'f-estimate', 'd-est3': 'f-estimate', 'ds-est5': 'f-estimate', 'ds-est3': 'f-estimate',
@@ -306,6 +318,7 @@ export function formValues(s: AppState, p: Project, t: DocFormTemplate, saved: R
   const out: Record<string, FormValue> = {}
   for (const f of allFields(t)) {
     if (f.readOnly && f.prefill) { out[f.key] = prefillValue(s, p, f.prefill) ?? ''; continue }
+    if (typeof saved[f.key] === 'boolean' && f.type === 'select') { out[f.key] = saved[f.key] ? 'Yes' : 'No'; continue } // answers saved before yes/no became a choice
     if (saved[f.key] !== undefined && saved[f.key] !== '') { out[f.key] = saved[f.key]; continue }
     if (f.prefill) { const v = prefillValue(s, p, f.prefill); if (v !== undefined) { out[f.key] = v; continue } }
     out[f.key] = f.type === 'table' ? [] : f.type === 'checklist' ? {} : f.type === 'boolean' ? false : ''

@@ -69,7 +69,7 @@ export function DeliverableFormModal({ s, p, def, d, onClose, onSubmit, busy }: 
         </div>
       }>
       <div className="flex flex-col gap-4">
-        <p className="text-[13px] text-muted">{t.purpose} Grey fields come straight from Crosswalk and can't be edited here.</p>
+        <p className="text-[13px] text-muted">{t.purpose} Every field is required; write "None" or "N/A" where nothing applies. Grey fields come straight from Crosswalk and can't be edited here.</p>
         <RecordStatus s={s} d={d} onVerify={verify} />
         {!editable && d.status === 'submitted' && <Callout tone="info" title="In review">The reviewer is checking this form. It is locked until they accept it or return it.</Callout>}
         <FormBody t={t} data={data} editable={editable} onChange={set} />

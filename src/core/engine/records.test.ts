@@ -43,6 +43,18 @@ describe('deliverable forms', () => {
     expect(v.summary).toBe(p.scope.summary) // empty field pre-filled
   })
 
+  it('every answer is required; read-only fields come from Crosswalk; yes/no questions are explicit choices', () => {
+    for (const t of FORM_TEMPLATES) for (const f of allFields(t)) {
+      if (f.readOnly) continue
+      expect(f.required, `${t.id}.${f.key}`).toBe(true)
+      expect(f.type, `${t.id}.${f.key}`).not.toBe('boolean')
+    }
+    const t = formFor('d-fincl')!
+    const v = formValues(S, S.projects[0], t, { accruals: true })
+    expect(v.accruals).toBe('Yes') // answers saved before the change still read correctly
+    expect(missingFields(t, formValues(S, S.projects[0], t, {}))).toEqual(expect.arrayContaining(['Accruals cleared', 'Final variance explanation', 'Open commitments']))
+  })
+
   it('lists required answers that are missing, including unanswered checklist items', () => {
     const p = S.projects[0]
     const t = formFor('d-precon')!
