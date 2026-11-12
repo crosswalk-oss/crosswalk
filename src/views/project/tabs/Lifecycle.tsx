@@ -144,43 +144,74 @@ function LifecycleInner({ projectId }: { projectId: string }) {
 }
 
 // ───────────────────────────── Stage timeline
+// One rail: stages are circles, gates are diamonds, the rail is dark up to where the project stands.
 function StageTimeline({ s, p }: { s: AppState; p: Project }) {
   const tpl = templateFor(s, p)
   const decisions = s.gateDecisions.filter((g) => g.projectId === p.id).sort((a, b) => a.date.localeCompare(b.date))
+  const n = tpl.stages.length
+  const closed = p.status === 'closed'
+  const at = closed ? 2 * n : 2 * p.stageIndex // rail column the project has reached
+  const went = (o?: string) => o === 'go' || o === 'go-with-conditions'
+  const cur = closed ? undefined : tpl.stages[p.stageIndex]
+  const node = (col: number, mark: React.ReactNode) => (
+    <div className="relative flex h-12 w-full items-center justify-center">
+      {col > 0 && <span aria-hidden className={cx('absolute left-0 right-1/2 top-1/2 h-[3px] -translate-y-1/2', col <= at ? 'bg-ink' : 'bg-line')} />}
+      {col < 2 * n - 1 && <span aria-hidden className={cx('absolute left-1/2 right-0 top-1/2 h-[3px] -translate-y-1/2', col < at ? 'bg-ink' : 'bg-line')} />}
+      {mark}
+    </div>
+  )
   return (
     <Panel pad={false}>
       <div className="scroll-x">
-        <ol className="flex min-w-[720px] items-stretch px-2 py-3">
+        <ol className="grid min-w-[940px] px-3 pb-4 pt-3" style={{ gridTemplateColumns: `repeat(${2 * n}, minmax(0, 1fr))` }}>
           {tpl.stages.map((st, i) => {
-            const passed = i < p.stageIndex || p.status === 'closed'
-            const current = i === p.stageIndex && p.status !== 'closed'
+            const passed = i < p.stageIndex || closed
+            const current = i === p.stageIndex && !closed
             const gd = decisions.filter((g) => g.stageIndex === i)
             const last = gd[gd.length - 1]
-            const start = i === 0 ? p.dates.initiated : decisions.filter((g) => g.stageIndex === i - 1 && (g.outcome === 'go' || g.outcome === 'go-with-conditions')).pop()?.date
+            const start = i === 0 ? p.dates.initiated : decisions.filter((g) => g.stageIndex === i - 1 && went(g.outcome)).pop()?.date
+            const hold = current && p.status === 'on-hold'
+            const gateName = st.gate.name.replace(/^Gate \w+ · /, '')
             return (
               <React.Fragment key={st.id}>
-                <li className={cx('min-w-0 flex-1 rounded-md px-3 py-2', current ? 'bg-marker/15 ring-1 ring-marker' : '')}>
-                  <div className="flex items-center gap-1.5">
-                    <span className={cx('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold', passed ? 'bg-ink text-surface' : current ? (p.status === 'on-hold' ? 'bg-warn text-white' : 'bg-marker text-markerink') : 'bg-sunken text-faint')}>{passed ? '✓' : i + 1}</span>
-                    <span className={cx('truncate text-[13px] font-semibold', !passed && !current && 'text-muted')} title={st.name}>{st.name}</span>
+                <li className="flex min-w-0 flex-col items-center text-center" aria-current={current ? 'step' : undefined} title={st.purpose}>
+                  {node(2 * i, (
+                    <span className={cx('relative flex h-9 w-9 items-center justify-center rounded-full border-2 text-[14px] font-bold tabular-nums',
+                      passed ? 'border-ink bg-ink text-surface' : hold ? 'border-warn bg-warn text-white ring-4 ring-warn/20' : current ? 'border-marker bg-marker text-markerink ring-4 ring-marker/25' : 'border-line bg-surface text-faint')}>
+                      {passed ? '✓' : i + 1}
+                    </span>
+                  ))}
+                  <div className={cx('mt-1 px-2 text-[13px] font-semibold leading-snug', !passed && !current && 'text-muted')}>{st.name}</div>
+                  <div className="mt-1 flex flex-col items-center gap-0.5 px-2 text-[11px] tabular-nums text-faint">
+                    {current && <Badge tone={hold ? 'warn' : 'marker'}>{hold ? 'On hold' : 'Current stage'}</Badge>}
+                    {start && (passed || current) && <span>{current ? 'Since' : 'Started'} {fmtDate(start)}</span>}
                   </div>
-                  <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted" title={st.purpose}>{st.purpose}</p>
-                  <div className="mt-1 text-[11px] text-faint">{start ? `From ${fmtDate(start)}` : 'Not started'}{current ? ' · current' : ''}</div>
                 </li>
-                <li className="flex w-[118px] shrink-0 flex-col items-center justify-center px-1 text-center">
-                  <span className={cx('flex h-7 w-7 rotate-45 items-center justify-center border-2', last ? (last.outcome === 'go' || last.outcome === 'go-with-conditions' ? 'border-ink bg-ink' : 'border-warn bg-warn/20') : current ? 'border-marker bg-surface' : 'border-line bg-surface')}>
-                    <span className={cx('-rotate-45 text-[10px] font-bold', last && (last.outcome === 'go' || last.outcome === 'go-with-conditions') ? 'text-surface' : 'text-muted')}>G{i + 1}</span>
-                  </span>
-                  <span className="mt-1.5 text-[10.5px] font-semibold leading-tight">{st.gate.name.replace(/^Gate \w+ · /, '')}</span>
-                  {last ? (
-                    <span className="mt-0.5 flex flex-col items-center gap-0.5"><Badge tone={outcomeTone(last.outcome)}>{outcomeLabel(last.outcome)}</Badge><span className="text-[10px] tabular-nums text-faint">{fmtDate(last.date)}{gd.length > 1 ? ` · ${gd.length} reviews` : ''}</span></span>
-                  ) : <span className="mt-0.5 text-[10px] text-faint">{st.gate.requiredEstimateClass ? `Needs Class ${st.gate.requiredEstimateClass}` : 'Pending'}</span>}
+                <li className="flex min-w-0 flex-col items-center text-center" title={st.gate.name}>
+                  {node(2 * i + 1, (
+                    <span className={cx('relative flex h-[26px] w-[26px] rotate-45 items-center justify-center rounded-[4px] border-2 bg-surface',
+                      last ? (went(last.outcome) ? 'border-ink !bg-ink' : 'border-warn') : current ? 'border-marker' : 'border-line')}>
+                      {last && !went(last.outcome) && <span aria-hidden className="absolute inset-0 bg-warn/15" />}
+                      <span className={cx('relative -rotate-45 text-[10px] font-bold', last && went(last.outcome) ? 'text-surface' : current || last ? 'text-ink' : 'text-faint')}>G{i + 1}</span>
+                    </span>
+                  ))}
+                  <div className={cx('mt-1 px-2 text-[12px] font-medium leading-snug', !last && !current && 'text-muted')}>{gateName}</div>
+                  <div className="mt-1 flex flex-col items-center gap-0.5 px-2 text-[11px] tabular-nums text-faint">
+                    {last ? <><Badge tone={outcomeTone(last.outcome)}>{outcomeLabel(last.outcome)}</Badge><span>{fmtDate(last.date)}{gd.length > 1 ? ` · ${gd.length} reviews` : ''}</span></>
+                      : st.gate.requiredEstimateClass ? <span>Needs Class {st.gate.requiredEstimateClass} estimate</span> : null}
+                  </div>
                 </li>
               </React.Fragment>
             )
           })}
         </ol>
       </div>
+      {cur && (
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-t border-line bg-sunken/40 px-4 py-2.5 text-[12.5px]">
+          <b>{cur.name}</b>
+          <span className="text-muted">{cur.purpose}</span>
+        </div>
+      )}
     </Panel>
   )
 }
