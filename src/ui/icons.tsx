@@ -25,7 +25,6 @@ const P: Record<string, string> = {
   map: 'M9 4l-6 2v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14',
   chart: 'M4 20V10M10 20V4M16 20v-8M22 20H2',
   pin: 'M12 21s-7-6-7-11a7 7 0 1114 0c0 5-7 11-7 11zM12 8a2 2 0 100 4 2 2 0 000-4z',
-  play: 'M7 4l13 8-13 8z',
 }
 export type IconName = keyof typeof P | string
 export function Icon({ name, className }: { name: IconName; className?: string }) {

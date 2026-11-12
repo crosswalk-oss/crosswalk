@@ -29,13 +29,11 @@ import ForecastCycle from './views/forecast/ForecastCycle'
 import MapPage from './views/map/MapPage'
 import Actuals from './views/actuals/Actuals'
 import Messages from './views/messages/Messages'
-import Overview from './views/overview/Overview'
 import { isMessagesView, unreadCount } from './views/messages/lib'
 import type { AppState, Person } from './core/types'
 
 const NAV: { group: string; items: { id: string; label: string; icon: IconName }[] }[] = [
   { group: 'Work', items: [
-    { id: 'overview', label: 'Overview video', icon: 'play' },
     { id: 'inbox', label: 'My work', icon: 'inbox' },
     { id: 'messages', label: 'Messages', icon: 'chat' },
     { id: 'portfolio', label: 'Portfolio', icon: 'grid' },
@@ -104,7 +102,6 @@ export default function App() {
       case 'forecast': return <ForecastCycle />
       case 'map': return <MapPage />
       case 'actuals': return <Actuals />
-      case 'overview': return <Overview />
       default:
         if (isMessagesView(route.view)) return <Messages view={route.view} />
         if (route.view.startsWith('admin-')) return <Admin id={route.view.slice(6)} />
