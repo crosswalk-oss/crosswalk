@@ -3,7 +3,9 @@
 import { useMemo, useState } from 'react'
 import type { AppState, Deliverable, DeliverableDef, FormValue, Project } from '@/core/types'
 import { mutate, personName, useMe } from '@/core/store'
-import { allFields, formFor, formValues, missingFields, type ChecklistValue, type DocField, type DocFormTemplate, type TableValue } from '@/core/engine/forms'
+import { allFields, formFor, missingFields, type ChecklistValue, type DocField, type DocFormTemplate, type TableValue } from '@/core/engine/forms'
+import { carriedFor, carriedNotes, formValuesFor } from '@/core/engine/carry'
+import { redactedCopy, redactionNotes } from '@/core/engine/redaction'
 import { RECORD_STATUS_LABEL, previewSubmission, recordsOf, submissionsFor, verifyDeliverable } from '@/core/engine/records'
 import { saveFile } from '@/core/download'
 import { cx, fmtDateTime, money, nowISO } from '@/core/util'
@@ -18,7 +20,7 @@ export function recordTone(st?: string) { return st === 'filed' ? 'good' : st ==
 export function DeliverableFormModal({ s, p, def, d, onClose, onSubmit, busy }: { s: AppState; p: Project; def: DeliverableDef; d: Deliverable; onClose: () => void; onSubmit?: () => void; busy?: boolean }) {
   const me = useMe()
   const t = formFor(def.id)!
-  const [data, setData] = useState<Record<string, FormValue>>(() => formValues(s, p, t, d.form?.data ?? {}))
+  const [data, setData] = useState<Record<string, FormValue>>(() => formValuesFor(s, p, d, t))
   const [dirty, setDirty] = useState(false)
   const editable = !LOCKED.includes(d.status) && !busy
   const missing = missingFields(t, data)
@@ -27,6 +29,9 @@ export function DeliverableFormModal({ s, p, def, d, onClose, onSubmit, busy }: 
   const rec = recordsOf(s)
   const latest = subs[0]
   const set = (k: string, v: FormValue) => { setData((x) => ({ ...x, [k]: v })); setDirty(true) }
+  // Answers offered from earlier deliverables on this project, and the fields a redacted copy would withhold
+  const carried = useMemo(() => (editable ? carriedNotes(carriedFor(s, p, d, t), data) : {}), [s, p, d, t, data, editable])
+  const redactNotes = useMemo(() => redactionNotes(s, t), [s, t])
 
   const save = (quiet = false) => {
     const keep = Object.fromEntries(allFields(t).filter((f) => !f.readOnly).map((f) => [f.key, data[f.key]]))
@@ -51,6 +56,13 @@ export function DeliverableFormModal({ s, p, def, d, onClose, onSubmit, busy }: 
     const res = await saveFile(sub.fileName, recordPdf(s, sub), 'application/pdf')
     if (res === 'saved') toast(`Downloaded ${sub.fileName}`)
   }
+  const redactedPdf = async () => {
+    const sub = latest?.status === 'filed' ? latest : previewSubmission(s, { ...d, form: { templateId: t.id, templateVersion: t.version, data, savedAt: nowISO(), savedById: me.id } })
+    if (!sub) return
+    const name = sub.fileName.replace(/\.pdf$/, '_REDACTED.pdf')
+    const res = await saveFile(name, recordPdf(s, sub, redactedCopy(s, t, sub.snapshot.data)), 'application/pdf')
+    if (res === 'saved') toast(`Downloaded ${name}`)
+  }
   const verify = () => {
     mutate((x) => { verifyDeliverable(x, d.id, x.currentUserId) }, { entity: 'deliverable', entityId: d.id, projectId: p.id, action: 'verify', summary: `${def.name}: verified for records and filed to ${rec.system}` })
     toast(`Verified and filed to ${rec.system}`)
@@ -63,6 +75,7 @@ export function DeliverableFormModal({ s, p, def, d, onClose, onSubmit, busy }: 
         <div className="flex flex-wrap items-center gap-2">
           <span className={cx('mr-auto text-[12px]', missing.length ? 'text-warn' : 'text-good')}>{missing.length ? `${missing.length} required answer${missing.length === 1 ? '' : 's'} left` : 'All required answers complete'}</span>
           <Button variant="secondary" onClick={pdf}>{latest?.status === 'filed' ? 'Download filed PDF' : 'Preview PDF'}</Button>
+          <Button variant="secondary" onClick={redactedPdf} title="The same record with the tagged fields withheld and a redaction log">Redacted PDF</Button>
           {editable && <Button variant="secondary" onClick={() => save()} disabled={!dirty}>Save draft</Button>}
           {editable && onSubmit && <Button variant="primary" onClick={submit} disabled={missing.length > 0}>Save and submit for review</Button>}
           {!editable && <Button variant="primary" onClick={onClose}>Close</Button>}
@@ -72,7 +85,7 @@ export function DeliverableFormModal({ s, p, def, d, onClose, onSubmit, busy }: 
         <p className="text-[13px] text-muted">{t.purpose} Every field is required; write "None" or "N/A" where nothing applies. Grey fields come straight from Crosswalk and can't be edited here.</p>
         <RecordStatus s={s} d={d} onVerify={verify} />
         {!editable && d.status === 'submitted' && <Callout tone="info" title="In review">The reviewer is checking this form. It is locked until they accept it or return it.</Callout>}
-        <FormBody t={t} data={data} editable={editable} onChange={set} />
+        <FormBody t={t} data={data} editable={editable} onChange={set} carried={carried} redacted={redactNotes} />
       </div>
     </Modal>
   )
@@ -105,7 +118,7 @@ export function RecordStatus({ s, d, onVerify }: { s: AppState; d: Deliverable; 
   )
 }
 
-export function FormBody({ t, data, editable, onChange }: { t: DocFormTemplate; data: Record<string, FormValue>; editable: boolean; onChange: (k: string, v: FormValue) => void }) {
+export function FormBody({ t, data, editable, onChange, carried, redacted }: { t: DocFormTemplate; data: Record<string, FormValue>; editable: boolean; onChange: (k: string, v: FormValue) => void; carried?: Record<string, string>; redacted?: Record<string, string> }) {
   return (
     <div className="flex flex-col gap-5">
       {t.sections.map((sec) => (
@@ -113,7 +126,7 @@ export function FormBody({ t, data, editable, onChange }: { t: DocFormTemplate; 
           <h3 className="mb-1 border-b border-line pb-1 font-display text-[14.5px] font-semibold">{sec.title}</h3>
           {sec.note && <p className="mb-2 text-[12px] text-muted">{sec.note}</p>}
           <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">
-            {sec.fields.map((f) => <FieldBox key={f.key} f={f} v={data[f.key]} editable={editable && !f.readOnly} onChange={(v) => onChange(f.key, v)} />)}
+            {sec.fields.map((f) => <FieldBox key={f.key} f={f} v={data[f.key]} editable={editable && !f.readOnly} onChange={(v) => onChange(f.key, v)} carried={carried?.[f.key]} redacted={redacted?.[f.key]} />)}
           </div>
         </section>
       ))}
@@ -121,7 +134,7 @@ export function FormBody({ t, data, editable, onChange }: { t: DocFormTemplate; 
   )
 }
 
-function FieldBox({ f, v, editable, onChange }: { f: DocField; v: FormValue | undefined; editable: boolean; onChange: (v: FormValue) => void }) {
+function FieldBox({ f, v, editable, onChange, carried, redacted }: { f: DocField; v: FormValue | undefined; editable: boolean; onChange: (v: FormValue) => void; carried?: string; redacted?: string }) {
   const wide = f.type === 'textarea' || f.type === 'table' || f.type === 'checklist'
   const id = `ff-${f.key}`
   return (
@@ -130,8 +143,10 @@ function FieldBox({ f, v, editable, onChange }: { f: DocField; v: FormValue | un
         {f.label}{f.required && !f.readOnly && <span className="text-bad" aria-label="required">*</span>}
         {f.unit && <span className="font-normal text-faint">({f.unit})</span>}
         {f.readOnly && <span className="rounded bg-sunken px-1 text-[10px] font-semibold uppercase tracking-wide text-faint">From Crosswalk</span>}
+        {redacted && <span className="rounded border border-line px-1 text-[10px] font-semibold uppercase tracking-wide text-muted" title="Withheld from a redacted copy. Change this in Configuration, Redaction fields.">{redacted}</span>}
       </label>
       {f.help && <div className="mb-1 text-[11.5px] text-muted">{f.help}</div>}
+      {carried && <div className="mb-1 text-[11.5px] text-link">{`${carried}. Change it here if it no longer holds.`}</div>}
       <FieldInput id={id} f={f} v={v} editable={editable} onChange={onChange} />
     </div>
   )
