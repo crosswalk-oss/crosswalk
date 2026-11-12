@@ -140,6 +140,7 @@ describe('private materials', () => {
   it('bad uploads are refused', async () => {
     expect((await start('Bad Name', 1, 1)).status).toBe(400)
     expect((await start('ok', 1, 1, { contentType: 'text/html' })).status).toBe(400)
+    expect((await start('deck/powerpoint', 1, 1, { contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' })).status).toBe(200) // a deck's PowerPoint file
     expect((await start('ok', 0, 1)).status).toBe(400)
     expect((await start('ok', 500, 1)).status).toBe(400)
     const id = (await (await start('deck/01', 1, 1, { contentType: 'image/png' })).json()).id
