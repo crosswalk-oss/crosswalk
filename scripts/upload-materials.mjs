@@ -10,6 +10,10 @@
 //      "meta": { "duration": 230, "chapters": [{ "at": 0, "title": "Start" }] } },
 //    { "file": "slide-01.png", "name": "deck/01", "title": "Deck title", "contentType": "image/png", "sort": 101 }]
 // Images whose names share the part before "/" are shown as one deck, in `sort` order.
+// A PowerPoint file with the same prefix becomes that deck's download button:
+//    { "file": "deck.pptx", "name": "deck/powerpoint", "title": "Deck title", "sort": 199, "meta": { "fileName": "Deck.pptx" },
+//      "contentType": "application/vnd.openxmlformats-officedocument.presentationml.presentation" }
+// meta.fileName is the name a download is saved under; without it the title is used.
 import fs from 'node:fs'
 import path from 'node:path'
 

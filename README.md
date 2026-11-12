@@ -24,7 +24,7 @@ Every dollar, date and scope change traces back to an approved decision and its 
 - **Hosted demo:** everyone shares one dataset in a Postgres database. Anyone with the link can look around;
   changes need the edit passcode and are saved for everyone, with every change kept in the database's history.
 - **Private materials:** on the hosted demo, a page that appears only after the passcode is entered. It plays a
-  video and shows slide decks that are kept in the database, never in this repository, the page or the offline
+  video and shows slide decks, each with a download button (the video file, the deck as PowerPoint), all kept in the database, never in this repository, the page or the offline
   copy. The API returns them only with the passcode. Upload or remove them with `scripts/upload-materials.mjs`.
 - **Offline copy:** download [`Crosswalk.html`](Crosswalk.html) and double-click it. It is the whole app in one
   file and makes no network calls. It isn't connected to the database, so changes there are not saved.

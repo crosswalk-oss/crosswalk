@@ -1,23 +1,35 @@
 // Private materials: a video and slide decks that are kept in the database, not in the app's code, and are
 // returned by the API only to requests that carry the edit passcode. Without the passcode this page shows
-// nothing and asks for none of it. Files are fetched in chunks and shown from memory.
+// nothing and asks for none of it. Files are fetched in chunks and shown from memory. Each can also be downloaded:
+// the video as it is, a deck as its PowerPoint file when one was uploaded with it.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { data, prefs, type MaterialInfo } from '@/core/data'
 import { useSync } from '@/core/store'
 import { PASSCODE_KEY } from '@/core/sync'
 import { cx } from '@/core/util'
+import { saveFile } from '@/core/download'
 import { Button, Callout, Empty, PageHeader, Panel } from '@/ui/kit'
 import { Icon } from '@/ui/icons'
 
 interface Chapter { at: number; title: string }
-interface Meta { chapters?: Chapter[]; duration?: number; note?: string }
-export interface Deck { key: string; title: string; slides: MaterialInfo[] }
+interface Meta { chapters?: Chapter[]; duration?: number; note?: string; fileName?: string }
+export interface Deck { key: string; title: string; slides: MaterialInfo[]; file?: MaterialInfo }
+
+const PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+const EXT: Record<string, string> = { 'video/mp4': 'mp4', 'image/png': 'png', 'image/jpeg': 'jpg', [PPTX]: 'pptx' }
+/** The name a downloaded material is saved under: the one given at upload, or its title. */
+export function fileNameOf(m: MaterialInfo): string {
+  const given = parseMeta(m).fileName
+  if (given) return given
+  const base = (m.title || m.name).replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'download'
+  return `${base}.${EXT[m.contentType] ?? 'bin'}`
+}
 
 const parseMeta = (m: MaterialInfo): Meta => { try { return JSON.parse(m.meta) as Meta } catch { return {} } }
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 const mb = (bytes: number) => `${(bytes / 1_000_000).toFixed(bytes < 10_000_000 ? 1 : 0)} MB`
 
-/** Videos stand alone; images that share the part of their name before "/" form one deck, in order. */
+/** Videos stand alone; images that share the part of their name before "/" form one deck, in order. A PowerPoint file with the same prefix is that deck's download. */
 export function arrange(list: MaterialInfo[]): { videos: MaterialInfo[]; decks: Deck[] } {
   const videos = list.filter((m) => m.contentType.startsWith('video/'))
   const decks: Deck[] = []
@@ -27,15 +39,20 @@ export function arrange(list: MaterialInfo[]): { videos: MaterialInfo[]; decks: 
     if (d) d.slides.push(m); else decks.push({ key, title: m.title || key, slides: [m] })
   }
   for (const d of decks) d.slides.sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name))
+  for (const f of list.filter((x) => x.contentType === PPTX)) {
+    const d = decks.find((x) => x.key === (f.name.includes('/') ? f.name.slice(0, f.name.indexOf('/')) : f.name))
+    if (d) d.file = f
+  }
   return { videos, decks }
 }
 
 // Files already fetched in this tab, by material id, so going back to a slide or replaying costs nothing.
 const cache = new Map<number, string>()
+const blobs = new Map<number, Blob>()
 const pending = new Map<number, Promise<string | null>>()
 function forget() {
   for (const url of cache.values()) URL.revokeObjectURL(url)
-  cache.clear(); pending.clear()
+  cache.clear(); blobs.clear(); pending.clear()
 }
 
 function fetchFile(m: MaterialInfo, onProgress?: (fraction: number) => void): Promise<string | null> {
@@ -52,8 +69,9 @@ function fetchFile(m: MaterialInfo, onProgress?: (fraction: number) => void): Pr
       parts.push(part)
       onProgress?.((i + 1) / m.chunks)
     }
-    const url = URL.createObjectURL(new Blob(parts, { type: m.contentType }))
-    cache.set(m.id, url)
+    const blob = new Blob(parts, { type: m.contentType })
+    const url = URL.createObjectURL(blob)
+    cache.set(m.id, url); blobs.set(m.id, blob)
     return url
   })().finally(() => pending.delete(m.id))
   pending.set(m.id, p)
@@ -86,7 +104,7 @@ export default function Materials({ onUnlock }: { onUnlock: () => void }) {
       {Array.isArray(list) && !list.length && <Empty title="Nothing here yet">No materials have been uploaded.</Empty>}
       <div className="flex flex-col gap-4">
         {videos.map((v) => <VideoPanel key={v.id} m={v} />)}
-        {decks.map((d) => <DeckPanel key={d.key + ':' + d.slides.map((s) => s.id).join(',')} deck={d} />)}
+        {decks.map((d) => <DeckPanel key={d.key + ':' + d.slides.map((s) => s.id).join(',') + ':' + (d.file?.id ?? '')} deck={d} />)}
       </div>
     </div>
   )
@@ -100,6 +118,26 @@ export function Locked({ shared, editable, onUnlock }: { shared: boolean; editab
         {shared ? 'This page is shown only after the passcode is entered. Nothing on it is loaded until then.' : 'This page needs the hosted demo and its passcode. It is not part of this copy.'}
       </Empty>
     </div>
+  )
+}
+
+/** Fetches the file (or reuses what is already in memory) and hands it to the browser as a download. */
+function DownloadButton({ m, label }: { m: MaterialInfo; label: string }) {
+  const [progress, setProgress] = useState<number | null>(null)
+  const [failed, setFailed] = useState(false)
+  const go = async () => {
+    if (progress !== null) return
+    setFailed(false); setProgress(blobs.has(m.id) ? 1 : 0)
+    const url = await fetchFile(m, setProgress)
+    setProgress(null)
+    const blob = blobs.get(m.id)
+    if (!url || !blob) { setFailed(true); return }
+    await saveFile(fileNameOf(m), blob, m.contentType)
+  }
+  return (
+    <Button size="sm" variant="secondary" onClick={() => void go()} disabled={progress !== null} title={`${fileNameOf(m)} · ${mb(m.bytes)}`}>
+      {progress !== null ? `Preparing… ${Math.round(progress * 100)}%` : failed ? `${label} (try again)` : label}
+    </Button>
   )
 }
 
@@ -138,6 +176,10 @@ function VideoPanel({ m }: { m: MaterialInfo }) {
               {progress !== null && <span className="h-1 w-56 overflow-hidden rounded-full bg-white/15"><span className="block h-full bg-marker" style={{ width: `${Math.round(progress * 100)}%` }} /></span>}
             </button>
           )}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-3 py-2">
+          <span className="text-[12.5px] text-muted">{m.title}</span>
+          <DownloadButton m={m} label="Download video" />
         </div>
         {failed && <div className="p-4"><Callout tone="warn" title="The video didn't load">Check the connection and try again. <button type="button" className="font-semibold text-link" onClick={() => void playFrom(startAt)}>Try again</button></Callout></div>}
       </Panel>
@@ -181,7 +223,10 @@ function DeckPanel({ deck }: { deck: Deck }) {
 
   return (
     <Panel title={deck.title} subtitle={`${n} slide${n === 1 ? '' : 's'}`} pad={false} className="overflow-hidden"
-      actions={src ? <a href={src} target="_blank" rel="noreferrer" className="text-[12.5px] font-semibold text-link">Open slide full size</a> : undefined}>
+      actions={<div className="flex flex-wrap items-center justify-end gap-3">
+        {src && <a href={src} target="_blank" rel="noreferrer" className="text-[12.5px] font-semibold text-link">Open slide full size</a>}
+        {deck.file && <DownloadButton m={deck.file} label="Download PowerPoint" />}
+      </div>}>
       <div className="relative aspect-video w-full bg-steel" tabIndex={0} role="group" aria-label={`${deck.title}, slide ${i + 1} of ${n}`}
         onKeyDown={(e) => { if (e.key === 'ArrowRight') go(i + 1); if (e.key === 'ArrowLeft') go(i - 1) }}>
         {src && <img src={src} alt={`${deck.title}, slide ${i + 1}`} className="absolute inset-0 h-full w-full object-contain" />}

@@ -27,7 +27,7 @@ const MAX_CHANGE_BYTES = 2_000_000
 const MAX_SNAPSHOT_BYTES = 8_000_000
 const MAX_MATERIAL_CHUNK_CHARS = 1_400_000 // base64 of about 1 MB
 const MAX_MATERIAL_CHUNKS = 80
-const MATERIAL_TYPES = new Set(['video/mp4', 'image/png', 'image/jpeg'])
+const MATERIAL_TYPES = new Set(['video/mp4', 'image/png', 'image/jpeg', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'])
 const MATERIAL_NAME = /^[a-z0-9][a-z0-9/_-]{0,79}$/
 
 const json = (body: unknown, status = 200) =>
