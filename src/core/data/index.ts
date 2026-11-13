@@ -3,7 +3,7 @@
 import { sharedDataAccess } from './server'
 import type { DataAccess } from './types'
 
-export type { DataAccess, RemoteChange, RemoteState, CommitResult, MaterialInfo } from './types'
+export type { DataAccess, RemoteChange, RemoteState, CommitResult } from './types'
 export { gzipBase64, gunzipBase64 } from './server'
 export const data: DataAccess = sharedDataAccess()
 

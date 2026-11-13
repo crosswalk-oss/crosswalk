@@ -65,4 +65,3 @@ original line was cut off, the end is marked _[…]_ and should be replaced with
 - Public hosting (Vercel) is for **fictional data only**, with no company branding, logos, or names.
 - No company login, no company email sign-up, no uploads of real files.
 - Hosting with real data happens only inside the company's managed cloud after architecture review approval.
-- Private materials (the passcode-only page) are the owner's own files. They are uploaded with `scripts/upload-materials.mjs`, live only in the database, and the API returns them only with the passcode. Never commit them, bundle them into the page, or add them to the offline copy.

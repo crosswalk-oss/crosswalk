@@ -13,8 +13,10 @@ export default {
         ink: v('ink'),            // primary text
         muted: v('muted'),        // secondary text
         faint: v('faint'),        // tertiary text
-        steel: v('steel'),        // brand neutral (nav rail): sand in the light palette
+        steel: v('steel'),        // brand neutral: sand chips and bands
         steelink: v('steelink'),  // text on steel
+        rail: v('rail'),          // the left menu: warm charcoal, so the menu reads as its own region
+        railink: v('railink'),    // text on the rail
         marker: v('marker'),      // accent: pipeline-marker amber
         markerink: v('markerink'),// text on marker
         link: v('link'),          // interactive blue

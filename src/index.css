@@ -1,12 +1,12 @@
 /* Crosswalk — capital project delivery for gas utilities.
-   Layout: sand side rail + working canvas; dense tables, tabular figures, berry marker reserved for "needs action".
+   Layout: charcoal side rail + ivory working canvas; dense tables, tabular figures, berry marker reserved for "needs action".
    Tokens are RGB triplets so Tailwind can apply alpha (bg-ink/5). */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  /* Warm, light palette shared with the Crosswalk decks: ivory ground, sand rail, charcoal text, blue accent.
+  /* Warm, light palette shared with the Crosswalk decks: ivory ground, charcoal menu rail, charcoal text, blue accent.
      Four accents carry meaning and stay distinct on sand: blue (link/info), green (good), orange (warn), berry (marker).
      These are the text-safe shades; --c1..--c4 are the brighter fills for charts, and --brand is the honey of the logo only. */
   --ground: 250 246 239;
@@ -18,6 +18,8 @@
   --faint: 132 126 117;
   --steel: 240 231 215;
   --steelink: 58 55 50;
+  --rail: 38 36 33;
+  --railink: 236 229 217;
   --marker: 168 50 127;
   --markerink: 255 255 255;
   --link: 0 112 192;
@@ -35,6 +37,7 @@
 /* The dark palette is kept for anyone who sets data-theme="dark" on the page; the app no longer switches to it on its own. */
 :root[data-theme='dark'] {
   --ground: 13 17 23; --surface: 21 27 35; --sunken: 16 21 28; --line: 42 51 63; --ink: 228 233 239; --muted: 158 169 183; --faint: 110 121 136;
+  --rail: 9 12 17; --railink: 196 205 216;
   --steel: 9 12 17; --steelink: 196 205 216; --marker: 226 122 184; --markerink: 34 8 24; --link: 112 172 242; --good: 74 186 120; --warn: 244 142 74; --bad: 240 100 100; --info: 112 162 230;
   --brand: 246 194 50; --c1: 112 172 242; --c2: 74 196 120; --c3: 244 142 74; --c4: 226 122 184;
   color-scheme: dark;
@@ -75,6 +78,8 @@ select.inp { padding-right: 26px; }
 textarea.inp { min-height: 72px; resize: vertical; }
 
 }
+/* Controls that sit on the dark menu rail: muted text and hover states are restated for a dark ground. */
+.on-rail { --muted: 190 183 172; --ink: 255 255 255; --sunken: 62 59 55; }
 .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .mark-stripe { background-image: repeating-linear-gradient(135deg, rgb(var(--brand)) 0 8px, rgb(var(--surface)) 8px 16px); }
 @keyframes fadein { from { opacity: 0.4; transform: translateY(2px); } to { opacity: 1; transform: none; } }

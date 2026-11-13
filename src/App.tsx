@@ -32,14 +32,12 @@ import Audit from './views/audit/Audit'
 import ForecastCycle from './views/forecast/ForecastCycle'
 import MapPage from './views/map/MapPage'
 import Actuals from './views/actuals/Actuals'
-import Materials from './views/materials/Materials'
 import Messages from './views/messages/Messages'
 import { isMessagesView, unreadCount } from './views/messages/lib'
 import type { AppState, Person } from './core/types'
 
 const NAV: { group: string; items: { id: string; label: string; icon: IconName }[] }[] = [
   { group: 'Work', items: [
-    { id: 'materials', label: 'Private materials', icon: 'play' },
     { id: 'inbox', label: 'My work', icon: 'inbox' },
     { id: 'messages', label: 'Messages', icon: 'chat' },
     { id: 'portfolio', label: 'Portfolio', icon: 'grid' },
@@ -118,7 +116,6 @@ export default function App() {
       case 'map': return <MapPage />
       case 'actuals': return <Actuals />
       case 'allocation': return <Allocation />
-      case 'materials': return <Materials onUnlock={() => setUnlockOpen(true)} />
       case 'filing': return <RecordsFiling />
       default:
         if (isMessagesView(route.view)) return <Messages view={route.view} />
@@ -130,7 +127,7 @@ export default function App() {
   const activeNav = route.view === 'project' ? 'projects' : route.view === 'workflow' ? 'workflows' : route.view === 'new-project' ? 'projects' : isMessagesView(route.view) ? 'messages' : route.view.startsWith('admin-') ? 'admin' : route.view
   return (
     <div className="flex h-full">
-      <aside className={cx('fixed inset-y-0 left-0 z-40 flex w-[236px] flex-col border-r border-line bg-steel text-steelink transition-transform lg:static lg:translate-x-0', navOpen ? 'translate-x-0' : '-translate-x-full')} style={{ paddingTop: 'env(safe-area-inset-top)', paddingLeft: 'env(safe-area-inset-left)' }}>
+      <aside className={cx('fixed inset-y-0 left-0 z-40 flex w-[236px] flex-col bg-rail text-railink transition-transform lg:static lg:translate-x-0', navOpen ? 'translate-x-0' : '-translate-x-full')} style={{ paddingTop: 'env(safe-area-inset-top)', paddingLeft: 'env(safe-area-inset-left)' }}>
         <Sidebar active={activeNav} />
       </aside>
       {navOpen && <div className="fixed inset-0 z-30 bg-ink/40 lg:hidden" onClick={() => setNavOpen(false)} />}
@@ -161,28 +158,28 @@ function Sidebar({ active }: { active: string }) {
     <>
       <a href="#portfolio" className="flex items-center gap-2.5 px-4 pb-3 pt-4">
         <BrandMark className="text-surface" />
-        <span className="flex flex-col leading-tight"><span className="font-display text-[17px] font-bold tracking-tight text-link">Crosswalk</span><span className="text-[11px] text-steelink/70">Capital project delivery</span></span>
+        <span className="flex flex-col leading-tight"><span className="font-display text-[17px] font-bold tracking-tight text-white">Crosswalk</span><span className="text-[11px] text-railink/70">Capital project delivery</span></span>
       </a>
       <div className="mark-stripe mx-4 mb-3 h-1 rounded-full opacity-80" />
       <nav className="flex-1 overflow-y-auto px-2 pb-4">
         {NAV.map((g) => (
           <div key={g.group} className="mb-3">
-            <div className="px-2 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-steelink/70">{g.group}</div>
-            {g.items.filter((it) => (!NAV_FEATURE[it.id] || features?.[NAV_FEATURE[it.id]]) && (it.id !== 'materials' || (sync.mode === 'shared' && sync.canEdit))).map((it) => (
-              <a key={it.id} href={`#${it.id}`} className={cx('flex items-center gap-2.5 rounded px-2 py-1.5 text-[13px] font-medium', active === it.id ? 'bg-surface text-ink shadow-sm' : 'text-steelink/85 hover:bg-surface/60 hover:text-ink')}>
+            <div className="px-2 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-railink/60">{g.group}</div>
+            {g.items.filter((it) => (!NAV_FEATURE[it.id] || features?.[NAV_FEATURE[it.id]])).map((it) => (
+              <a key={it.id} href={`#${it.id}`} className={cx('flex items-center gap-2.5 rounded px-2 py-1.5 text-[13px] font-medium', active === it.id ? 'bg-surface text-ink shadow-[inset_3px_0_0_rgb(var(--brand))]' : 'text-railink/90 hover:bg-white/10 hover:text-white')}>
                 {it.icon === 'chat'
-                  ? <svg viewBox="0 0 24 24" className={cx('h-4 w-4', active === it.id ? 'text-link' : 'text-steelink/70')} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={CHAT_PATH} /></svg>
-                  : <Icon name={it.icon} className={cx('h-4 w-4', active === it.id ? 'text-link' : 'text-steelink/70')} />}
+                  ? <svg viewBox="0 0 24 24" className={cx('h-4 w-4', active === it.id ? 'text-link' : 'text-railink/70')} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={CHAT_PATH} /></svg>
+                  : <Icon name={it.icon} className={cx('h-4 w-4', active === it.id ? 'text-link' : 'text-railink/70')} />}
                 <span className="flex-1">{it.label}</span>
                 {it.id === 'inbox' && taskCount > 0 && <span className="rounded-full bg-marker px-1.5 text-[11px] font-bold tabular-nums text-markerink">{taskCount}</span>}
-                {it.id === 'messages' && unreadMsgs > 0 && <span className="rounded-full bg-ink/10 px-1.5 text-[11px] font-bold tabular-nums text-ink" title={`${unreadMsgs} unread`}>{unreadMsgs}</span>}
+                {it.id === 'messages' && unreadMsgs > 0 && <span className={cx('rounded-full px-1.5 text-[11px] font-bold tabular-nums', active === it.id ? 'bg-ink/10 text-ink' : 'bg-white/15 text-white')} title={`${unreadMsgs} unread`}>{unreadMsgs}</span>}
               </a>
             ))}
           </div>
         ))}
       </nav>
-      <div className="border-t border-ink/10 px-4 py-3 text-[11px] text-steelink/70" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
-        <div className="font-semibold text-steelink/80">{org}</div>
+      <div className="on-rail border-t border-white/10 px-4 py-3 text-[11px] text-railink/70" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
+        <div className="font-semibold text-railink/90">{org}</div>
         <div>{sync.mode === 'shared' ? 'Shared demo data' : 'Demo data'} · as of {fmtDate(asOf)}</div>
         {!sharedView && <div className="mt-2"><ConfirmButton size="sm" variant="ghost" confirmLabel={sync.mode === 'shared' ? 'Reset for everyone' : 'Reset all data'} onConfirm={() => { reset(); toast(sync.mode === 'shared' ? 'Demo data reset for everyone' : 'Demo data reset'); go('#portfolio') }}>Reset demo data</ConfirmButton></div>}
       </div>
