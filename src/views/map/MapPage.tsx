@@ -106,7 +106,7 @@ export default function MapPage() {
           <div className="text-[12px] text-muted"><span className="font-mono">{fmtLatLng(pt)}</span>{p.location.route?.length ? ` · ${num(lengthFt(p.location.route))} ft alignment` : ''}</div>
           <div className="text-[12px] text-muted">Line {p.asset.lineId}{p.asset.diameterIn ? ` · ${p.asset.diameterIn}"` : ''} · MAOP {p.asset.maopPsig} psig {p.location.hca && <Badge tone="warn">HCA</Badge>}</div>
           <div className="mt-1 flex flex-wrap gap-2">
-            <a href={projectHref(p.id, 'map')} className="inline-flex h-7 items-center rounded bg-ink px-2.5 text-xs font-semibold text-surface">Open project map</a>
+            <a href={projectHref(p.id, 'map')} className="inline-flex h-7 items-center rounded bg-link px-2.5 text-xs font-semibold text-surface">Open project map</a>
             <a href={projectHref(p.id)} className="inline-flex h-7 items-center rounded border border-line px-2.5 text-xs font-semibold">Project</a>
             {pt && gis.allowExternal && <a href={googleMapsUrl(pt)} target="_blank" rel="noreferrer" className="inline-flex h-7 items-center rounded border border-line px-2.5 text-xs font-semibold">Google Maps ↗</a>}
           </div>

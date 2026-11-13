@@ -32,7 +32,7 @@ export function SpreadBar({ p10, p50, p90 }: { p10: number; p50: number; p90: nu
     <div className="relative h-4 w-28" title={`P10 ${money(p10, 'full')} · P50 ${money(p50, 'full')} · P90 ${money(p90, 'full')}`}>
       <div className="absolute top-[7px] h-0.5 w-full bg-line" />
       <div className="absolute top-[5px] h-1.5 rounded-sm bg-info/45" style={{ left: x(p10), width: `calc(${x(p90)} - ${x(p10)})` }} />
-      <div className="absolute top-0.5 h-3 w-0.5 bg-ink" style={{ left: x(p50) }} />
+      <div className="absolute top-0.5 h-3 w-0.5 bg-link" style={{ left: x(p50) }} />
     </div>
   )
 }
@@ -44,7 +44,7 @@ export function OutcomeBar({ low, point, high, outcome, scaleMax }: { low: numbe
     <div className="relative h-6 w-full min-w-[140px]">
       <div className="absolute top-[11px] h-0.5 w-full bg-line" />
       <div className="absolute top-[7px] h-2.5 rounded-sm border border-info/50 bg-info/20" style={{ left: p(low), width: `calc(${p(high)} - ${p(low)})` }} />
-      <div className="absolute top-1 h-4 w-[3px] rounded-sm bg-ink" style={{ left: p(point) }} title={`Estimate ${money(point)}`} />
+      <div className="absolute top-1 h-4 w-[3px] rounded-sm bg-link" style={{ left: p(point) }} title={`Estimate ${money(point)}`} />
       {outcome != null && <div className="absolute top-[5px] h-3 w-3 -translate-x-1/2 rotate-45 border-2 border-surface bg-marker" style={{ left: p(outcome) }} title={`Outcome ${money(outcome)}`} />}
     </div>
   )

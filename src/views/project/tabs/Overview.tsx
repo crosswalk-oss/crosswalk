@@ -170,7 +170,7 @@ function ScopePanel({ p, canEdit }: { p: Project; canEdit: boolean }) {
           <div className="min-w-[150px] rounded border border-line bg-sunken/50 px-3 py-1.5">
             <div className="text-[10.5px] font-semibold uppercase tracking-wide text-faint">Capital / O&M</div>
             <div className="font-display text-[17px] font-bold tabular-nums">{p.scope.capitalPct}% <span className="text-[12px] font-semibold text-muted">/ {Math.round((100 - p.scope.capitalPct) * 10) / 10}%</span></div>
-            <div className="mt-1 flex h-1 overflow-hidden rounded-full bg-line"><span className="bg-ink" style={{ width: `${p.scope.capitalPct}%` }} /></div>
+            <div className="mt-1 flex h-1 overflow-hidden rounded-full bg-line"><span className="bg-link" style={{ width: `${p.scope.capitalPct}%` }} /></div>
           </div>
         )}
       </div>
@@ -203,7 +203,7 @@ function MilestonePanel({ p }: { p: Project }) {
             <div key={m.id} title={`${m.name}: baseline ${m.baseline}, ${m.actual ? 'actual ' + m.actual : 'forecast ' + m.forecast}`}>
               <span className="absolute top-2 h-2.5 w-2.5 -translate-x-1/2 rotate-45 border border-faint bg-surface" style={{ left: X(m.baseline) }} />
               {slip !== 0 && <span className={cx('absolute top-[13px] h-0.5', slip > 0 ? 'bg-bad/50' : 'bg-good/50')} style={{ left: slip > 0 ? X(m.baseline) : X(m.actual ?? m.forecast), width: `${(Math.abs(slip) / total) * 100}%` }} />}
-              <span className={cx('absolute top-2 h-2.5 w-2.5 -translate-x-1/2 rotate-45', m.actual ? 'bg-good' : slip > 30 ? 'bg-bad' : slip > 0 ? 'bg-warn' : 'bg-ink')} style={{ left: X(m.actual ?? m.forecast) }} />
+              <span className={cx('absolute top-2 h-2.5 w-2.5 -translate-x-1/2 rotate-45', m.actual ? 'bg-good' : slip > 30 ? 'bg-bad' : slip > 0 ? 'bg-warn' : 'bg-link')} style={{ left: X(m.actual ?? m.forecast) }} />
             </div>
           )
         })}

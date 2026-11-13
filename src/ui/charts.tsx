@@ -2,7 +2,8 @@
 import React, { useState } from 'react'
 import { money } from '@/core/util'
 
-export const SERIES = ['rgb(var(--link))', 'rgb(var(--marker))', 'rgb(var(--good))', 'rgb(var(--bad))', 'rgb(var(--muted))', 'rgb(var(--info))']
+// Blue, berry, green and orange are the four deck colours (chart-strength fills); index 2 stays green because callers use it for "completed".
+export const SERIES = ['rgb(var(--c1))', 'rgb(var(--c4))', 'rgb(var(--c2))', 'rgb(var(--c3))', 'rgb(var(--muted))', '#0f766e']
 const AXIS = 'rgb(var(--line))'
 const TEXT = 'rgb(var(--muted))'
 
@@ -213,7 +214,7 @@ export function RangeBar({ low, point, high, scaleMax }: { low: number; point: n
     <div className="relative h-5 w-full">
       <div className="absolute top-2 h-1 w-full rounded bg-sunken" />
       <div className="absolute top-1.5 h-2 rounded bg-info/40" style={{ left: pct(low), width: `calc(${pct(high)} - ${pct(low)})` }} />
-      <div className="absolute top-0.5 h-4 w-1 rounded bg-ink" style={{ left: pct(point) }} title={money(point)} />
+      <div className="absolute top-0.5 h-4 w-1 rounded bg-link" style={{ left: pct(point) }} title={money(point)} />
     </div>
   )
 }

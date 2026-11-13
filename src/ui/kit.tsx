@@ -10,7 +10,7 @@ export function Button({ variant = 'secondary', size = 'md', icon, className, ..
   const base = 'inline-flex items-center justify-center gap-1.5 rounded font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap'
   const sz = size === 'sm' ? 'h-7 px-2.5 text-xs' : 'h-8 px-3 text-[13px]'
   const v: Record<BtnVariant, string> = {
-    primary: 'bg-ink text-surface hover:bg-ink/85',
+    primary: 'bg-link text-surface hover:bg-link/85',
     secondary: 'bg-surface text-ink border border-line hover:bg-sunken',
     ghost: 'text-muted hover:text-ink hover:bg-sunken',
     danger: 'bg-bad text-white hover:bg-bad/90',
@@ -28,7 +28,7 @@ const toneCls: Record<Tone, string> = {
   bad: 'bg-bad/10 text-bad border-bad/30',
   info: 'bg-info/10 text-info border-info/30',
   marker: 'bg-marker/20 text-ink border-marker/60',
-  ink: 'bg-ink text-surface border-ink',
+  ink: 'bg-link text-surface border-link',
 }
 export function Badge({ tone = 'neutral', children, className, title }: { tone?: Tone; children: React.ReactNode; className?: string; title?: string }) {
   return <span title={title} className={cx('inline-flex items-center gap-1 rounded border px-1.5 py-px text-[11px] font-semibold leading-4 whitespace-nowrap', toneCls[tone], className)}>{children}</span>
@@ -58,7 +58,7 @@ export function HealthDot({ rag, label }: { rag: RAG; label?: string }) {
 export function BrandMark({ size = 32, className }: { size?: number; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="Crosswalk" className={cx('shrink-0', className)}>
-      <circle cx="32" cy="32" r="30" fill="rgb(var(--marker))" />
+      <circle cx="32" cy="32" r="30" fill="rgb(var(--brand))" />
       <g fill="currentColor">
         <polygon points="24,15 40,15 42,22 22,22" />
         <polygon points="19.5,27 44.5,27 47,35 17,35" />
@@ -81,7 +81,7 @@ export function Avatar({ name, size = 22 }: { name: string; size?: number }) {
 }
 
 export function Progress({ value, tone = 'ink', className }: { value: number; tone?: 'ink' | 'good' | 'warn' | 'bad' | 'marker'; className?: string }) {
-  const c = { ink: 'bg-ink', good: 'bg-good', warn: 'bg-warn', bad: 'bg-bad', marker: 'bg-marker' }[tone]
+  const c = { ink: 'bg-link', good: 'bg-good', warn: 'bg-warn', bad: 'bg-bad', marker: 'bg-marker' }[tone]
   return <div className={cx('h-1.5 w-full overflow-hidden rounded-full bg-sunken', className)} role="progressbar" aria-valuenow={Math.round(value)} aria-valuemin={0} aria-valuemax={100}><div className={cx('h-full rounded-full', c)} style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div>
 }
 
@@ -90,7 +90,7 @@ export function StageTrack({ stages, current, status }: { stages: string[]; curr
   return (
     <div className="flex items-center gap-0.5" aria-label={`Stage ${current + 1} of ${stages.length}: ${stages[current]}`}>
       {stages.map((s, i) => (
-        <span key={s} title={s} className={cx('h-2 flex-1 min-w-[10px] first:rounded-l-sm last:rounded-r-sm', status === 'closed' || i < current ? 'bg-ink/70' : i === current ? (status === 'on-hold' ? 'bg-warn' : 'bg-marker') : 'bg-line')} />
+        <span key={s} title={s} className={cx('h-2 flex-1 min-w-[10px] first:rounded-l-sm last:rounded-r-sm', status === 'closed' || i < current ? 'bg-link/70' : i === current ? (status === 'on-hold' ? 'bg-warn' : 'bg-marker') : 'bg-line')} />
       ))}
     </div>
   )
@@ -270,7 +270,7 @@ export function Modal({ open, onClose, title, children, footer, wide, xl }: { op
   }, [open, onClose])
   if (!open) return null
   return (
-    <div className={cx('fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-steel/50', xl ? 'p-2 pt-[max(2vh,env(safe-area-inset-top))] sm:p-4 sm:pt-[max(2vh,env(safe-area-inset-top))]' : 'p-4 pt-[max(5vh,env(safe-area-inset-top))]')} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className={cx('fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40', xl ? 'p-2 pt-[max(2vh,env(safe-area-inset-top))] sm:p-4 sm:pt-[max(2vh,env(safe-area-inset-top))]' : 'p-4 pt-[max(5vh,env(safe-area-inset-top))]')} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={ref} role="dialog" aria-modal="true" className={cx('fadein w-full rounded-md border border-line bg-surface shadow-xl', xl ? 'max-w-[1440px]' : wide ? 'max-w-4xl' : 'max-w-xl')}>
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <h2 className="font-display text-[17px] font-semibold">{title}</h2>
@@ -292,7 +292,7 @@ export function Drawer({ open, onClose, title, children, footer, width = 520 }: 
   }, [open, onClose])
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-steel/40" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-ink/30" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <aside className="fadein flex h-full w-full flex-col border-l border-line bg-surface shadow-2xl" style={{ maxWidth: width, paddingTop: 'env(safe-area-inset-top)', paddingRight: 'env(safe-area-inset-right)' }}>
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <h2 className="font-display text-[17px] font-semibold">{title}</h2>

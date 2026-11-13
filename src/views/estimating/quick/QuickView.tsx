@@ -221,7 +221,7 @@ function FactorAdjustPanel({ s, e }: { s: AppState; e: Estimate }) {
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Priced at"><SegButtons value={basis} onChange={setBasis} options={[{ id: 'p10', label: 'P10' }, { id: 'p50', label: 'P50' }, { id: 'p90', label: 'P90' }]} /></Field>
             <Field label="Adjustment %" className="w-28"><NumInput id="adj-pct" value={pctAdj} onChange={(v) => setPct(Math.max(-90, Math.min(300, Math.round(v * 10) / 10)))} /></Field>
-            <div className="flex flex-wrap gap-1 pb-0.5">{[-10, -5, 0, 5, 10, 15, 25].map((v) => <button key={v} type="button" onClick={() => setPct(v)} className={cx('rounded border px-1.5 py-0.5 text-[11.5px] tabular-nums', pctAdj === v ? 'border-ink bg-ink text-surface' : 'border-line text-muted hover:text-ink')}>{v > 0 ? '+' : ''}{v}%</button>)}</div>
+            <div className="flex flex-wrap gap-1 pb-0.5">{[-10, -5, 0, 5, 10, 15, 25].map((v) => <button key={v} type="button" onClick={() => setPct(v)} className={cx('rounded border px-1.5 py-0.5 text-[11.5px] tabular-nums', pctAdj === v ? 'border-link bg-link text-surface' : 'border-line text-muted hover:text-ink')}>{v > 0 ? '+' : ''}{v}%</button>)}</div>
           </div>
           <Field label="Override reason (required)"><Select id="adj-reason" value={reason} onChange={(ev) => setReason(ev.target.value)} options={[{ value: '', label: 'Choose a reason…' }, ...reasons.map((x) => ({ value: x, label: x }))]} /></Field>
           <Field label="Note (optional)" hint="What about this project the drivers do not capture"><TextArea id="adj-note" className="min-h-[52px]" placeholder="e.g. Two HDD crossings under the flood-control channel." value={note} onChange={(ev) => setNote(ev.target.value)} /></Field>
@@ -271,7 +271,7 @@ function AdjustPanel({ s, e }: { s: AppState; e: Estimate }) {
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Percentile basis"><SegButtons value={basis} onChange={setBasis} options={[{ id: 'p10', label: 'P10' }, { id: 'p50', label: 'P50' }, { id: 'p90', label: 'P90' }]} /></Field>
             <Field label="Adjustment %" className="w-28"><NumInput id="adj-pct" value={pctAdj} onChange={(v) => setPct(Math.max(-90, Math.min(300, Math.round(v * 10) / 10)))} /></Field>
-            <div className="flex flex-wrap gap-1 pb-0.5">{[-10, -5, 0, 5, 10, 15, 25].map((v) => <button key={v} type="button" onClick={() => setPct(v)} className={cx('rounded border px-1.5 py-0.5 text-[11.5px] tabular-nums', pctAdj === v ? 'border-ink bg-ink text-surface' : 'border-line text-muted hover:text-ink')}>{v > 0 ? '+' : ''}{v}%</button>)}</div>
+            <div className="flex flex-wrap gap-1 pb-0.5">{[-10, -5, 0, 5, 10, 15, 25].map((v) => <button key={v} type="button" onClick={() => setPct(v)} className={cx('rounded border px-1.5 py-0.5 text-[11.5px] tabular-nums', pctAdj === v ? 'border-link bg-link text-surface' : 'border-line text-muted hover:text-ink')}>{v > 0 ? '+' : ''}{v}%</button>)}</div>
           </div>
           <Field label="Reason (required)" hint="What about this project is not represented in the historical population?">
             <TextArea id="adj-reason" className="min-h-[60px]" placeholder="e.g. Two HDD crossings under the flood-control channel are not represented in the history." value={reason} onChange={(ev) => setReason(ev.target.value)} />
@@ -411,7 +411,7 @@ function ParametricAdjustPanel({ s, e }: { s: AppState; e: Estimate }) {
           <RiskRatings s={s} value={risks} onChange={setRisks} result={r} original={par.requestedRisks ?? par.inputs.risks} idPrefix="adj-risk" />
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Adjustment % of direct" className="w-36"><NumInput id="adj-pct" value={pctAdj} onChange={(v) => setPct(Math.max(-50, Math.min(100, Math.round(v * 10) / 10)))} /></Field>
-            <div className="flex flex-wrap gap-1 pb-0.5">{[-10, -5, 0, 5, 10, 15].map((v) => <button key={v} type="button" onClick={() => setPct(v)} className={cx('rounded border px-1.5 py-0.5 text-[11.5px] tabular-nums', pctAdj === v ? 'border-ink bg-ink text-surface' : 'border-line text-muted hover:text-ink')}>{v > 0 ? '+' : ''}{v}%</button>)}</div>
+            <div className="flex flex-wrap gap-1 pb-0.5">{[-10, -5, 0, 5, 10, 15].map((v) => <button key={v} type="button" onClick={() => setPct(v)} className={cx('rounded border px-1.5 py-0.5 text-[11.5px] tabular-nums', pctAdj === v ? 'border-link bg-link text-surface' : 'border-line text-muted hover:text-ink')}>{v > 0 ? '+' : ''}{v}%</button>)}</div>
           </div>
           <Field label="Reason (required)">{reasons.length ? <Select id="adj-reason" value={reason} onChange={(ev) => setReason(ev.target.value)} options={[{ value: '', label: 'Choose a reason…' }, ...reasons.map((x) => ({ value: x, label: x }))]} /> : <TextArea id="adj-reason" value={reason} onChange={(ev) => setReason(ev.target.value)} />}</Field>
           <Field label="Note (optional)"><TextArea id="adj-note" className="min-h-[52px]" placeholder="e.g. Geotech borings found rock along the first 2,000 ft." value={note} onChange={(ev) => setNote(ev.target.value)} /></Field>

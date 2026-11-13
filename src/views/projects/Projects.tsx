@@ -125,7 +125,7 @@ export default function Projects(_props: { projectId?: string; id?: string }) {
           <div className="scroll-x flex gap-1">
             {QUICK.map((x) => {
               const n = x.id === 'mine' ? mineCount : undefined
-              return <button key={x.id} onClick={() => setQuick(x.id)} className={cx('shrink-0 rounded-full border px-3 py-1 text-xs font-semibold', quick === x.id ? 'border-ink bg-ink text-surface' : 'border-line text-muted hover:text-ink')}>{x.label}{n !== undefined && <span className="ml-1 opacity-70">{n}</span>}</button>
+              return <button key={x.id} onClick={() => setQuick(x.id)} className={cx('shrink-0 rounded-full border px-3 py-1 text-xs font-semibold', quick === x.id ? 'border-link bg-link text-surface' : 'border-line text-muted hover:text-ink')}>{x.label}{n !== undefined && <span className="ml-1 opacity-70">{n}</span>}</button>
             })}
           </div>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))]">
