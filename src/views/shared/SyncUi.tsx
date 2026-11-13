@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useSync } from '@/core/store'
 import { appSync } from '@/core/syncClient'
 import { cx } from '@/core/util'
-import { Button, Input, Modal } from '@/ui/kit'
+import { BrandMark, Button, Input, Modal } from '@/ui/kit'
 import { toast } from '@/ui/toast'
 
 /** True when uploads and pasted files must be refused: the data is shared on a public server. */
@@ -14,7 +14,7 @@ export function Connecting() {
   return (
     <div className="flex h-full items-center justify-center bg-ground">
       <div className="text-center">
-        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-sm bg-marker font-display text-[20px] font-black text-markerink">C</div>
+        <BrandMark size={40} className="mx-auto mb-3 text-ground" />
         <div className="text-[14px] font-semibold">Loading the shared data…</div>
         <div className="mt-1 text-[12px] text-muted">Crosswalk demo · fictional data</div>
       </div>
