@@ -6,7 +6,7 @@ import { go, projectHref, useRoute } from './core/router'
 import { tasksFor } from './core/engine/workflow'
 import { planReminders, runReminders } from './core/engine/notify'
 import { addDays, cx, fmtDate, fmtDateTime, nowISO, uid } from './core/util'
-import { Avatar, Badge, Button, Callout, ConfirmButton, Empty, Field, Input, Modal, Select } from './ui/kit'
+import { Avatar, Badge, BrandMark, Button, Callout, ConfirmButton, Empty, Field, Input, Modal, Select } from './ui/kit'
 import { Toaster, toast } from './ui/toast'
 import { Icon, type IconName } from './ui/icons'
 import { AskPanel } from './views/shared/AskPanel'
@@ -160,7 +160,7 @@ function Sidebar({ active }: { active: string }) {
   return (
     <>
       <a href="#portfolio" className="flex items-center gap-2.5 px-4 pb-3 pt-4">
-        <span className="flex h-8 w-8 items-center justify-center rounded-sm bg-marker font-display text-[17px] font-black text-markerink">C</span>
+        <BrandMark className="text-steel" />
         <span className="flex flex-col leading-tight"><span className="font-display text-[17px] font-bold tracking-tight text-white">Crosswalk</span><span className="text-[11px] text-steelink/70">Capital project delivery</span></span>
       </a>
       <div className="mark-stripe mx-4 mb-3 h-1 rounded-full opacity-80" />

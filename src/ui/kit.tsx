@@ -53,6 +53,21 @@ export function HealthDot({ rag, label }: { rag: RAG; label?: string }) {
   return <span className="inline-flex items-center gap-1.5" title={label ? `${label}: ${rag}` : rag}><span className={cx('inline-block h-2.5 w-2.5 rounded-full', c, rag === 'red' && 'ring-2 ring-bad/25')} />{label && <span className="text-xs text-muted">{label}</span>}</span>
 }
 
+/** The Crosswalk mark: a crossing seen head-on, three stripes receding inside a marker-amber circle. The stripes take
+ *  the current text colour, so set it to the colour that sits behind the mark. */
+export function BrandMark({ size = 32, className }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="Crosswalk" className={cx('shrink-0', className)}>
+      <circle cx="32" cy="32" r="30" fill="rgb(var(--marker))" />
+      <g fill="currentColor">
+        <polygon points="24,15 40,15 42,22 22,22" />
+        <polygon points="19.5,27 44.5,27 47,35 17,35" />
+        <polygon points="14.5,40 49.5,40 53,49 11,49" />
+      </g>
+    </svg>
+  )
+}
+
 /** AACE estimate class chip: Class 5 is the widest range, Class 1 the tightest. */
 export function ClassBadge({ cls, size = 'sm' }: { cls: AaceClass; size?: 'sm' | 'lg' }) {
   const tone = cls >= 5 ? 'border-faint text-muted' : cls === 4 ? 'border-info/60 text-info' : 'border-ink text-ink'
