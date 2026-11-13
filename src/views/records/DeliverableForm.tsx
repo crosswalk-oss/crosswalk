@@ -180,7 +180,7 @@ function Checklist({ f, v, editable, onChange }: { f: DocField; v: ChecklistValu
             {choices.map((c) => (
               <button key={c} type="button" role="radio" aria-checked={v[item]?.v === c} disabled={!editable}
                 onClick={() => onChange({ ...v, [item]: { ...v[item], v: c } })}
-                className={cx('rounded px-2 py-0.5 text-[11.5px] font-semibold', v[item]?.v === c ? (c === 'No' || c === 'Issue' ? 'bg-bad text-white' : c === 'Watch' ? 'bg-marker text-markerink' : 'bg-ink text-white') : 'text-muted', editable && 'hover:text-ink')}>{c}</button>
+                className={cx('rounded px-2 py-0.5 text-[11.5px] font-semibold', v[item]?.v === c ? (c === 'No' || c === 'Issue' ? 'bg-bad text-white' : c === 'Watch' ? 'bg-marker text-markerink' : 'bg-link text-white') : 'text-muted', editable && 'hover:text-ink')}>{c}</button>
             ))}
           </div>
           {(editable || v[item]?.note) && (editable

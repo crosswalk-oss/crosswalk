@@ -307,7 +307,7 @@ function ContractsPanel({ projectId, contracts, canAward }: { projectId: string;
                     <td className="num">{money(c.value)}</td>
                     <td className="num">{c.changeOrders ? <span className={c.changeOrders / Math.max(1, c.value) > 0.1 ? 'text-bad' : ''}>{money(c.changeOrders)}<div className="text-[11px] text-faint">{((c.changeOrders / Math.max(1, c.value)) * 100).toFixed(1)}%</div></span> : '—'}</td>
                     <td className="num">{money(c.invoiced)}</td>
-                    <td><div className="h-1.5 rounded-full bg-sunken"><div className={cx('h-1.5 rounded-full', billed > 1 ? 'bg-bad' : 'bg-ink')} style={{ width: `${Math.min(100, billed * 100)}%` }} /></div><div className="text-[11px] tabular-nums text-faint">{(billed * 100).toFixed(0)}%</div></td>
+                    <td><div className="h-1.5 rounded-full bg-sunken"><div className={cx('h-1.5 rounded-full', billed > 1 ? 'bg-bad' : 'bg-link')} style={{ width: `${Math.min(100, billed * 100)}%` }} /></div><div className="text-[11px] tabular-nums text-faint">{(billed * 100).toFixed(0)}%</div></td>
                     <td className="whitespace-nowrap">
                       {c.status === 'rfp' && !running(c) && <Button size="sm" variant={canAward ? 'marker' : 'secondary'} disabled={!canAward} title={canAward ? undefined : 'Pass the authorization gate first'} onClick={() => setAward(c)}>Start award</Button>}
                       {c.workflowInstanceId && <Button size="sm" variant="ghost" onClick={() => setShow(show === c.id ? null : c.id)}>{show === c.id ? 'Hide' : 'Workflow'}</Button>}

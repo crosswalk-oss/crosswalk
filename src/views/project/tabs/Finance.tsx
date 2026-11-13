@@ -109,7 +109,7 @@ function FinanceInner({ projectId }: { projectId: string }) {
 function FlowStep({ n, title, text, href }: { n: number; title: string; text: string; href?: string }) {
   return (
     <li className="flex gap-2.5 rounded-md border border-line px-3 py-2">
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink text-[11px] font-bold text-surface">{n}</span>
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-link text-[11px] font-bold text-surface">{n}</span>
       <span className="min-w-0"><b className="block text-[13px]">{href ? <a href={href} className="text-link hover:underline">{title}</a> : title}</b><span className="text-muted">{text}</span></span>
     </li>
   )
@@ -188,7 +188,7 @@ function SplitBar({ label, capital, sub }: { label: string; capital?: number; su
   return (
     <div className="min-w-0">
       <div className="flex items-baseline justify-between gap-2 text-[12px]"><span className="font-semibold">{label}</span><span className="tabular-nums text-muted">{capital === undefined ? '—' : `${capital}% capital · ${Math.round((100 - capital) * 10) / 10}% O&M`}</span></div>
-      <div className="mt-1 flex h-2 overflow-hidden rounded-full bg-sunken">{capital !== undefined && <><span className="h-full bg-ink" style={{ width: `${capital}%` }} /><span className="h-full bg-info" style={{ width: `${100 - capital}%` }} /></>}</div>
+      <div className="mt-1 flex h-2 overflow-hidden rounded-full bg-sunken">{capital !== undefined && <><span className="h-full bg-link" style={{ width: `${capital}%` }} /><span className="h-full bg-info" style={{ width: `${100 - capital}%` }} /></>}</div>
       {sub && <div className="mt-1 text-[11px] text-faint">{sub}</div>}
     </div>
   )

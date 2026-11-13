@@ -1,38 +1,34 @@
 /* Crosswalk — capital project delivery for gas utilities.
-   Layout: steel side rail + working canvas; dense tables, tabular figures, pipeline-marker amber reserved for "needs action".
+   Layout: sand side rail + working canvas; dense tables, tabular figures, pipeline-marker amber reserved for "needs action".
    Tokens are RGB triplets so Tailwind can apply alpha (bg-ink/5). */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --ground: 241 243 246;
-  --surface: 255 255 255;
-  --sunken: 233 236 240;
-  --line: 214 220 227;
-  --ink: 20 27 36;
-  --muted: 79 90 105;
-  --faint: 126 136 150;
-  --steel: 24 33 45;
-  --steelink: 205 214 225;
-  --marker: 240 176 0;
-  --markerink: 28 22 4;
-  --link: 20 92 170;
+  /* Warm, light palette shared with the Crosswalk decks: ivory ground, sand rail, charcoal text, honey marker, blue accent. */
+  --ground: 250 246 239;
+  --surface: 255 254 251;
+  --sunken: 243 236 224;
+  --line: 228 221 209;
+  --ink: 35 38 45;
+  --muted: 102 98 92;
+  --faint: 132 126 117;
+  --steel: 240 231 215;
+  --steelink: 58 55 50;
+  --marker: 240 179 65;
+  --markerink: 35 38 45;
+  --link: 0 112 192;
   --good: 27 128 72;
-  --warn: 184 110 0;
+  --warn: 160 95 0;
   --bad: 192 40 40;
-  --info: 44 106 178;
+  --info: 0 112 192;
   --font-display: 'Archivo', 'Arial Narrow', system-ui, sans-serif;
   --font-body: 'Public Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-data: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --ground: 13 17 23; --surface: 21 27 35; --sunken: 16 21 28; --line: 42 51 63; --ink: 228 233 239; --muted: 158 169 183; --faint: 110 121 136;
-    --steel: 9 12 17; --steelink: 196 205 216; --marker: 246 194 50; --markerink: 28 22 4; --link: 112 172 242; --good: 74 186 120; --warn: 236 170 56; --bad: 240 100 100; --info: 112 162 230;
-    color-scheme: dark;
-  }
-}
+/* The dark palette is kept for anyone who sets data-theme="dark" on the page; the app no longer switches to it on its own. */
 :root[data-theme='dark'] {
   --ground: 13 17 23; --surface: 21 27 35; --sunken: 16 21 28; --line: 42 51 63; --ink: 228 233 239; --muted: 158 169 183; --faint: 110 121 136;
   --steel: 9 12 17; --steelink: 196 205 216; --marker: 246 194 50; --markerink: 28 22 4; --link: 112 172 242; --good: 74 186 120; --warn: 236 170 56; --bad: 240 100 100; --info: 112 162 230;
@@ -75,6 +71,6 @@ textarea.inp { min-height: 72px; resize: vertical; }
 
 }
 .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.mark-stripe { background-image: repeating-linear-gradient(135deg, rgb(var(--marker)) 0 8px, rgb(var(--steel)) 8px 16px); }
+.mark-stripe { background-image: repeating-linear-gradient(135deg, rgb(var(--marker)) 0 8px, rgb(var(--surface)) 8px 16px); }
 @keyframes fadein { from { opacity: 0.4; transform: translateY(2px); } to { opacity: 1; transform: none; } }
 .fadein { animation: fadein 160ms ease-out; }

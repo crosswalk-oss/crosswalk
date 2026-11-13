@@ -169,11 +169,11 @@ function VideoPanel({ m }: { m: MaterialInfo }) {
           ) : (
             <button type="button" onClick={() => void playFrom(0)} disabled={progress !== null} className="group absolute inset-0 flex h-full w-full flex-col items-center justify-center gap-4 text-steelink" aria-label={`Play ${m.title}`}>
               <span className="flex h-16 w-16 items-center justify-center rounded-full bg-marker text-markerink transition-transform group-hover:scale-105"><Icon name="play" className="ml-1 h-7 w-7" /></span>
-              <span className="px-4 text-center font-display text-[22px] font-bold leading-tight text-white sm:text-[28px]">{m.title}</span>
+              <span className="px-4 text-center font-display text-[22px] font-bold leading-tight text-ink sm:text-[28px]">{m.title}</span>
               <span className="text-[13px] text-steelink/70">
                 {progress !== null ? `Loading… ${Math.round(progress * 100)}%` : [meta.duration ? `${Math.floor(meta.duration / 60)} min ${Math.round(meta.duration % 60)} s` : null, meta.note, mb(m.bytes)].filter(Boolean).join(' · ')}
               </span>
-              {progress !== null && <span className="h-1 w-56 overflow-hidden rounded-full bg-white/15"><span className="block h-full bg-marker" style={{ width: `${Math.round(progress * 100)}%` }} /></span>}
+              {progress !== null && <span className="h-1 w-56 overflow-hidden rounded-full bg-ink/10"><span className="block h-full bg-link" style={{ width: `${Math.round(progress * 100)}%` }} /></span>}
             </button>
           )}
         </div>
@@ -242,7 +242,7 @@ function DeckPanel({ deck }: { deck: Deck }) {
         <span className="flex flex-1 flex-wrap justify-end gap-1">
           {deck.slides.map((s, k) => (
             <button key={s.id} type="button" onClick={() => go(k)} aria-label={`Slide ${k + 1}`} aria-current={k === i}
-              className={cx('h-7 min-w-7 rounded px-1.5 text-[12px] font-semibold tabular-nums', k === i ? 'bg-ink text-white' : 'text-muted hover:bg-sunken')}>{k + 1}</button>
+              className={cx('h-7 min-w-7 rounded px-1.5 text-[12px] font-semibold tabular-nums', k === i ? 'bg-link text-white' : 'text-muted hover:bg-sunken')}>{k + 1}</button>
           ))}
         </span>
       </div>

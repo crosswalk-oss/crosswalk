@@ -219,7 +219,7 @@ function Contingency({ projectId, onRequest }: { projectId: string; onRequest: (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <Panel title="Contingency drawdowns" subtitle={hasBudget ? `${money(pos.contingencyOriginal)} original · ${money(pos.contingencyUsed)} used · ${money(pos.contingencyRemaining)} remaining` : 'Contingency is held in the estimate until a control budget is authorized'}
         actions={<Button size="sm" variant="primary" onClick={onRequest} disabled={!hasBudget}>Request drawdown</Button>}>
-        {hasBudget && <div className="mb-3"><div className="mb-1 flex justify-between text-xs text-muted"><span>Used {pct(pos.contingencyOriginal ? pos.contingencyUsed / pos.contingencyOriginal : 0)}</span><span>{money(pos.contingencyRemaining)} left</span></div><div className="h-2 overflow-hidden rounded-full bg-sunken"><div className="h-full bg-ink" style={{ width: `${Math.min(100, (pos.contingencyUsed / Math.max(1, pos.contingencyOriginal)) * 100)}%` }} /></div></div>}
+        {hasBudget && <div className="mb-3"><div className="mb-1 flex justify-between text-xs text-muted"><span>Used {pct(pos.contingencyOriginal ? pos.contingencyUsed / pos.contingencyOriginal : 0)}</span><span>{money(pos.contingencyRemaining)} left</span></div><div className="h-2 overflow-hidden rounded-full bg-sunken"><div className="h-full bg-link" style={{ width: `${Math.min(100, (pos.contingencyUsed / Math.max(1, pos.contingencyOriginal)) * 100)}%` }} /></div></div>}
         {draws.length === 0 && fromChanges.length === 0 && <Empty title="No drawdowns">Requests made against a realized risk appear here with their approval routing.</Empty>}
         <div className="flex flex-col divide-y divide-line">
           {draws.map((d) => {

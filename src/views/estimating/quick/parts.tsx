@@ -19,7 +19,7 @@ export function RangeCompare({ low, point, high, aaceLow, aaceHigh, source = 'Hi
       <div className="absolute top-[13px] h-0.5 w-full bg-line" />
       <div className="absolute top-[6px] h-4 rounded-sm border border-dashed border-faint" style={{ left: x(aaceLow), width: `calc(${x(aaceHigh)} - ${x(aaceLow)})` }} title={`AACE Class 5: ${money(aaceLow)} – ${money(aaceHigh)}`} />
       <div className="absolute top-[9px] h-2.5 rounded-sm bg-info/45" style={{ left: x(low), width: `calc(${x(high)} - ${x(low)})` }} title={`${source} P10–P90: ${money(low)} – ${money(high)}`} />
-      <div className="absolute top-[3px] h-[22px] w-[3px] -translate-x-1/2 rounded-sm bg-ink" style={{ left: x(point) }} title={`Estimate ${money(point)}`} />
+      <div className="absolute top-[3px] h-[22px] w-[3px] -translate-x-1/2 rounded-sm bg-link" style={{ left: x(point) }} title={`Estimate ${money(point)}`} />
     </div>
   )
 }
@@ -29,7 +29,7 @@ export function RangeLegend({ source = 'Historical' }: { source?: string }) {
     <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted">
       <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-info/45" />{source} P10–P90</span>
       <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-3 rounded-sm border border-dashed border-faint" />AACE Class 5 −50% / +100%</span>
-      <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-[3px] bg-ink" />Estimate</span>
+      <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-[3px] bg-link" />Estimate</span>
     </div>
   )
 }

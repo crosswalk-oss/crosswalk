@@ -213,7 +213,7 @@ export function RangeBar({ low, point, high, scaleMax }: { low: number; point: n
     <div className="relative h-5 w-full">
       <div className="absolute top-2 h-1 w-full rounded bg-sunken" />
       <div className="absolute top-1.5 h-2 rounded bg-info/40" style={{ left: pct(low), width: `calc(${pct(high)} - ${pct(low)})` }} />
-      <div className="absolute top-0.5 h-4 w-1 rounded bg-ink" style={{ left: pct(point) }} title={money(point)} />
+      <div className="absolute top-0.5 h-4 w-1 rounded bg-link" style={{ left: pct(point) }} title={money(point)} />
     </div>
   )
 }

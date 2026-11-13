@@ -256,7 +256,7 @@ function Accuracy({ s, pts: all }: { s: AppState; pts: AccuracyPoint[] }) {
             const x = summarize(pts.filter((p) => p.cls === c))
             return { label: `Class ${c}`, sub: `n=${x.n}`, low: CLASS_RANGES[c].low, high: CLASS_RANGES[c].high, mean: x.mean, points: pts.filter((p) => p.cls === c).map((p) => ({ v: p.acc, title: `${p.code} v${p.version} Class ${p.cls}: estimate ${money(p.estimate)} → ${p.basis === 'final' ? 'final' : 'EAC'} ${money(p.outcome)} (${p.acc > 0 ? '+' : ''}${(p.acc * 100).toFixed(1)}%)` })) }
           })} />
-          <Legend items={[{ swatch: <Swatch className="border border-info/50 bg-info/20" />, label: 'AACE expected range' }, { swatch: <span className="inline-block h-2.5 w-2.5 rounded-full bg-link" />, label: 'Within range' }, { swatch: <span className="inline-block h-2.5 w-2.5 rounded-full bg-bad" />, label: 'Outside range' }, { swatch: <span className="inline-block h-3 w-[3px] bg-ink" />, label: 'Mean' }]} />
+          <Legend items={[{ swatch: <Swatch className="border border-info/50 bg-info/20" />, label: 'AACE expected range' }, { swatch: <span className="inline-block h-2.5 w-2.5 rounded-full bg-link" />, label: 'Within range' }, { swatch: <span className="inline-block h-2.5 w-2.5 rounded-full bg-bad" />, label: 'Outside range' }, { swatch: <span className="inline-block h-3 w-[3px] bg-link" />, label: 'Mean' }]} />
         </Panel>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {groupTable((x) => x.programId, (k) => <span className="inline-flex items-center gap-2"><ProgramTag programId={k} /><span className="text-[12px]">{s.programs.find((p) => p.id === k)?.name}</span></span>, 'By program')}
@@ -285,7 +285,7 @@ function Accuracy({ s, pts: all }: { s: AppState; pts: AccuracyPoint[] }) {
               </tbody>
             </table>
           </div>
-          <div className="border-t border-line px-4 py-2"><Legend items={[{ swatch: <Swatch className="border border-info/50 bg-info/20" />, label: 'AACE range' }, { swatch: <span className="inline-block h-3 w-[3px] bg-ink" />, label: 'Approved estimate' }, { swatch: <span className="inline-block h-2.5 w-2.5 rotate-45 bg-marker" />, label: 'Outcome (final or EAC)' }]} /></div>
+          <div className="border-t border-line px-4 py-2"><Legend items={[{ swatch: <Swatch className="border border-info/50 bg-info/20" />, label: 'AACE range' }, { swatch: <span className="inline-block h-3 w-[3px] bg-link" />, label: 'Approved estimate' }, { swatch: <span className="inline-block h-2.5 w-2.5 rotate-45 bg-marker" />, label: 'Outcome (final or EAC)' }]} /></div>
         </Panel>
       </>}
     </div>

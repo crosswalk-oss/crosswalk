@@ -154,7 +154,7 @@ function FundingBlock({ title, f, note }: { title: string; f: FundingFigures; no
   const max = Math.max(f.authorized, f.budget, f.eac, f.actual, 1)
   const items: { k: string; v: number; cls: string; strong?: boolean }[] = [
     { k: 'Authorized', v: f.authorized, cls: 'bg-ink/25' },
-    { k: 'Budget', v: f.budget, cls: 'bg-ink/70' },
+    { k: 'Budget', v: f.budget, cls: 'bg-muted/70' },
     { k: 'Forecast (EAC)', v: f.eac, cls: f.eac > f.budget ? 'bg-bad/80' : 'bg-link', strong: true },
     { k: 'Actual', v: f.actual, cls: 'bg-good/80' },
   ]
@@ -340,7 +340,7 @@ function AttentionList({ items }: { items: ReturnType<typeof needsAttention> }) 
 }
 
 function FilterChip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button onClick={onClick} className={cx('shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold', on ? 'border-ink bg-ink text-surface' : 'border-line text-muted hover:text-ink')}>{children}</button>
+  return <button onClick={onClick} className={cx('shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold', on ? 'border-link bg-link text-surface' : 'border-line text-muted hover:text-ink')}>{children}</button>
 }
 
 function TopVariances({ rows }: { rows: ProjectRow[] }) {
