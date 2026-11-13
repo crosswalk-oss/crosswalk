@@ -7,8 +7,10 @@ import { attachDatabasePool } from '@neon/functions'
 import { handle } from '../src/server/api'
 import { migrate } from '../src/server/migrate'
 import { sqlRepo, type Exec } from '../src/server/repo'
+import { handleShark } from '../src/server/shark'
 import page from './page.generated'
 import migrations from './migrations.generated'
+import sharkPage from './shark.generated'
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5 })
 attachDatabasePool(pool as never)
@@ -38,6 +40,14 @@ const SECURITY = {
 export default {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url)
+    if (url.pathname.startsWith('/api/shark/')) {
+      const res = await handleShark(request, { exec, passcode: process.env.EDIT_PASSCODE ?? '' })
+      for (const [k, v] of Object.entries(SECURITY)) res.headers.set(k, v)
+      return res
+    }
+    if ((request.method === 'GET' || request.method === 'HEAD') && (url.pathname === '/shark' || url.pathname === '/shark/')) {
+      return new Response(request.method === 'HEAD' ? null : sharkPage, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache', ...SECURITY } })
+    }
     if (url.pathname.startsWith('/api/')) {
       try { await ensureSchema() } catch (e) {
         console.error('crosswalk migrations', e)

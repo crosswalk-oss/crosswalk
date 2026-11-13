@@ -8,6 +8,7 @@ import { PGlite } from '@electric-sql/pglite'
 import { handle } from '../src/server/api'
 import { migrate } from '../src/server/migrate'
 import { sqlRepo, type Exec } from '../src/server/repo'
+import { handleShark } from '../src/server/shark'
 
 const port = Number(process.env.PORT ?? 8788)
 const passcode = process.env.EDIT_PASSCODE ?? 'local'
@@ -21,11 +22,13 @@ const repo = sqlRepo(exec)
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://localhost:${port}`)
+  if (url.pathname === '/shark') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(fs.readFileSync('server/shark.html')); return }
   if (url.pathname.startsWith('/api/')) {
     const chunks: Buffer[] = []
     for await (const c of req) chunks.push(c as Buffer)
     const body = chunks.length ? Buffer.concat(chunks) : undefined
-    const r = await handle(new Request(url, { method: req.method, headers: req.headers as Record<string, string>, body: body && req.method !== 'GET' ? body : undefined }), { repo, passcode })
+    const request = new Request(url, { method: req.method, headers: req.headers as Record<string, string>, body: body && req.method !== 'GET' ? body : undefined })
+    const r = url.pathname.startsWith('/api/shark/') ? await handleShark(request, { exec, passcode }) : await handle(request, { repo, passcode })
     res.writeHead(r.status, Object.fromEntries(r.headers))
     res.end(Buffer.from(await r.arrayBuffer()))
     return

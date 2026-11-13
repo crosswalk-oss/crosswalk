@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Shark Bucks</title>
+<style>
+/* Layout: one column on phones (name, then a list of ventures with steppers, a fixed bar that shows what is left);
+   the board view is a wide ranked bar list for a projector. */
+:root {
+  --bg: #f3f6f5; --card: #ffffff; --ink: #10231f; --muted: #5d6f6a; --line: #d6dfdc;
+  --accent: #0b7a5c; --accent-ink: #ffffff; --accent-soft: #dff2eb; --gold: #c98a04; --bad: #b3261e; --deep: #0c2b33;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.45 var(--sans); -webkit-text-size-adjust: 100%; }
+[hidden] { display: none !important; }
+.wrap { max-width: 640px; margin: 0 auto; padding: 16px max(16px, env(safe-area-inset-right, 0px)) 120px max(16px, env(safe-area-inset-left, 0px)); }
+.top { background: var(--deep); color: #fff; }
+.top .wrap { padding-top: 18px; padding-bottom: 16px; }
+.brand { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+h1 { margin: 0; font-size: 26px; letter-spacing: -0.01em; }
+.sub { color: #b9d3cd; font-size: 15px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-top: 14px; }
+label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+input[type=text], input[type=password], input[type=number], select, textarea {
+  width: 100%; font: inherit; color: var(--ink); background: #fff; border: 1.5px solid var(--line); border-radius: 10px; padding: 12px;
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 3px solid #7cc7b1; outline-offset: 1px; }
+.row2 { display: grid; gap: 12px; }
+.hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
+.venture { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); }
+.venture:first-child { border-top: 0; }
+.venture .name { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.venture.own .name { color: var(--muted); font-weight: 500; }
+.venture .tag { display: block; font-size: 12px; font-weight: 500; color: var(--muted); }
+.step { display: flex; align-items: center; gap: 6px; flex: none; }
+.step button { width: 44px; height: 44px; border-radius: 12px; border: 1.5px solid var(--line); background: #fff; color: var(--ink); font-size: 24px; line-height: 1; cursor: pointer; }
+.step button:disabled { opacity: .35; cursor: default; }
+.step .amt { width: 92px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; padding: 10px 8px; }
+.venture.has .amt { border-color: var(--accent); background: var(--accent-soft); }
+.bar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--line); box-shadow: 0 -6px 20px rgba(16,35,31,.08);
+  padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.bar .in { max-width: 640px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }
+.left { flex: 1; min-width: 0; }
+.left b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+.left span { font-size: 13px; color: var(--muted); }
+.left.over b { color: var(--bad); }
+.btn { font: inherit; font-weight: 700; border: 0; border-radius: 12px; padding: 14px 18px; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.ghost { background: #fff; color: var(--ink); border: 1.5px solid var(--line); }
+.btn.warn { background: var(--bad); }
+.msg { margin-top: 12px; padding: 12px 14px; border-radius: 10px; background: #fdecea; color: var(--bad); font-weight: 600; }
+.ok { background: var(--accent-soft); border-color: #9fd6c4; }
+.ok h2 { margin: 0 0 4px; font-size: 20px; }
+.list { margin: 10px 0 0; padding: 0; list-style: none; }
+.list li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid #b9e0d3; font-variant-numeric: tabular-nums; }
+.list li span:first-child { min-width: 0; overflow-wrap: anywhere; }
+h2 { font-size: 18px; margin: 0 0 10px; }
+/* board */
+body.board { background: var(--deep); color: #fff; }
+body.board .wrap { max-width: 1280px; padding-bottom: 32px; }
+.bhead { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; padding: 12px 0 8px; }
+.bhead .t { flex: 1; min-width: 260px; }
+.bhead h1 { font-size: clamp(34px, 5vw, 64px); }
+.bhead .sub { font-size: clamp(16px, 2vw, 24px); }
+.count { margin-top: 10px; font-size: clamp(18px, 2.4vw, 30px); font-weight: 700; color: #8fe3c8; }
+.qr { background: #fff; border-radius: 16px; padding: 12px; width: clamp(150px, 20vw, 260px); flex: none; }
+.qr svg { display: block; width: 100%; height: auto; }
+.qr p { margin: 6px 0 0; color: var(--ink); font-size: 13px; font-weight: 700; text-align: center; }
+.rank { margin-top: 18px; display: grid; gap: 10px; }
+.rk { display: grid; grid-template-columns: minmax(140px, 30%) 1fr; gap: 14px; align-items: center; }
+.rk .n { font-size: clamp(16px, 2vw, 26px); font-weight: 700; overflow-wrap: anywhere; }
+.rk .track { background: rgba(255,255,255,.1); border-radius: 10px; height: clamp(30px, 4vw, 46px); position: relative; overflow: hidden; }
+.rk .fill { position: absolute; inset: 0 auto 0 0; background: #2bb58c; border-radius: 10px; transition: width .6s ease; min-width: 2px; }
+.rk.first .fill { background: #f2b21b; }
+.rk .v { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-weight: 800; font-variant-numeric: tabular-nums; font-size: clamp(14px, 1.8vw, 22px); color: #06221c; white-space: nowrap; }
+.rk .v.out { color: #fff; }
+.rk .b { font-weight: 500; opacity: .8; }
+.wait { margin-top: 26px; font-size: clamp(18px, 2.2vw, 28px); color: #b9d3cd; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.chips span { border: 1px solid rgba(255,255,255,.25); border-radius: 999px; padding: 6px 12px; font-size: clamp(14px, 1.6vw, 20px); }
+/* admin */
+.switches { display: flex; flex-wrap: wrap; gap: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 6px 8px 6px 0; border-top: 1px solid var(--line); vertical-align: top; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.scroll { overflow-x: auto; }
+@media (prefers-reduced-motion: reduce) { .rk .fill { transition: none; } }
+</style>
+</head>
+<body>
+<div id="top" class="top"><div class="wrap"><div class="brand"><h1>Shark Bucks</h1><span class="sub" id="title"></span></div></div></div>
+
+<!-- invest -->
+<main id="invest" class="wrap" hidden>
+  <div id="closed" class="card" hidden><h2>Investing is closed</h2><div class="hint" id="closedHint">Wait for the pitches to finish. This page updates on its own.</div></div>
+  <div id="done" class="card ok" hidden>
+    <h2>You're in.</h2>
+    <div id="doneLine"></div>
+    <ul class="list" id="doneList"></ul>
+    <div style="margin-top:12px"><button class="btn ghost" id="change" type="button">Change my investments</button></div>
+  </div>
+  <form id="form" hidden>
+    <div class="card row2">
+      <div><label for="name">Your first and last name</label><input id="name" type="text" autocomplete="name" maxlength="60" placeholder="First Last"></div>
+      <div><label for="own">Your own venture</label><select id="own"></select><div class="hint">You can't invest in your own venture.</div></div>
+    </div>
+    <div class="card"><h2 id="pick"></h2><div id="ventures"></div></div>
+    <div id="err" class="msg" hidden></div>
+  </form>
+  <div id="results" class="card" hidden><h2>Results</h2><div id="resultList"></div></div>
+</main>
+<div id="bar" class="bar" hidden><div class="in"><div class="left" id="left"><b></b><span>left to invest</span></div><button class="btn" id="submit" type="button">Lock it in</button></div></div>
+
+<!-- board -->
+<main id="board" class="wrap" hidden>
+  <div class="bhead">
+    <div class="t"><h1>Shark Bucks</h1><div class="sub" id="btitle"></div><div class="count" id="count"></div></div>
+    <div class="qr" id="qr"><svg role="img" aria-label="QR code for the Shark Bucks page" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 41 41" class="segno"><path fill="#fff" d="M0 0h41v41h-41z"/><path class="qrline" stroke="#0c2b33" d="M2 2.5h7m1 0h1m1 0h1m7 0h4m1 0h2m3 0h1m1 0h7m-37 1h1m5 0h1m1 0h4m4 0h1m5 0h3m3 0h1m1 0h1m5 0h1m-37 1h1m1 0h3m1 0h1m5 0h2m1 0h1m7 0h1m1 0h1m4 0h1m1 0h3m1 0h1m-37 1h1m1 0h3m1 0h1m1 0h3m2 0h1m1 0h1m1 0h1m2 0h1m1 0h1m1 0h2m1 0h1m2 0h1m1 0h3m1 0h1m-37 1h1m1 0h3m1 0h1m2 0h1m5 0h2m2 0h1m1 0h1m2 0h1m1 0h3m1 0h1m1 0h3m1 0h1m-37 1h1m5 0h1m2 0h4m2 0h1m3 0h3m3 0h1m2 0h1m1 0h1m5 0h1m-37 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-29 1h1m2 0h1m1 0h1m1 0h1m1 0h1m1 0h2m6 0h2m-29 1h1m1 0h2m1 0h3m2 0h2m3 0h3m1 0h1m1 0h1m2 0h1m1 0h3m1 0h1m2 0h1m1 0h2m-37 1h3m4 0h2m1 0h1m1 0h1m1 0h2m1 0h5m1 0h1m1 0h2m1 0h1m5 0h2m-36 1h7m3 0h1m2 0h1m4 0h1m2 0h1m1 0h2m3 0h2m1 0h1m1 0h1m-34 1h5m3 0h2m4 0h1m1 0h1m1 0h3m1 0h5m3 0h2m1 0h2m-32 1h4m2 0h2m1 0h2m1 0h1m1 0h1m6 0h3m2 0h2m1 0h1m1 0h3m-37 1h1m2 0h2m2 0h1m4 0h1m1 0h2m2 0h2m1 0h2m1 0h1m2 0h2m1 0h4m1 0h2m-37 1h1m1 0h1m2 0h2m2 0h1m1 0h2m1 0h1m2 0h5m2 0h1m4 0h2m1 0h1m1 0h2m-34 1h4m1 0h2m1 0h1m9 0h2m4 0h7m2 0h1m-35 1h1m1 0h2m1 0h1m4 0h1m3 0h1m2 0h5m1 0h2m3 0h1m3 0h2m1 0h1m-36 1h1m1 0h1m5 0h1m3 0h2m1 0h1m1 0h1m1 0h1m1 0h9m3 0h3m-37 1h2m4 0h1m1 0h3m4 0h4m8 0h2m1 0h1m1 0h2m1 0h2m-37 1h1m2 0h1m3 0h2m1 0h4m1 0h1m1 0h2m3 0h2m3 0h1m1 0h3m1 0h1m1 0h1m-35 1h1m2 0h7m4 0h5m1 0h2m3 0h1m4 0h3m2 0h1m-35 1h1m1 0h2m1 0h1m1 0h1m2 0h1m1 0h1m1 0h1m2 0h1m1 0h4m1 0h1m1 0h1m4 0h1m-33 1h1m1 0h2m1 0h2m1 0h1m4 0h1m5 0h1m1 0h2m4 0h4m-32 1h3m2 0h1m1 0h1m1 0h1m1 0h2m5 0h1m1 0h1m2 0h3m1 0h1m1 0h1m2 0h5m-37 1h3m3 0h4m3 0h1m3 0h1m1 0h2m1 0h4m2 0h1m1 0h1m1 0h1m1 0h1m1 0h1m-35 1h3m4 0h1m1 0h1m1 0h1m1 0h3m1 0h1m1 0h1m2 0h1m1 0h5m1 0h2m1 0h2m-36 1h2m1 0h5m2 0h2m1 0h1m1 0h2m1 0h1m2 0h1m2 0h2m2 0h2m2 0h3m-36 1h1m2 0h2m5 0h1m1 0h2m5 0h3m1 0h1m2 0h6m3 0h1m-34 1h1m3 0h1m1 0h6m4 0h4m3 0h1m2 0h8m-28 1h1m2 0h3m1 0h1m1 0h2m1 0h2m1 0h2m3 0h1m3 0h1m1 0h1m1 0h1m-37 1h7m1 0h1m2 0h2m1 0h3m1 0h1m3 0h1m3 0h1m1 0h1m1 0h1m1 0h1m1 0h3m-37 1h1m5 0h1m1 0h1m3 0h3m2 0h1m2 0h1m1 0h3m2 0h2m3 0h1m2 0h2m-37 1h1m1 0h3m1 0h1m7 0h1m2 0h2m2 0h1m6 0h6m1 0h2m-37 1h1m1 0h3m1 0h1m1 0h1m1 0h3m3 0h1m1 0h2m1 0h1m1 0h2m1 0h5m1 0h1m2 0h2m-37 1h1m1 0h3m1 0h1m1 0h2m1 0h4m1 0h1m1 0h1m1 0h2m1 0h1m6 0h1m1 0h1m-33 1h1m5 0h1m2 0h1m3 0h2m1 0h1m1 0h1m1 0h1m2 0h1m1 0h3m1 0h6m-35 1h7m1 0h3m4 0h1m1 0h1m1 0h2m1 0h1m1 0h3m5 0h5"/></svg><p>Scan to invest</p></div>
+  </div>
+  <div id="bwait" class="wait" hidden></div>
+  <div id="chips" class="chips" hidden></div>
+  <div id="rank" class="rank" hidden></div>
+</main>
+
+<!-- admin -->
+<main id="admin" class="wrap" hidden>
+  <div class="card" id="gate"><label for="pass">Passcode</label><input id="pass" type="password" autocomplete="off"><div style="margin-top:12px"><button class="btn" id="unlock" type="button">Unlock</button></div><div id="gateErr" class="msg" hidden></div></div>
+  <div id="panel" hidden>
+    <div class="card"><h2>Tonight</h2><div class="switches">
+      <button class="btn" id="tOpen" type="button"></button>
+      <button class="btn ghost" id="tReveal" type="button"></button>
+      <a class="btn ghost" href="#board" style="text-decoration:none">Open the board</a>
+    </div><div class="hint" id="status"></div></div>
+    <div class="card row2"><h2 style="margin:0">Setup</h2>
+      <div><label for="aTitle">Title</label><input id="aTitle" type="text" maxlength="80"></div>
+      <div><label for="aBudget">Shark Bucks per person</label><input id="aBudget" type="number" min="1" step="1000"></div>
+      <div><label for="aVentures">Ventures, one per line</label><textarea id="aVentures" rows="10"></textarea></div>
+      <div><button class="btn" id="save" type="button">Save setup</button> <span class="hint" id="saved"></span></div>
+    </div>
+    <div class="card"><h2>Who has invested (<span id="iCount">0</span>)</h2><div class="scroll"><table><thead><tr><th>Name</th><th>Own venture</th><th class="num">Invested</th></tr></thead><tbody id="iRows"></tbody></table></div></div>
+    <div class="card"><h2>Totals</h2><div id="aTotals"></div></div>
+    <div class="card"><h2>Start over</h2><div class="hint" style="margin:0 0 10px">Clears the board for a new round. Earlier rounds stay in the database.</div><button class="btn warn" id="reset" type="button">New round</button></div>
+  </div>
+</main>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id) }
+  var money = function (n) { return '$' + Math.round(n).toLocaleString('en-US') }
+  var state = null, alloc = {}, editing = false, pass = '', timer = null, dirty = false
+  var device = ''
+  try { device = localStorage.getItem('shark-device') || '' } catch (e) {}
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(device)) {
+    device = 'd' + Math.random().toString(36).slice(2) + Date.now().toString(36)
+    try { localStorage.setItem('shark-device', device) } catch (e) {}
+  }
+  try { pass = sessionStorage.getItem('shark-pass') || '' } catch (e) {}
+
+  function api(method, path, body) {
+    var headers = { 'x-shark-device': device }
+    if (pass) headers['x-crosswalk-passcode'] = pass
+    if (body) headers['content-type'] = 'application/json'
+    return fetch('/api/shark/' + path, { method: method, headers: headers, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' })
+      .then(function (r) { return r.json().catch(function () { return {} }).then(function (j) { if (!r.ok) { var e = new Error(j.error || 'Something went wrong'); e.status = r.status; throw e } return j }) })
+  }
+  function view() { var h = location.hash.replace('#', ''); return h === 'board' || h === 'admin' ? h : 'invest' }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e }
+
+  // ---------- invest ----------
+  function total() { var t = 0; for (var k in alloc) t += alloc[k] || 0; return t }
+  function buildVentures() {
+    var c = state.config, box = $('ventures'); box.textContent = ''
+    var own = $('own'), keep = own.value
+    own.textContent = ''
+    own.appendChild(new Option('Choose your venture', '__none'))
+    c.ventures.forEach(function (v) { own.appendChild(new Option(v.name, v.id)) })
+    own.appendChild(new Option("I'm not on a team tonight", ''))
+    own.value = keep || '__none'
+    c.ventures.forEach(function (v) {
+      var row = el('div', 'venture'); row.dataset.id = v.id
+      var name = el('div', 'name', v.name); var tag = el('span', 'tag', ''); name.appendChild(tag)
+      var step = el('div', 'step')
+      var minus = el('button', '', '−'); minus.type = 'button'; minus.setAttribute('aria-label', 'Less for ' + v.name)
+      var amt = el('input', 'amt'); amt.type = 'text'; amt.inputMode = 'numeric'; amt.id = 'amt-' + v.id; amt.setAttribute('aria-label', 'Amount for ' + v.name)
+      var plus = el('button', '', '+'); plus.type = 'button'; plus.setAttribute('aria-label', 'More for ' + v.name)
+      minus.onclick = function () { setAmt(v.id, (alloc[v.id] || 0) - c.step) }
+      plus.onclick = function () { setAmt(v.id, (alloc[v.id] || 0) + Math.min(c.step, Math.max(0, c.budget - total()))) }
+      amt.onfocus = function () { amt.value = alloc[v.id] ? String(alloc[v.id]) : ''; amt.select() }
+      amt.onblur = function () { setAmt(v.id, parseInt(amt.value.replace(/[^0-9]/g, ''), 10) || 0) }
+      step.appendChild(minus); step.appendChild(amt); step.appendChild(plus)
+      row.appendChild(name); row.appendChild(step); box.appendChild(row)
+    })
+    paint()
+  }
+  function setAmt(id, n) { dirty = true; alloc[id] = Math.max(0, Math.round(n)); if (!alloc[id]) delete alloc[id]; paint() }
+  function paint() {
+    var c = state.config, own = $('own').value, t = total(), left = c.budget - t
+    if (own && own !== '__none' && alloc[own]) { delete alloc[own]; t = total(); left = c.budget - t }
+    Array.prototype.forEach.call(document.querySelectorAll('#ventures .venture'), function (row) {
+      var id = row.dataset.id, mine = id === own, a = alloc[id] || 0
+      row.classList.toggle('own', mine); row.classList.toggle('has', a > 0)
+      row.querySelector('.tag').textContent = mine ? 'Your venture' : ''
+      var b = row.querySelectorAll('button'), input = row.querySelector('input')
+      b[0].disabled = mine || a <= 0; b[1].disabled = mine || left <= 0; input.disabled = mine
+      if (document.activeElement !== input) input.value = mine ? '—' : money(a)
+    })
+    $('pick').textContent = 'Invest your ' + money(c.budget)
+    var L = $('left'); L.classList.toggle('over', left < 0)
+    L.querySelector('b').textContent = money(Math.abs(left)); L.querySelector('span').textContent = left < 0 ? 'over your limit' : 'left to invest'
+    var name = $('name').value.trim()
+    $('submit').disabled = !(name.length >= 2 && own !== '__none' && t > 0 && left >= 0)
+  }
+  function showInvest() {
+    var c = state.config, mine = state.mine
+    $('title').textContent = c.title
+    var canForm = c.open && (!mine || editing)
+    $('closed').hidden = c.open || !!mine
+    $('closedHint').textContent = c.ventures.length ? 'Wait for your professor to open it. This page updates on its own.' : 'Nothing is set up yet.'
+    $('done').hidden = !mine || editing
+    if (mine && !editing) {
+      $('doneLine').textContent = mine.name + ', you invested ' + money(mine.total) + ' of your ' + money(c.budget) + '.'
+      var ul = $('doneList'); ul.textContent = ''
+      c.ventures.forEach(function (v) { if (mine.alloc[v.id]) { var li = el('li'); li.appendChild(el('span', '', v.name)); li.appendChild(el('span', '', money(mine.alloc[v.id]))); ul.appendChild(li) } })
+      $('change').hidden = !c.open
+    }
+    var wasHidden = $('form').hidden
+    $('form').hidden = !canForm; $('bar').hidden = !canForm
+    if (canForm && (wasHidden || document.querySelectorAll('#ventures .venture').length !== c.ventures.length)) buildVentures()
+    else if (canForm) paint()
+    var res = $('results'); res.hidden = !(c.reveal && state.totals)
+    if (!res.hidden) drawTotals($('resultList'), false)
+  }
+  $('name').oninput = function () { paint() }
+  $('own').onchange = function () { paint() }
+  $('change').onclick = function () {
+    editing = true; dirty = false; alloc = {}
+    var m = state.mine; for (var k in m.alloc) alloc[k] = m.alloc[k]
+    $('name').value = m.name; showInvest(); $('own').value = m.own; paint()
+  }
+  $('submit').onclick = function () {
+    var btn = $('submit'); btn.disabled = true; $('err').hidden = true
+    var own = $('own').value
+    api('POST', 'invest', { device: device, name: $('name').value.trim(), own: own === '__none' ? '' : own, alloc: alloc })
+      .then(function () { editing = false; dirty = false; return refresh() })
+      .then(function () { window.scrollTo(0, 0) })
+      .catch(function (e) { $('err').textContent = e.message; $('err').hidden = false; paint() })
+  }
+
+  // ---------- totals ----------
+  function ranked() {
+    var c = state.config, t = state.totals || {}
+    return c.ventures.map(function (v) { var x = t[v.id] || { amount: 0, backers: 0 }; return { name: v.name, amount: x.amount, backers: x.backers } })
+      .sort(function (a, b) { return b.amount - a.amount || b.backers - a.backers || a.name.localeCompare(b.name) })
+  }
+  function drawTotals(box, big) {
+    var rows = ranked(), max = Math.max(1, rows.length ? rows[0].amount : 1)
+    box.textContent = ''
+    rows.forEach(function (r, i) {
+      if (big) {
+        var row = el('div', 'rk' + (i === 0 && r.amount > 0 ? ' first' : ''))
+        row.appendChild(el('div', 'n', (i + 1) + '. ' + r.name))
+        var track = el('div', 'track'), fill = el('div', 'fill'), pct = Math.round((r.amount / max) * 100)
+        fill.style.width = pct + '%'
+        var v = el('div', 'v' + (pct < 30 ? ' out' : ''), money(r.amount) + ' ')
+        v.appendChild(el('span', 'b', '· ' + r.backers + (r.backers === 1 ? ' investor' : ' investors')))
+        if (pct < 30) v.style.left = 'calc(' + pct + '% + 12px)'
+        track.appendChild(fill); track.appendChild(v); row.appendChild(track); box.appendChild(row)
+      } else {
+        var li = el('div', 'venture'); li.appendChild(el('div', 'name', (i + 1) + '. ' + r.name))
+        var s = el('div', '', money(r.amount)); s.style.fontWeight = '700'; s.style.fontVariantNumeric = 'tabular-nums'; li.appendChild(s); box.appendChild(li)
+      }
+    })
+  }
+  function showBoard() {
+    var c = state.config
+    $('btitle').textContent = c.title
+    $('count').textContent = state.investors + (state.investors === 1 ? ' investor in' : ' investors in') + (c.open ? '' : ' · investing closed')
+    $('qr').hidden = !c.open
+    var revealed = c.reveal && state.totals
+    $('rank').hidden = !revealed; $('bwait').hidden = !!revealed; $('chips').hidden = !!revealed
+    if (revealed) drawTotals($('rank'), true)
+    else {
+      $('bwait').textContent = c.open ? 'Scan the code and invest your ' + money(c.budget) + '. Totals stay hidden until the reveal.' : 'Totals are hidden until the reveal.'
+      var chips = $('chips'); chips.textContent = ''
+      c.ventures.forEach(function (v) { chips.appendChild(el('span', '', v.name)) })
+    }
+  }
+
+  // ---------- admin ----------
+  function showAdmin() {
+    var c = state.config, ok = !!state.admin
+    $('gate').hidden = ok; $('panel').hidden = !ok
+    if (!ok) return
+    $('tOpen').textContent = c.open ? 'Close investing' : 'Open investing'
+    $('tOpen').className = 'btn' + (c.open ? ' warn' : '')
+    $('tReveal').textContent = c.reveal ? 'Hide the results' : 'Reveal the results'
+    $('status').textContent = 'Investing is ' + (c.open ? 'open' : 'closed') + '. Results are ' + (c.reveal ? 'showing' : 'hidden') + '. Round ' + c.round + '.'
+    if (document.activeElement !== $('aTitle') && document.activeElement !== $('aBudget') && document.activeElement !== $('aVentures') && !$('aVentures').dataset.touched) {
+      $('aTitle').value = c.title; $('aBudget').value = c.budget; $('aVentures').value = c.ventures.map(function (v) { return v.name }).join('\n')
+    }
+    drawTotals($('aTotals'), false)
+    api('GET', 'investors').then(function (r) {
+      var names = {}; c.ventures.forEach(function (v) { names[v.id] = v.name })
+      $('iCount').textContent = r.investors.length
+      var tb = $('iRows'); tb.textContent = ''
+      r.investors.forEach(function (p) { var tr = el('tr'); tr.appendChild(el('td', '', p.name)); tr.appendChild(el('td', '', names[p.own] || 'None')); tr.appendChild(el('td', 'num', money(p.total))); tb.appendChild(tr) })
+    }).catch(function () {})
+  }
+  $('aVentures').oninput = $('aTitle').oninput = $('aBudget').oninput = function () { $('aVentures').dataset.touched = '1'; $('saved').textContent = 'Not saved yet' }
+  $('unlock').onclick = function () {
+    pass = $('pass').value.trim(); $('gateErr').hidden = true
+    refresh().then(function () { if (state.admin) { try { sessionStorage.setItem('shark-pass', pass) } catch (e) {} } else { pass = ''; $('gateErr').textContent = 'Wrong passcode'; $('gateErr').hidden = false } })
+  }
+  $('pass').onkeydown = function (e) { if (e.key === 'Enter') $('unlock').onclick() }
+  function setConfig(patch) { return api('POST', 'config', patch).then(refresh).catch(function (e) { $('status').textContent = e.message }) }
+  $('tOpen').onclick = function () { setConfig({ open: !state.config.open }) }
+  $('tReveal').onclick = function () { setConfig({ reveal: !state.config.reveal }) }
+  $('save').onclick = function () {
+    var lines = $('aVentures').value.split('\n').map(function (s) { return s.trim() }).filter(Boolean)
+    delete $('aVentures').dataset.touched
+    setConfig({ title: $('aTitle').value, budget: parseInt($('aBudget').value, 10) || state.config.budget, ventures: lines }).then(function () { $('saved').textContent = 'Saved' })
+  }
+  var armed = false
+  $('reset').onclick = function () {
+    if (!armed) { armed = true; $('reset').textContent = 'Tap again to clear the board'; setTimeout(function () { armed = false; $('reset').textContent = 'New round' }, 4000); return }
+    armed = false; $('reset').textContent = 'New round'
+    api('POST', 'reset').then(refresh)
+  }
+
+  // ---------- loop ----------
+  function render() {
+    var v = view()
+    document.body.classList.toggle('board', v === 'board')
+    $('top').hidden = v === 'board'
+    $('invest').hidden = v !== 'invest'; $('board').hidden = v !== 'board'; $('admin').hidden = v !== 'admin'
+    if (v !== 'invest') $('bar').hidden = true
+    $('title').textContent = state.config.title
+    if (v === 'invest') showInvest(); else if (v === 'board') showBoard(); else showAdmin()
+  }
+  function refresh() { return api('GET', 'state').then(function (s) { state = s; render() }) }
+  function loop() {
+    clearTimeout(timer)
+    var wait = view() === 'invest' ? 10000 : 3000
+    timer = setTimeout(function () { (document.hidden ? Promise.resolve() : refresh().catch(function () {})).then(loop) }, wait)
+  }
+  window.addEventListener('hashchange', function () { if (state) render(); loop() })
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh().catch(function () {}) })
+  refresh().catch(function () { $('invest').hidden = false; $('closed').hidden = false; $('closedHint').textContent = 'Could not load. Check your connection and reload.' }).then(loop)
+})()
+</script>
+</body>
+</html>
