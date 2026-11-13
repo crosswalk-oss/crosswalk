@@ -81,6 +81,8 @@ body.board .wrap { max-width: 1280px; padding-bottom: 32px; }
 .wait { margin-top: 26px; font-size: clamp(18px, 2.2vw, 28px); color: #b9d3cd; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .chips span { border: 1px solid rgba(255,255,255,.25); border-radius: 999px; padding: 6px 12px; font-size: clamp(14px, 1.6vw, 20px); }
+.share { text-align: center; }
+.shareQr svg { display: block; width: min(280px, 78%); height: auto; margin: 4px auto 0; background: #fff; border-radius: 12px; padding: 8px; }
 /* admin */
 .switches { display: flex; flex-wrap: wrap; gap: 10px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -111,6 +113,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     <div id="err" class="msg" hidden></div>
   </form>
   <div id="results" class="card" hidden><h2>Results</h2><div id="resultList"></div></div>
+  <div class="card share"><h2>Scan to invest</h2><div class="shareQr" data-qr></div><div class="hint">Point a phone camera at the code to open this page.</div></div>
 </main>
 <div id="bar" class="bar" hidden><div class="in"><div class="left" id="left"><b></b><span>left to invest</span></div><button class="btn" id="submit" type="button">Lock it in</button></div></div>
 
@@ -142,6 +145,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     </div>
     <div class="card"><h2>Who has invested (<span id="iCount">0</span>)</h2><div class="scroll"><table><thead><tr><th>Name</th><th>Own venture</th><th class="num">Invested</th></tr></thead><tbody id="iRows"></tbody></table></div></div>
     <div class="card"><h2>Totals</h2><div id="aTotals"></div></div>
+    <div class="card share"><h2>Scan to invest</h2><div class="shareQr" data-qr></div></div>
     <div class="card"><h2>Start over</h2><div class="hint" style="margin:0 0 10px">Clears the board for a new round. Earlier rounds stay in the database.</div><button class="btn warn" id="reset" type="button">New round</button></div>
   </div>
 </main>
@@ -329,6 +333,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     armed = false; $('reset').textContent = 'New round'
     api('POST', 'reset').then(refresh)
   }
+
+  // the same code the board shows, copied into the invest and admin pages
+  var qrSvg = document.querySelector('#qr svg')
+  if (qrSvg) Array.prototype.forEach.call(document.querySelectorAll('[data-qr]'), function (box) { box.appendChild(qrSvg.cloneNode(true)) })
 
   // ---------- loop ----------
   function render() {
