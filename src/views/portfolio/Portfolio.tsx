@@ -153,10 +153,10 @@ function Tile({ label, value, sub, tone, href }: { label: string; value: string;
 function FundingBlock({ title, f, note }: { title: string; f: FundingFigures; note: string }) {
   const max = Math.max(f.authorized, f.budget, f.eac, f.actual, 1)
   const items: { k: string; v: number; cls: string; strong?: boolean }[] = [
-    { k: 'Authorized', v: f.authorized, cls: 'bg-ink/25' },
-    { k: 'Budget', v: f.budget, cls: 'bg-muted/70' },
+    { k: 'Authorized', v: f.authorized, cls: 'bg-c3' },
+    { k: 'Budget', v: f.budget, cls: 'bg-c4' },
     { k: 'Forecast (EAC)', v: f.eac, cls: f.eac > f.budget ? 'bg-bad/80' : 'bg-link', strong: true },
-    { k: 'Actual', v: f.actual, cls: 'bg-good/80' },
+    { k: 'Actual', v: f.actual, cls: 'bg-c2' },
   ]
   const headroom = f.authorized - f.eac
   return (
@@ -211,7 +211,7 @@ function StageFunnel({ s, rows, programIds }: { s: AppState; rows: ProjectRow[];
                 const seg = pr_rows.filter((r) => r.phase === i && r.p.status !== 'closed')
                 const v = sum(seg.map(val))
                 if (!v) return null
-                return <span key={ph} title={`${pr.code} · ${ph}: ${seg.length} project(s), ${money(sum(seg.map((r) => r.budget)))}\n${seg.map((r) => r.p.code).join(', ')}`} className={cx('flex items-center justify-center border-r border-surface text-[11px] font-bold', PHASE_CLS[i], i >= 2 ? 'text-white' : 'text-ink')} style={{ width: `${(v / total) * 100}%` }}>{mode === 'count' ? seg.length : ''}</span>
+                return <span key={ph} title={`${pr.code} · ${ph}: ${seg.length} project(s), ${money(sum(seg.map((r) => r.budget)))}\n${seg.map((r) => r.p.code).join(', ')}`} className={cx('flex items-center justify-center border-r border-surface text-[11px] font-bold', PHASE_CLS[i], i >= 1 ? 'text-white' : 'text-ink')} style={{ width: `${(v / total) * 100}%` }}>{mode === 'count' ? seg.length : ''}</span>
               })}
               {(() => { const seg = pr_rows.filter((r) => r.p.status === 'closed'); const v = sum(seg.map(val)); return v ? <span title={`Closed: ${seg.map((r) => r.p.code).join(', ')}`} className="flex items-center justify-center border border-dashed border-faint text-[11px] text-muted" style={{ width: `${(v / total) * 100}%` }}>{mode === 'count' ? seg.length : ''}</span> : null })()}
             </div>

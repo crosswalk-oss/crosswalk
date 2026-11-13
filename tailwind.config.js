@@ -22,6 +22,7 @@ export default {
         warn: v('warn'),
         bad: v('bad'),
         info: v('info'),
+        c1: v('c1'), c2: v('c2'), c3: v('c3'), c4: v('c4'), // chart fills: blue, green, orange, berry
       },
       fontFamily: {
         // System fonts only: no web-font downloads (the app makes no third-party requests).

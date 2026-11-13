@@ -62,7 +62,7 @@ export default function FieldMode(_props: { projectId?: string; id?: string }) {
             <div className="truncate font-display text-[18px] font-bold text-ink">{p ? `${p.code} · ${plan!.workPackage}` : 'Tailboard'}</div>
           </div>
           <button onClick={() => { setOffline(!offline); toast(offline ? 'Back online' : 'Offline: tailboards will queue on this device', 'info') }}
-            className={cx('flex h-11 items-center gap-2 rounded-md border-2 px-3 text-[13px] font-bold', offline ? 'border-warn bg-warn text-ink' : 'border-good/70 text-ink')} aria-pressed={offline}>
+            className={cx('flex h-11 items-center gap-2 rounded-md border-2 px-3 text-[13px] font-bold', offline ? 'border-warn bg-warn text-white' : 'border-good/70 text-ink')} aria-pressed={offline}>
             <span className={cx('h-2.5 w-2.5 rounded-full', offline ? 'bg-link' : 'bg-good')} />{offline ? 'Offline' : 'Online'}
           </button>
         </div>
@@ -264,7 +264,7 @@ function ReportForm({ planId, offline, onQueue, onDone }: { planId: string; offl
   }
   const T: { id: SafetyEvent['type']; label: string; cls: string }[] = [
     { id: 'observation', label: 'Observation', cls: 'border-link bg-link text-surface' },
-    { id: 'near-miss', label: 'Near miss', cls: 'border-warn bg-warn text-ink' },
+    { id: 'near-miss', label: 'Near miss', cls: 'border-warn bg-warn text-white' },
     { id: 'incident', label: 'Incident', cls: 'border-bad bg-bad text-white' },
   ]
   return (

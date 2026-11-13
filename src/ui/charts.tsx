@@ -2,7 +2,8 @@
 import React, { useState } from 'react'
 import { money } from '@/core/util'
 
-export const SERIES = ['rgb(var(--link))', 'rgb(var(--marker))', 'rgb(var(--good))', 'rgb(var(--bad))', 'rgb(var(--muted))', 'rgb(var(--info))']
+// Blue, berry, green and orange are the four deck colours (chart-strength fills); index 2 stays green because callers use it for "completed".
+export const SERIES = ['rgb(var(--c1))', 'rgb(var(--c4))', 'rgb(var(--c2))', 'rgb(var(--c3))', 'rgb(var(--muted))', '#0f766e']
 const AXIS = 'rgb(var(--line))'
 const TEXT = 'rgb(var(--muted))'
 

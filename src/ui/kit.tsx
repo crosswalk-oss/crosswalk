@@ -58,7 +58,7 @@ export function HealthDot({ rag, label }: { rag: RAG; label?: string }) {
 export function BrandMark({ size = 32, className }: { size?: number; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="Crosswalk" className={cx('shrink-0', className)}>
-      <circle cx="32" cy="32" r="30" fill="rgb(var(--marker))" />
+      <circle cx="32" cy="32" r="30" fill="rgb(var(--brand))" />
       <g fill="currentColor">
         <polygon points="24,15 40,15 42,22 22,22" />
         <polygon points="19.5,27 44.5,27 47,35 17,35" />

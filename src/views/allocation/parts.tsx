@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import type { AllocationCriterionDef, AllocationSettings } from '@/core/types'
 import { cx, money } from '@/core/util'
 
-const PALETTE = ['rgb(var(--bad))', 'rgb(var(--marker))', 'rgb(var(--info))', '#7c3aed', 'rgb(var(--good))', '#475569', '#0f766e', '#b45309', '#be185d', '#0369a1']
+// The four deck colours first (blue, green, orange, berry), then extras that stay apart from them.
+const PALETTE = ['rgb(var(--c1))', 'rgb(var(--c2))', 'rgb(var(--c3))', 'rgb(var(--c4))', '#0f766e', '#475569', '#6d4ac4', '#b8860b', 'rgb(var(--bad))', '#3ba3d9']
 /** Stable color per measure (by its place in the configured list, so switching one off doesn't recolor the rest). */
 export const measureColor = (a: Pick<AllocationSettings, 'criteria'>, id: string) => PALETTE[Math.max(0, a.criteria.findIndex((c) => c.id === id)) % PALETTE.length]
 
