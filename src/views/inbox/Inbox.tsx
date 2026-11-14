@@ -302,7 +302,7 @@ export function Timeline({ s, inst }: { s: AppState; inst: WorkflowInstance }) {
     <ol className="relative ml-6 border-l border-line py-3 pr-3">
       {rows.map((h) => (
         <li key={h.id} className="mb-2.5 ml-4 last:mb-0">
-          <span className={cx('absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full border-2 border-surface', h.action === 'approve' || h.action === 'submit' ? 'bg-good' : h.action === 'complete' ? 'bg-ink' : h.action === 'reject' ? 'bg-bad' : h.action === 'return' ? 'bg-warn' : 'bg-faint')} />
+          <span className={cx('absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full border-2 border-surface', h.action === 'approve' || h.action === 'submit' ? 'bg-good' : h.action === 'complete' ? 'bg-link' : h.action === 'reject' ? 'bg-bad' : h.action === 'return' ? 'bg-warn' : 'bg-faint')} />
           <div className="flex flex-wrap items-center gap-x-2 text-[12.5px]">
             <b>{personName(s, h.actorId)}</b>
             <span className="text-muted">{h.action === 'complete' ? `completed — ${h.comment}` : h.action === 'system' ? h.comment : `${h.action}${h.nodeId ? ` · ${label(h.nodeId)}` : ''}`}</span>

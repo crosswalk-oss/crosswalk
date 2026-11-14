@@ -2,10 +2,11 @@
 // engine (gates, estimates, workflows, snapshots) with a pinned clock, so every number ties out.
 import type { AppState, AssetType, Estimate, EstimateLine, InternalOrder, Project, Risk, WorkMethod, Terrain, Milestone, SafetyPlan } from '../types'
 import { addDays, addMonths, argmax, daysBetween, monthKey, monthRange, rng, setClock, sum, uid } from '../util'
-import { CATEGORIES, CONTRACTORS, DOA, HAZARDS, INFO_FIELDS, INFO_SECTIONS, PEOPLE, PROGRAMS, RATES, RISK_LIBRARY, ROLES, TEMPLATES, WBS_FUNCTIONS, FORECAST_LINES, SAP_MAPPINGS, SPREAD_PROFILES, REGION_FACTORS, REGIONS, TAX_RATES, UNITS, QUANTITY_TYPES, SCOPE_LIBRARY, buildHistoricalCosts } from './reference'
+import { CATEGORIES, CONTRACTORS, DOA, HAZARDS, INFO_FIELDS, INFO_SECTIONS, PEOPLE, PROGRAMS, RATES, RISK_LIBRARY, ROLES, TEMPLATES, WBS_FUNCTIONS, FORECAST_LINES, SAP_MAPPINGS, SPREAD_PROFILES, REGION_FACTORS, REGIONS, TAX_RATES, UNITS, QUANTITY_TYPES, SCOPE_LIBRARY, buildHistoricalCosts, ADDED_DELIVERABLES } from './reference'
 import { applyProfile, defaultLineSpread, linesOfFunction, rollupGrid, syncForecast, toLines, splitExact } from '../engine/lines'
 import { postImport, stageImport, resolveTxn, type SapRow } from '../engine/sap'
 import { createFactorEstimate, adjustFactorEstimate, factorInputsFromProject } from '../engine/factorModel'
+import { adjustParametricEstimate, createParametricEstimate, parametricInputsFromProject } from '../engine/parametric'
 import { FACTOR_SETTINGS, buildBacktestProjects, buildFactorModels, factorModelAudit, seedProjectDrivers } from './factorModel'
 import { defaultSpread, toFunctions, spreadByYear as spreadYears } from '../engine/wbs'
 import { infoValue } from '../engine/info'
@@ -15,8 +16,12 @@ import { computeClass, estimateTotals, MATURITY_ITEMS, parametricLines, spreadBy
 import { decideGate, ensureDeliverables, readiness, templateFor } from '../engine/gates'
 import { actOnWorkflow, startWorkflow } from '../engine/workflow'
 import { position, takeSnapshot, thresholdBreaches } from '../engine/position'
+import { DEFAULT_ALLOCATION, authorizedFunding } from '../engine/allocation'
+import { DEFAULT_RECORDS } from '../engine/records'
+import { seedRecords } from './records'
+import { seedCarryExamples } from './carry'
 
-export const SCHEMA_VERSION = 9
+export const SCHEMA_VERSION = 12
 export const AS_OF = '2026-10-28'
 
 type Spec = {
@@ -57,6 +62,39 @@ const SPECS: Spec[] = [
   S(1029, 'Valve Automation — Line AV-26 MLV 8 & 11', 'prg-vap', 'valve-site', 'valve-automation', 24, 0, 'rural', 'South', 'Laguna Ciega', 2, { sites: 2 }),
   S(1030, 'Line AV-24 Abandon & Replace — Ironwood', 'prg-pse', 'transmission-pipeline', 'replace-open-trench', 12, 5600, 'rural', 'South', 'Ironwood', 1, { hold: true }),
 ]
+
+// Capital allocation: quantified benefit per project (fictional; VERIFY with the integrity risk model and hydraulic studies).
+// [safety $K/yr risk reduced, added capacity MMcfd, customers gaining a second feed, outage cust-hrs/yr avoided, tCO2e/yr reduced, O&M $K/yr saved, basis]
+const BENEFITS: Record<number, [number, number, number, number, number, number, string]> = {
+  1001: [2400, 0, 0, 5000, 150, 120, 'TIMP risk model 2026 run; replacement removes legacy seam threat'],
+  1002: [450, 0, 0, 0, 0, 20, 'TIMP risk model 2026 run; MAOP records established'],
+  1003: [1300, 0, 0, 8000, 80, 60, 'TIMP risk model 2026 run; river crossing exposure'],
+  1004: [300, 0, 0, 0, 0, 15, 'TIMP risk model 2026 run'],
+  1005: [1900, 4, 0, 6000, 120, 90, 'TIMP risk model 2026 run; 16→20 in. upsizing per hydraulic study HS-114'],
+  1006: [600, 0, 0, 2000, 40, 30, 'TIMP risk model 2026 run'],
+  1007: [900, 25, 0, 20000, 200, 100, 'TIMP risk model 2026 run; looping adds capacity per hydraulic study HS-109'],
+  1008: [500, 0, 0, 0, 0, 25, 'TIMP risk model 2026 run'],
+  1010: [700, 0, 0, 0, 0, 40, 'TIMP risk model 2026 run; MAOP reconfirmation'],
+  1011: [1100, 0, 0, 3000, 60, 70, 'TIMP risk model 2026 run; HCA segment'],
+  1012: [380, 0, 0, 0, 0, 20, 'TIMP risk model 2026 run'],
+  1013: [950, 0, 0, 2500, 50, 60, 'TIMP risk model 2026 run; HCA segment'],
+  1014: [650, 0, 0, 6000, 30, 40, 'TIMP risk model 2026 run; scour exposure at creek'],
+  1015: [520, 1.5, 3200, 12000, 450, 260, 'DIMP risk model 2026 run; tie-in creates a second feed to the tract'],
+  1016: [640, 1, 4800, 15000, 600, 320, 'DIMP risk model 2026 run; new loop closes a dead end'],
+  1017: [700, 2, 6500, 22000, 800, 380, 'DIMP risk model 2026 run; downtown grid tied to a second regulator station'],
+  1018: [820, 3, 9000, 30000, 900, 450, 'DIMP risk model 2026 run; loop closes the north feed'],
+  1019: [160, 0, 1100, 4000, 180, 90, 'DIMP risk model 2026 run'],
+  1020: [3000, 120, 60000, 150000, 18000, 1800, 'Station risk assessment SRA-20; hydraulic study HS-101'],
+  1021: [2600, 180, 140000, 400000, 22000, 2400, 'Station risk assessment SRA-21; storage withdrawal study HS-121 (winter peak)'],
+  1022: [1500, 40, 20000, 60000, 9000, 1200, 'Station risk assessment SRA-22; hydraulic study HS-122'],
+  1023: [2200, 110, 55000, 140000, 15000, 1600, 'Station risk assessment SRA-23; hydraulic study HS-123'],
+  1024: [650, 0, 0, 1500, 120, 10, 'Rupture consequence model; isolation time cut from 60 to 10 minutes'],
+  1025: [380, 0, 0, 800, 80, 8, 'Rupture consequence model'],
+  1026: [900, 0, 0, 2500, 200, 15, 'Rupture consequence model; three valves on an HCA line'],
+  1027: [260, 0, 0, 600, 60, 6, 'Rupture consequence model'],
+  1029: [300, 0, 0, 700, 70, 7, 'Rupture consequence model'],
+  1030: [300, 0, 0, 1000, 60, 40, 'TIMP risk model 2026 run'],
+}
 
 const DISTRICT_BOX: Record<string, [number, number, number, number]> = {
   West: [90, 300, 330, 540], East: [360, 260, 620, 500], South: [650, 220, 930, 520], North: [260, 50, 720, 210],
@@ -128,11 +166,11 @@ function emptyState(): AppState {
       },
       factorModel: JSON.parse(JSON.stringify(FACTOR_SETTINGS)),
       workflow: { reminderDays: 1, escalateAfterDays: 3 },
-      features: { fieldTailboard: false, portfolioPlanning: false, opQual: false },
+      features: { fieldTailboard: false, opQual: false },
     },
     roles: ROLES, people: PEOPLE, programs: PROGRAMS, funding: [], templates: TEMPLATES, projects: [], deliverables: [], gateDecisions: [], gateReviews: [], actions: [],
     categories: CATEGORIES, rates: RATES, estimates: [], budgets: [], snapshots: [], changes: [], costPeriods: [], forecasts: [], infoRevisions: [], historicalCosts: hist, factorModels: buildFactorModels(hist), backtestProjects: [], actualTxns: [], actualsImports: [], commitmentChanges: [], channels: [], messages: [], variances: [], risks: [], riskLibrary: RISK_LIBRARY,
-    contingencyDraws: [], monteCarlo: [], hazards: HAZARDS, safetyPlans: [], tailboards: [], safetyEvents: [], workflowDefs: workflowDefs(), doaMatrices: DOA, workflows: [],
+    contingencyDraws: [], monteCarlo: [], hazards: HAZARDS, safetyPlans: [], recordsSubmissions: [], tailboards: [], safetyEvents: [], workflowDefs: workflowDefs(), doaMatrices: DOA, workflows: [],
     permits: [], landRights: [], contracts: [], longLead: [], records: [], decisions: [], outreach: [], lessons: [], documents: [], closeout: [], audit: [], notifications: [],
   }
 }
@@ -161,7 +199,10 @@ export function buildSeed(): AppState {
   const s = emptyState()
   s.backtestProjects = buildBacktestProjects(s)
   s.audit.push(...factorModelAudit(s.factorModels))
+  s.settings.records = { ...DEFAULT_RECORDS, paused: true } // no filing while the history is generated
   const R = rng(20261028)
+  const R2 = rng(4510) // added deliverables draw from their own stream, so the rest of the demo data is unchanged
+  const Rd = (defId: string) => (ADDED_DELIVERABLES.has(defId) ? R2 : R)
   const at = (d: string) => pin(s, d, d < AS_OF ? addDays(d, 18) : AS_OF)
 
   for (const sp of SPECS) {
@@ -253,6 +294,9 @@ export function buildSeed(): AppState {
       customFields: sp.prog === 'prg-pse' ? { pseSegment: `PSE-${lineNo}-${R.int(1, 40)}` } : sp.prog === 'prg-csm' ? { airDistrictPermit: `ADP-${R.int(20000, 29999)}` } : { grcWorkpaper: `WP-${R.int(1000, 9999)}` },
     }
     s.projects.push(p)
+    const bf = BENEFITS[sp.n]
+    // delivery confidence rises as the project matures (scope, permits and contracts settle)
+    if (bf) p.benefits = { values: { safety: bf[0], capacity: bf[1], redundancy: bf[2], reliability: bf[3], emissions: bf[4], om: bf[5] }, confidence: [70, 80, 90, 95, 95][Math.min(4, sp.stage)], basis: bf[6], updatedById: 'u-me', updatedAt: initiated }
     p.info = infoFor(p, sp, R, target)
 
     // ── replay history
@@ -274,8 +318,9 @@ export function buildSeed(): AppState {
       }
       at(addDays(gDate, -3))
       for (const dl of s.deliverables.filter((x) => x.projectId === p.id && x.stageIndex === g)) {
-        dl.status = 'accepted'; dl.version = 1 + (R.chance(0.3) ? 1 : 0)
-        dl.evidence = [{ id: uid('evd'), name: evidenceName(s, dl.defId), sizeKb: R.int(180, 4200), uploadedAt: `${addDays(gDate, -R.int(5, 30))}T10:00:00.000Z`, byId: dl.ownerId ?? pm }]
+        const Rx = Rd(dl.defId)
+        dl.status = 'accepted'; dl.version = 1 + (Rx.chance(0.3) ? 1 : 0)
+        dl.evidence = [{ id: uid('evd'), name: evidenceName(s, dl.defId), sizeKb: Rx.int(180, 4200), uploadedAt: `${addDays(gDate, -Rx.int(5, 30))}T10:00:00.000Z`, byId: dl.ownerId ?? pm }]
       }
       at(gDate)
       const withConditions = R.chance(0.3)
@@ -305,9 +350,10 @@ export function buildSeed(): AppState {
       ensureDeliverables(s, p)
       const cur = s.deliverables.filter((x) => x.projectId === p.id && x.stageIndex === p.stageIndex)
       cur.forEach((dl, i) => {
-        const roll = R.next()
+        const Rx = Rd(dl.defId)
+        const roll = Rx.next()
         dl.status = roll < 0.45 ? 'accepted' : roll < 0.6 ? 'submitted' : roll < 0.85 ? 'in-progress' : 'not-started'
-        if (dl.status !== 'not-started') { dl.version = 1; dl.evidence = [{ id: uid('evd'), name: evidenceName(s, dl.defId), sizeKb: R.int(150, 3000), uploadedAt: `${addDays(AS_OF, -R.int(2, 40))}T15:00:00.000Z`, byId: dl.ownerId ?? pm }] }
+        if (dl.status !== 'not-started') { dl.version = 1; dl.evidence = [{ id: uid('evd'), name: evidenceName(s, dl.defId), sizeKb: Rx.int(150, 3000), uploadedAt: `${addDays(AS_OF, -Rx.int(2, 40))}T15:00:00.000Z`, byId: dl.ownerId ?? pm }] }
         dl.due = addDays(AS_OF, -10 + i * 9)
       })
     }
@@ -320,12 +366,25 @@ export function buildSeed(): AppState {
   seedFinance(s)
   seedSapActuals(s)
   seedGeometry(s)
+  seedRecords(s)
+  seedCarryExamples(s)
   seedInfoRevisions(s, R)
   seedLiveWorkflows(s, R)
   seedCommitmentChanges(s)
   seedMessages(s)
   pin(s, AS_OF)
   seedFunding(s)
+  {
+    const pid = (code: string) => s.projects.find((p) => p.code === code)?.id ?? code
+    s.settings.allocation = {
+      ...JSON.parse(JSON.stringify(DEFAULT_ALLOCATION)), budget: authorizedFunding(s).amount,
+      // fictional prerequisite links (VERIFY with system planning)
+      dependencies: [
+        { projectId: pid('PRJ-1007'), requiresId: pid('PRJ-1023'), note: 'Looping only adds capacity once Las Lomas compression is rebuilt' },
+        { projectId: pid('PRJ-1018'), requiresId: pid('PRJ-1017'), note: 'North loop ties into the downtown grid regulator station' },
+      ],
+    }
+  }
   health(s)
   // keep only the demo user's recent notifications
   s.notifications = s.notifications.filter((n) => n.at >= addDays(AS_OF, -14)).slice(-60)
@@ -589,10 +648,13 @@ function seedLiveWorkflows(s: AppState, R: ReturnType<typeof rng>) {
       if (inst) advance(s, inst.id, R.int(1, 3))
     }
   }
-  // Class 5 quick estimates for new projects: requested by the PM from the historical cost table, reviewed by an estimator
+  // Class 5 requests for new projects: the PM enters length, location and risk ratings (priced from the rate table
+  // with a Monte Carlo); an estimator reviews. Assets the rate table cannot price by length use the factor model.
   active.filter((p) => p.stageIndex === 0).forEach((p, i) => {
     pin(s, addDays(AS_OF, -R.int(3, 12)))
-    const e = createFactorEstimate(s, p.id, factorInputsFromProject(s, p), R.pick(['Screening number for the TY2028 GRC forecast', 'Planning budget for Gate 1 business case', 'Portfolio plan placeholder — replace when route is selected']), p.team.pm)
+    const note = R.pick(['Screening number for the TY2028 GRC forecast', 'Planning budget for Gate 1 business case', 'Portfolio plan placeholder — replace when route is selected'])
+    const pin_ = parametricInputsFromProject(s, p)
+    const e = (pin_.lengthFt > 0 ? createParametricEstimate(s, p.id, pin_, note, p.team.pm) : undefined) ?? createFactorEstimate(s, p.id, factorInputsFromProject(s, p), note, p.team.pm)
     if (!e) return
     const inst = startWorkflow(s, 'class5-review', { title: `${p.code} Class 5 quick estimate`, recordType: 'estimate', recordId: e.id, projectId: p.id, data: { amount: estimateTotals(e).total, note: e.quick!.requestNote }, startedById: p.team.pm })
     if (!inst) return
@@ -600,10 +662,11 @@ function seedLiveWorkflows(s: AppState, R: ReturnType<typeof rng>) {
     if (i === 0) {
       // one already reviewed: adjusted by an estimator with a reason, then approved
       const est = 'u-est1'
-      adjustFactorEstimate(s, e.id, { pct: 12, reason: 'Site condition the drivers do not capture', note: 'Two HDD crossings under the flood-control channel are not represented in the historical population.' }, est)
+      if (e.parametric) adjustParametricEstimate(s, e.id, { risks: { crossings: 'high' }, pct: 0, reason: 'Site condition the drivers do not capture', note: 'Two drills under the flood-control channel; crossings re-rated high.' }, est)
+      else adjustFactorEstimate(s, e.id, { pct: 12, reason: 'Site condition the drivers do not capture', note: 'Two HDD crossings under the flood-control channel are not represented in the historical population.' }, est)
       const live = s.workflows.find((w) => w.id === inst.id)
       const slot = live?.active[0]
-      if (live && slot) actOnWorkflow(s, live.id, slot.nodeId, est, 'approve', 'Adjusted +12% for the channel crossings; otherwise in line with history.')
+      if (live && slot) actOnWorkflow(s, live.id, slot.nodeId, est, 'approve', e.parametric ? 'Crossings re-rated high for the channel drills; otherwise in line with the rate table.' : 'Adjusted +12% for the channel crossings; otherwise in line with history.')
     }
   })
   // gate review packets waiting at PMO quality check
@@ -615,7 +678,7 @@ function seedLiveWorkflows(s: AppState, R: ReturnType<typeof rng>) {
   }
   for (const p of active.filter((p) => !s.gateReviews.some((g) => g.projectId === p.id)).slice(0, 5)) s.gateReviews.push({ id: uid('gr'), projectId: p.id, stageIndex: p.stageIndex, scheduled: addDays(s.settings.asOf, R.int(20, 110)), board: [p.team.sponsor!, 'u-pmo2'], status: 'scheduled' })
   // deliverable reviews waiting on PMO
-  const submitted = s.deliverables.filter((d) => d.status === 'submitted').slice(0, 7)
+  const submitted = s.deliverables.filter((d) => d.status === 'submitted' && !ADDED_DELIVERABLES.has(d.defId)).slice(0, 7)
   for (const d of submitted) {
     const p = s.projects.find((x) => x.id === d.projectId)!
     pin(s, addDays(AS_OF, -R.int(3, 14)))
@@ -690,7 +753,7 @@ function seedLiveWorkflows(s: AppState, R: ReturnType<typeof rng>) {
   // waiver and initiation waiting on PMO
   const wp = active.find((p) => p.stageIndex === 1)
   if (wp) {
-    const d = s.deliverables.find((x) => x.projectId === wp.id && x.stageIndex === wp.stageIndex && x.status !== 'accepted')
+    const d = s.deliverables.find((x) => x.projectId === wp.id && x.stageIndex === wp.stageIndex && x.status !== 'accepted' && !ADDED_DELIVERABLES.has(x.defId))
     pin(s, addDays(AS_OF, -R.int(3, 14)))
       const inst = startWorkflow(s, 'waiver', { title: `${wp.code} early release of long-lead pipe`, recordType: 'waiver', recordId: wp.id, projectId: wp.id, data: { reason: 'Mill lead time is 38 weeks; releasing the pipe order before Gate 2 protects the outage window.', permission: 'long-lead-release', deliverableId: d?.id }, startedById: wp.team.pm })
     if (inst) advance(s, inst.id, 1)

@@ -12,8 +12,9 @@ import { BulkReprice } from './Reprice'
 import { Markups, RegionsTax } from './Tables'
 import { ChangeLog, MaturityAdmin, ScopeLibrary, UnitsQuantities } from './Lists'
 import { FactorModelAdmin } from './FactorModel'
+import { RiskItemsAdmin } from './RiskItems'
 
-type Sub = 'rates' | 'factor' | 'reprice' | 'regions' | 'markups' | 'units' | 'scope' | 'maturity' | 'log'
+type Sub = 'rates' | 'risks' | 'factor' | 'reprice' | 'regions' | 'markups' | 'units' | 'scope' | 'maturity' | 'log'
 const SUB_KEY = 'crosswalk:estimating:admin'
 
 export function EstimatingAdmin({ s }: { s: AppState }) {
@@ -36,6 +37,7 @@ export function EstimatingAdmin({ s }: { s: AppState }) {
       {!canEdit && <Callout tone="info" title="Maintained by the estimating team">These tables drive every estimate. Estimators, the estimating lead and administrators edit them; everyone else can see them. Every change is recorded in the change log.</Callout>}
       <Tabs<Sub> value={sub} onChange={pick} tabs={[
         { id: 'rates', label: 'Rate table' },
+        { id: 'risks', label: 'Class 5 risk items' },
         { id: 'factor', label: 'Factor model', count: s.factorModels.some((m) => m.status === 'draft' || m.status === 'in-review') ? 1 : undefined },
         { id: 'reprice', label: 'Bulk update', count: stale || undefined },
         { id: 'regions', label: 'Regions & sales tax' },
@@ -46,6 +48,7 @@ export function EstimatingAdmin({ s }: { s: AppState }) {
         { id: 'log', label: 'Change log' },
       ]} />
       {sub === 'rates' && <RateTableAdmin s={s} canEdit={canEdit} onReprice={() => pick('reprice')} />}
+      {sub === 'risks' && <RiskItemsAdmin s={s} canEdit={canEdit} />}
       {sub === 'factor' && <FactorModelAdmin s={s} canEdit={canEdit} />}
       {sub === 'reprice' && <BulkReprice s={s} canEdit={canEdit} />}
       {sub === 'regions' && <RegionsTax s={s} canEdit={canEdit} />}

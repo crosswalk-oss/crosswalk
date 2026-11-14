@@ -6,6 +6,7 @@ import { applyProfile, budgetByLine, etcEacByFunction, linesOfFunction, profileW
 import { matchRule, parseSapExtract, postImport, projectForWbs, readDelimited, remap, resolveTxn, sampleExtract, stageImport } from './sap'
 import { adjustQuickEstimate, computeQuick, createQuickEstimate, findHistorical, inputsFromProject } from './quick'
 import { estimateTotals } from './estimates'
+import { createFactorEstimate, factorInputsFromProject } from './factorModel'
 import { activeBudget } from './position'
 import { latestForecast } from './wbs'
 
@@ -137,8 +138,11 @@ describe('Class 5 quick estimate', () => {
     expect(Math.abs(estimateTotals(e).total - r.total)).toBeLessThanOrEqual(2)
   })
   it('estimator adjustment is recorded with before/after', () => {
-    const e0 = S.estimates.find((e) => e.projectId === p.id && e.method === 'quick')!
-    const next = produce(S, (d) => { adjustQuickEstimate(d, e0.id, { pct: -10, reason: 'Shorter route than the population' }, 'u-est2') })
+    // a factor-model quick estimate (seeded requests are now parametric)
+    let id = ''
+    const S1 = produce(S, (d) => { id = createFactorEstimate(d, p.id, factorInputsFromProject(d, d.projects.find((x) => x.id === p.id)!), 'x', 'u-pm1')!.id })
+    const e0 = S1.estimates.find((e) => e.id === id)!
+    const next = produce(S1, (d) => { adjustQuickEstimate(d, e0.id, { pct: -10, reason: 'Shorter route than the population' }, 'u-est2') })
     const e = next.estimates.find((x) => x.id === e0.id)!
     expect(e.quick!.adjustment!.pct).toBe(-10)
     expect(e.quick!.adjustment!.toTotal).toBeLessThan(e.quick!.adjustment!.fromTotal)

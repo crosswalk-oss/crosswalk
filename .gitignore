@@ -3,3 +3,7 @@ dist
 artifact
 .env
 .env.*
+.neon
+
+# Neon Function build inputs
+server/*.generated.ts

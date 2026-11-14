@@ -20,7 +20,7 @@ original line was cut off, the end is marked _[…]_ and should be replaced with
 
 ## 2. Third-party IP
 7. Do not reproduce, copy, or reverse-engineer Oracle Unifier, Primavera P6, HCSS HeavyBid, or Enstoa/Concertus code, screens, adapters, or docs. Use public standards (AACE, GAO) and the requirements in this repo.
-8. Use only dependencies with permissive open-source licenses (MIT, Apache-2.0, BSD, ISC). Run a license check before adding one. No GPL or AGPL _[…]_
+8. Use only dependencies with permissive open-source licenses (MIT, Apache-2.0, BSD, ISC, Zlib). Run a license check before adding one. No GPL or AGPL _[…]_
 9. Do not copy code from sources of unknown license.
 
 ## 3. No AI or outside calls in the running app
@@ -35,8 +35,8 @@ original line was cut off, the end is marked _[…]_ and should be replaced with
 
 ## 5. Architecture: portable to AWS serverless
 16. Keep the engine pure: `src/core/engine` has no imports from UI, storage, network, or framework code.
-17. All persistence goes through one data-access interface, with two implementations: the browser (localStorage) version for the demo, and a Postgres version for later. Nothing outside the interface touches storage.
-18. API handlers are plain `(request) => response` functions, so they run on Vercel functions now and AWS Lambda later. No framework-specific server features.
+17. All persistence goes through one data-access interface. The hosted demo's implementation talks to the app's own API, which keeps the fictional data in Postgres; only small UI preferences stay in the browser. Nothing outside the interface touches storage or the network.
+18. API handlers are plain `(request) => response` functions, so they run on the demo's serverless host now and AWS Lambda later. No framework-specific server features.
 19. Postgres only through plain SQL migrations. If Supabase is used, use it **as Postgres only**: no Supabase Auth, row-level-security policies, edge functions, or realtime.
 20. Login through a swappable OIDC interface that uses only the user's ID, name, and group claims. Groups map to Crosswalk roles.
 21. The audit log is append-only (no update or delete) in every storage implementation.
@@ -57,11 +57,11 @@ original line was cut off, the end is marked _[…]_ and should be replaced with
 4. Quick estimate screen showing the factor-model path: drivers, range, BOE text, rate-table comparison, estimator adjustment.
 5. Monte Carlo view using the model's base uncertainty.
 6. SAP CSV import against a **fictional** CSV in the same column layout, plus a reconciliation view.
-7. Data-access interface (rule 17) with the browser version only. Postgres comes after approvals.
+7. Data-access interface (rule 17). The hosted demo keeps fictional data in Postgres; real data comes only after approvals (section 8).
 
-**Done =** a stranger can open the built HTML or the Vercel URL, run a Class 5 estimate, adjust the model in admin, and see the backtest. All data is fictional, and all tests pass.
+**Done =** a stranger can open the built HTML or the hosted demo, run a Class 5 estimate, adjust the model in admin, and see the backtest. All data is fictional, and all tests pass.
 
 ## 8. Hosting the demo
-- Public hosting (Vercel) is for **fictional data only**, with no company branding, logos, or names.
+- Public hosting is for **fictional data only**, with no company branding, logos, or names.
 - No company login, no company email sign-up, no uploads of real files.
 - Hosting with real data happens only inside the company's managed cloud after architecture review approval.

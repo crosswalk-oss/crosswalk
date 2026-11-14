@@ -87,16 +87,16 @@ export function boeCsv(s: AppState, e: Estimate, opts: { mc?: MonteCarloResult }
 
 // ───────────────────────────── PDF
 /** Characters the standard PDF fonts cannot draw are replaced with plain equivalents. */
-const clean = (x: unknown) => String(x ?? '')
+export const clean = (x: unknown) => String(x ?? '')
   .replace(/[→⇒]/g, '->').replace(/[←]/g, '<-').replace(/≥/g, '>=').replace(/≤/g, '<=').replace(/×/g, 'x')
   .replace(/[–—]/g, '-').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/…/g, '...').replace(/[•·]/g, '-')
   .replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF]/g, '')
 
 type Align = 'left' | 'right'
-interface Col { label: string; w: number; align?: Align }
+export interface Col { label: string; w: number; align?: Align }
 
 /** A small page-flow writer over jsPDF: headings, wrapped paragraphs and tables with repeating headers. */
-class Writer {
+export class Writer {
   doc = new jsPDF({ unit: 'pt', format: 'letter' })
   x = 48
   y = 56

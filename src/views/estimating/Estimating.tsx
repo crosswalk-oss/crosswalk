@@ -110,8 +110,8 @@ function Register({ s }: { s: AppState }) {
         <div className="flex flex-wrap gap-2 border-b border-line px-4 py-2.5">
           <Input id="reg-q" className="h-8 w-48" placeholder="Search projects" value={q} onChange={(e) => setQ(e.target.value)} />
           <div className="w-52"><ProgramSelect id="reg-prog" value={prog} onChange={setProg} /></div>
-          <Select id="reg-cls" className="h-8 w-36" value={cls} onChange={(e) => setCls(e.target.value)} options={[{ value: '', label: 'All classes' }, ...[5, 4, 3, 2, 1].map((c) => ({ value: String(c), label: `Class ${c}` }))]} />
-          <Select id="reg-status" className="h-8 w-40" value={status} onChange={(e) => setStatus(e.target.value)} options={[{ value: '', label: 'All statuses' }, ...['draft', 'in-review', 'approved', 'superseded', 'rejected'].map((x) => ({ value: x, label: x === 'in-review' ? 'In review' : x[0].toUpperCase() + x.slice(1) }))]} />
+          <Select id="reg-cls" aria-label="Estimate class" className="h-8 w-36" value={cls} onChange={(e) => setCls(e.target.value)} options={[{ value: '', label: 'All classes' }, ...[5, 4, 3, 2, 1].map((c) => ({ value: String(c), label: `Class ${c}` }))]} />
+          <Select id="reg-status" aria-label="Estimate status" className="h-8 w-40" value={status} onChange={(e) => setStatus(e.target.value)} options={[{ value: '', label: 'All statuses' }, ...['draft', 'in-review', 'approved', 'superseded', 'rejected'].map((x) => ({ value: x, label: x === 'in-review' ? 'In review' : x[0].toUpperCase() + x.slice(1) }))]} />
           {(prog || cls || status || q) && <Button size="sm" variant="ghost" onClick={() => { setProg(''); setCls(''); setStatus(''); setQ('') }}>Clear filters</Button>}
         </div>
         <Table rows={sorted} columns={cols} rowKey={(r) => r.p.id} onRowClick={(r) => { go(projectHref(r.p.id, 'estimates')) }} empty={<div className="p-4"><Empty title="No estimates match">Change or clear the filters.</Empty></div>} />
@@ -256,7 +256,7 @@ function Accuracy({ s, pts: all }: { s: AppState; pts: AccuracyPoint[] }) {
             const x = summarize(pts.filter((p) => p.cls === c))
             return { label: `Class ${c}`, sub: `n=${x.n}`, low: CLASS_RANGES[c].low, high: CLASS_RANGES[c].high, mean: x.mean, points: pts.filter((p) => p.cls === c).map((p) => ({ v: p.acc, title: `${p.code} v${p.version} Class ${p.cls}: estimate ${money(p.estimate)} → ${p.basis === 'final' ? 'final' : 'EAC'} ${money(p.outcome)} (${p.acc > 0 ? '+' : ''}${(p.acc * 100).toFixed(1)}%)` })) }
           })} />
-          <Legend items={[{ swatch: <Swatch className="border border-info/50 bg-info/20" />, label: 'AACE expected range' }, { swatch: <span className="inline-block h-2.5 w-2.5 rounded-full bg-link" />, label: 'Within range' }, { swatch: <span className="inline-block h-2.5 w-2.5 rounded-full bg-bad" />, label: 'Outside range' }, { swatch: <span className="inline-block h-3 w-[3px] bg-ink" />, label: 'Mean' }]} />
+          <Legend items={[{ swatch: <Swatch className="border border-info/50 bg-info/20" />, label: 'AACE expected range' }, { swatch: <span className="inline-block h-2.5 w-2.5 rounded-full bg-link" />, label: 'Within range' }, { swatch: <span className="inline-block h-2.5 w-2.5 rounded-full bg-bad" />, label: 'Outside range' }, { swatch: <span className="inline-block h-3 w-[3px] bg-link" />, label: 'Mean' }]} />
         </Panel>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {groupTable((x) => x.programId, (k) => <span className="inline-flex items-center gap-2"><ProgramTag programId={k} /><span className="text-[12px]">{s.programs.find((p) => p.id === k)?.name}</span></span>, 'By program')}
@@ -285,7 +285,7 @@ function Accuracy({ s, pts: all }: { s: AppState; pts: AccuracyPoint[] }) {
               </tbody>
             </table>
           </div>
-          <div className="border-t border-line px-4 py-2"><Legend items={[{ swatch: <Swatch className="border border-info/50 bg-info/20" />, label: 'AACE range' }, { swatch: <span className="inline-block h-3 w-[3px] bg-ink" />, label: 'Approved estimate' }, { swatch: <span className="inline-block h-2.5 w-2.5 rotate-45 bg-marker" />, label: 'Outcome (final or EAC)' }]} /></div>
+          <div className="border-t border-line px-4 py-2"><Legend items={[{ swatch: <Swatch className="border border-info/50 bg-info/20" />, label: 'AACE range' }, { swatch: <span className="inline-block h-3 w-[3px] bg-link" />, label: 'Approved estimate' }, { swatch: <span className="inline-block h-2.5 w-2.5 rotate-45 bg-marker" />, label: 'Outcome (final or EAC)' }]} /></div>
         </Panel>
       </>}
     </div>

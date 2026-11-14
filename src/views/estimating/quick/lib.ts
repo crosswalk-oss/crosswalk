@@ -1,6 +1,7 @@
 // Class 5 quick estimate helpers for the estimating module (pure functions and draft mutations).
 // The pricing itself lives in core/engine/quick.ts; this file wires it to the request, review and table-maintenance flows.
-import type { AppState, AssetType, AuditEntry, DiameterBand, Estimate, FactorInputs, HistoricalCost, HistUnit, Project, QuickEstimate, QuickInputs, SiteDrivers, Terrain, WorkMethod, WorkflowInstance } from '@/core/types'
+import type { AppState, AssetType, AuditEntry, DiameterBand, Estimate, FactorInputs, HistoricalCost, HistUnit, ParametricInputs, Project, QuickEstimate, QuickInputs, RiskLevel, SiteDrivers, Terrain, WorkMethod, WorkflowInstance } from '@/core/types'
+import { adjustParametricEstimate, createParametricEstimate } from '@/core/engine/parametric'
 import { CLASS_RANGES, estimateTotals } from '@/core/engine/estimates'
 import { DIAMETER_BANDS, QUICK_CATALOG, UNIT_LABEL, adjustQuickEstimate, computeQuick, deriveFromClosed, escalationFactor, findHistorical, inputsFromProject, type QuickResult } from '@/core/engine/quick'
 import { actOnWorkflow, startWorkflow } from '@/core/engine/workflow'
@@ -119,7 +120,8 @@ export function quickEligibility(s: AppState, pid: string): { ok: boolean; reaso
   return { ok: true }
 }
 
-export interface RequestArgs { inputs: QuickInputs | FactorInputs; note: string; needBy?: string; byId?: string }
+export interface RequestArgs { inputs: QuickInputs | FactorInputs | ParametricInputs; note: string; needBy?: string; byId?: string }
+const isParametric = (i: RequestArgs['inputs']): i is ParametricInputs => 'risks' in i && !!(i as ParametricInputs).risks
 export interface RequestResult { estimateId?: string; instId?: string; message: string; ok: boolean }
 
 const names = (d: AppState, ids: string[]) => ids.map((id) => d.people.find((p) => p.id === id)?.name ?? id).join(', ')
@@ -140,8 +142,13 @@ function route(d: AppState, e: Estimate, note: string, byId: string): RequestRes
 export function submitQuickRequest(d: AppState, pid: string, a: RequestArgs): RequestResult {
   const byId = a.byId ?? d.currentUserId
   const p = d.projects.find((x) => x.id === pid)
+  if (isParametric(a.inputs)) {
+    const pe = createParametricEstimate(d, pid, a.inputs, a.note.trim(), byId, a.needBy || undefined)
+    if (!pe) return { ok: false, message: 'The rate table has no rows for this pipe and work method' }
+    return route(d, pe, a.note.trim(), byId)
+  }
   if (!publishedModel(d)) return { ok: false, message: 'No published factor model — ask the estimating lead' }
-  const e = createFactorEstimate(d, pid, toFactorInputs(d, p, a.inputs), a.note.trim(), byId, a.needBy || undefined)
+  const e = createFactorEstimate(d, pid, toFactorInputs(d, p, a.inputs as QuickInputs), a.note.trim(), byId, a.needBy || undefined)
   if (!e) return { ok: false, message: 'The factor model has no base rate for this asset and method' }
   return route(d, e, a.note.trim(), byId)
 }
@@ -168,13 +175,15 @@ export function reviseQuickRequest(d: AppState, estimateId: string, a: RequestAr
   const byId = a.byId ?? d.currentUserId
   const nAudit = d.audit.length
   const p = d.projects.find((x) => x.id === e.projectId)
-  const fresh = createFactorEstimate(d, e.projectId, toFactorInputs(d, p, a.inputs), a.note.trim(), byId, a.needBy || undefined)
-  if (!fresh) return { ok: false, message: 'The factor model has no base rate for these inputs' }
+  const par = isParametric(a.inputs)
+  const fresh = par ? createParametricEstimate(d, e.projectId, a.inputs as ParametricInputs, a.note.trim(), byId, a.needBy || undefined) : createFactorEstimate(d, e.projectId, toFactorInputs(d, p, a.inputs as QuickInputs), a.note.trim(), byId, a.needBy || undefined)
+  if (!fresh) return { ok: false, message: par ? 'The rate table has no rows for this pipe and work method' : 'The factor model has no base rate for these inputs' }
   // Use the engine's pricing and basis text, but keep this record (same id and version).
   d.estimates.splice(d.estimates.indexOf(fresh), 1)
   d.audit.splice(nAudit)
-  e.lines = fresh.lines; e.loaders = fresh.loaders; e.contingency = fresh.contingency; e.basis = fresh.basis; e.quick = fresh.quick; e.factor = fresh.factor; e.salesTax = fresh.salesTax; e.region = fresh.region; e.escalationPct = 0; e.cls = 5
-  d.audit.push({ id: uid('aud'), at: nowISO(), actorId: byId, entity: 'estimate', entityId: e.id, projectId: e.projectId, action: 'revise', summary: `Revised Class 5 quick estimate v${e.version} on factor model v${e.factor?.modelVersion ?? '—'} (${describeQuickInputs(a.inputs)}): $${(estimateTotals(e).total / 1e6).toFixed(2)}M` })
+  e.lines = fresh.lines; e.loaders = fresh.loaders; e.contingency = fresh.contingency; e.basis = fresh.basis; e.quick = fresh.quick; e.factor = fresh.factor; e.parametric = fresh.parametric; e.salesTax = fresh.salesTax; e.region = fresh.region; e.escalationPct = fresh.escalationPct; e.rateTableVersion = fresh.rateTableVersion; e.title = fresh.title; e.cls = 5
+  const what = par ? `rate table + risk ratings (${(a.inputs as ParametricInputs).lengthFt.toLocaleString('en-US')} ft, ${(a.inputs as ParametricInputs).region})` : `factor model v${e.factor?.modelVersion ?? '—'} (${describeQuickInputs(a.inputs as QuickInputs)})`
+  d.audit.push({ id: uid('aud'), at: nowISO(), actorId: byId, entity: 'estimate', entityId: e.id, projectId: e.projectId, action: 'revise', summary: `Revised Class 5 quick estimate v${e.version} on ${what}: $${(estimateTotals(e).total / 1e6).toFixed(2)}M` })
   const back = returnedToRequester(d, e)
   if (back) {
     back.inst.data.amount = estimateTotals(e).total
@@ -232,9 +241,10 @@ export function previewAdjust(s: AppState, e: Estimate, basis: QuickEstimate['ba
 }
 
 /** Apply an estimator adjustment and keep the workflow's amount current. */
-export function applyAdjustment(d: AppState, estimateId: string, o: { pct: number; basis: QuickEstimate['basis']; reason: string; note?: string }, byId = d.currentUserId) {
+export function applyAdjustment(d: AppState, estimateId: string, o: { pct: number; basis: QuickEstimate['basis']; reason: string; note?: string; risks?: Record<string, RiskLevel> }, byId = d.currentUserId) {
   const e0 = d.estimates.find((x) => x.id === estimateId)
-  if (e0?.factor) adjustFactorEstimate(d, estimateId, o, byId)
+  if (e0?.parametric) adjustParametricEstimate(d, estimateId, { risks: o.risks, pct: o.pct, reason: o.reason, note: o.note }, byId)
+  else if (e0?.factor) adjustFactorEstimate(d, estimateId, o, byId)
   else adjustQuickEstimate(d, estimateId, o, byId)
   const e = d.estimates.find((x) => x.id === estimateId)
   const inst = e && d.workflows.find((w) => w.id === e.workflowInstanceId)

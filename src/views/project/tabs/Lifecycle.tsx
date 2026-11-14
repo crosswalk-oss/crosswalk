@@ -20,6 +20,10 @@ import { PersonSelect } from '../../shared/pickers'
 import { gatePacketHtml } from '../../portfolio/reports'
 import { latestApprovedEstimate, latestEstimate } from '../../portfolio/lib'
 import { ScheduleReviewModal } from '../../gates/ScheduleReview'
+import { DeliverableFormModal, RecordStatus, recordTone } from '../../records/DeliverableForm'
+import { allFields, formFor, missingFields } from '@/core/engine/forms'
+import { formValuesFor } from '@/core/engine/carry'
+import { RECORD_STATUS_LABEL, submissionsFor } from '@/core/engine/records'
 
 const PERM_LABEL: Record<StagePermission, { label: string; desc: string }> = {
   'long-lead-release': { label: 'Long-lead material release', desc: 'Order pipe, valves and major equipment ahead of authorization' },
@@ -141,43 +145,74 @@ function LifecycleInner({ projectId }: { projectId: string }) {
 }
 
 // ───────────────────────────── Stage timeline
+// One rail: stages are circles, gates are diamonds, the rail is dark up to where the project stands.
 function StageTimeline({ s, p }: { s: AppState; p: Project }) {
   const tpl = templateFor(s, p)
   const decisions = s.gateDecisions.filter((g) => g.projectId === p.id).sort((a, b) => a.date.localeCompare(b.date))
+  const n = tpl.stages.length
+  const closed = p.status === 'closed'
+  const at = closed ? 2 * n : 2 * p.stageIndex // rail column the project has reached
+  const went = (o?: string) => o === 'go' || o === 'go-with-conditions'
+  const cur = closed ? undefined : tpl.stages[p.stageIndex]
+  const node = (col: number, mark: React.ReactNode) => (
+    <div className="relative flex h-12 w-full items-center justify-center">
+      {col > 0 && <span aria-hidden className={cx('absolute left-0 right-1/2 top-1/2 h-[3px] -translate-y-1/2', col <= at ? 'bg-link' : 'bg-line')} />}
+      {col < 2 * n - 1 && <span aria-hidden className={cx('absolute left-1/2 right-0 top-1/2 h-[3px] -translate-y-1/2', col < at ? 'bg-link' : 'bg-line')} />}
+      {mark}
+    </div>
+  )
   return (
     <Panel pad={false}>
       <div className="scroll-x">
-        <ol className="flex min-w-[720px] items-stretch px-2 py-3">
+        <ol className="grid min-w-[940px] px-3 pb-4 pt-3" style={{ gridTemplateColumns: `repeat(${2 * n}, minmax(0, 1fr))` }}>
           {tpl.stages.map((st, i) => {
-            const passed = i < p.stageIndex || p.status === 'closed'
-            const current = i === p.stageIndex && p.status !== 'closed'
+            const passed = i < p.stageIndex || closed
+            const current = i === p.stageIndex && !closed
             const gd = decisions.filter((g) => g.stageIndex === i)
             const last = gd[gd.length - 1]
-            const start = i === 0 ? p.dates.initiated : decisions.filter((g) => g.stageIndex === i - 1 && (g.outcome === 'go' || g.outcome === 'go-with-conditions')).pop()?.date
+            const start = i === 0 ? p.dates.initiated : decisions.filter((g) => g.stageIndex === i - 1 && went(g.outcome)).pop()?.date
+            const hold = current && p.status === 'on-hold'
+            const gateName = st.gate.name.replace(/^Gate \w+ · /, '')
             return (
               <React.Fragment key={st.id}>
-                <li className={cx('min-w-0 flex-1 rounded-md px-3 py-2', current ? 'bg-marker/15 ring-1 ring-marker' : '')}>
-                  <div className="flex items-center gap-1.5">
-                    <span className={cx('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold', passed ? 'bg-ink text-surface' : current ? (p.status === 'on-hold' ? 'bg-warn text-white' : 'bg-marker text-markerink') : 'bg-sunken text-faint')}>{passed ? '✓' : i + 1}</span>
-                    <span className={cx('truncate text-[13px] font-semibold', !passed && !current && 'text-muted')} title={st.name}>{st.name}</span>
+                <li className="flex min-w-0 flex-col items-center text-center" aria-current={current ? 'step' : undefined} title={st.purpose}>
+                  {node(2 * i, (
+                    <span className={cx('relative flex h-9 w-9 items-center justify-center rounded-full border-2 text-[14px] font-bold tabular-nums',
+                      passed ? 'border-link bg-link text-surface' : hold ? 'border-warn bg-warn text-white ring-4 ring-warn/20' : current ? 'border-marker bg-marker text-markerink ring-4 ring-marker/25' : 'border-line bg-surface text-faint')}>
+                      {passed ? '✓' : i + 1}
+                    </span>
+                  ))}
+                  <div className={cx('mt-1 px-2 text-[13px] font-semibold leading-snug', !passed && !current && 'text-muted')}>{st.name}</div>
+                  <div className="mt-1 flex flex-col items-center gap-0.5 px-2 text-[11px] tabular-nums text-faint">
+                    {current && <Badge tone={hold ? 'warn' : 'marker'}>{hold ? 'On hold' : 'Current stage'}</Badge>}
+                    {start && (passed || current) && <span>{current ? 'Since' : 'Started'} {fmtDate(start)}</span>}
                   </div>
-                  <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted" title={st.purpose}>{st.purpose}</p>
-                  <div className="mt-1 text-[11px] text-faint">{start ? `From ${fmtDate(start)}` : 'Not started'}{current ? ' · current' : ''}</div>
                 </li>
-                <li className="flex w-[118px] shrink-0 flex-col items-center justify-center px-1 text-center">
-                  <span className={cx('flex h-7 w-7 rotate-45 items-center justify-center border-2', last ? (last.outcome === 'go' || last.outcome === 'go-with-conditions' ? 'border-ink bg-ink' : 'border-warn bg-warn/20') : current ? 'border-marker bg-surface' : 'border-line bg-surface')}>
-                    <span className={cx('-rotate-45 text-[10px] font-bold', last && (last.outcome === 'go' || last.outcome === 'go-with-conditions') ? 'text-surface' : 'text-muted')}>G{i + 1}</span>
-                  </span>
-                  <span className="mt-1.5 text-[10.5px] font-semibold leading-tight">{st.gate.name.replace(/^Gate \w+ · /, '')}</span>
-                  {last ? (
-                    <span className="mt-0.5 flex flex-col items-center gap-0.5"><Badge tone={outcomeTone(last.outcome)}>{outcomeLabel(last.outcome)}</Badge><span className="text-[10px] tabular-nums text-faint">{fmtDate(last.date)}{gd.length > 1 ? ` · ${gd.length} reviews` : ''}</span></span>
-                  ) : <span className="mt-0.5 text-[10px] text-faint">{st.gate.requiredEstimateClass ? `Needs Class ${st.gate.requiredEstimateClass}` : 'Pending'}</span>}
+                <li className="flex min-w-0 flex-col items-center text-center" title={st.gate.name}>
+                  {node(2 * i + 1, (
+                    <span className={cx('relative flex h-[26px] w-[26px] rotate-45 items-center justify-center rounded-[4px] border-2 bg-surface',
+                      last ? (went(last.outcome) ? 'border-link !bg-link' : 'border-warn') : current ? 'border-marker' : 'border-line')}>
+                      {last && !went(last.outcome) && <span aria-hidden className="absolute inset-0 bg-warn/15" />}
+                      <span className={cx('relative -rotate-45 text-[10px] font-bold', last && went(last.outcome) ? 'text-surface' : current || last ? 'text-ink' : 'text-faint')}>G{i + 1}</span>
+                    </span>
+                  ))}
+                  <div className={cx('mt-1 px-2 text-[12px] font-medium leading-snug', !last && !current && 'text-muted')}>{gateName}</div>
+                  <div className="mt-1 flex flex-col items-center gap-0.5 px-2 text-[11px] tabular-nums text-faint">
+                    {last ? <><Badge tone={outcomeTone(last.outcome)}>{outcomeLabel(last.outcome)}</Badge><span>{fmtDate(last.date)}{gd.length > 1 ? ` · ${gd.length} reviews` : ''}</span></>
+                      : st.gate.requiredEstimateClass ? <span>Needs Class {st.gate.requiredEstimateClass} estimate</span> : null}
+                  </div>
                 </li>
               </React.Fragment>
             )
           })}
         </ol>
       </div>
+      {cur && (
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-t border-line bg-sunken/40 px-4 py-2.5 text-[12.5px]">
+          <b>{cur.name}</b>
+          <span className="text-muted">{cur.purpose}</span>
+        </div>
+      )}
     </Panel>
   )
 }
@@ -231,6 +266,12 @@ function DeliverableRow({ s, p, def, d, open, onToggle, onWaiver }: { s: AppStat
   const done = status === 'accepted' || status === 'waived'
   const busy = wf?.status === 'running' || waiverWf?.status === 'running'
   const audit = { entity: 'deliverable', entityId: d?.id ?? def.id, projectId: p.id }
+  const [formOpen, setFormOpen] = useState(false)
+  const tpl = formFor(def.id)
+  const formMissing = tpl && d ? missingFields(tpl, formValuesFor(s, p, d, tpl)) : []
+  const formRequired = tpl ? allFields(tpl).filter((f) => f.required && !f.readOnly).length : 0
+  const formDone = !!tpl && !!d?.form && formMissing.length === 0
+  const rec = d ? submissionsFor(s, d.id)[0] : undefined
 
   const setStatus = (st: Deliverable['status'], summary: string) => {
     if (!d) return
@@ -253,14 +294,14 @@ function DeliverableRow({ s, p, def, d, open, onToggle, onWaiver }: { s: AppStat
     mutate((x) => { const y = x.deliverables.find((z) => z.id === d.id)!; y.evidence = y.evidence.filter((e) => e.id !== id); y.updatedAt = nowISO() }, { ...audit, action: 'evidence-remove', summary: `${def.name}: removed ${name} before submission` })
     toast(`Removed ${name}`)
   }
-  const submit = () => {
+  const submit = (fromForm = false) => {
     if (!d) return
-    if (!d.evidence.length) { toast('Attach evidence before submitting', 'bad'); return }
+    if (!fromForm && !d.evidence.length && !formDone) { toast('Complete the form or attach evidence before submitting', 'bad'); return }
     mutate((x) => {
       const y = x.deliverables.find((z) => z.id === d.id)!
       y.version = y.status === 'returned' || y.version === 0 ? y.version + 1 : y.version
       const inst = startWorkflow(x, 'deliverable-review', { title: `${p.code} ${def.name} v${y.version}`, recordType: 'deliverable', recordId: d.id, projectId: p.id, data: { deliverable: def.name, version: y.version, acceptance: def.acceptance } })
-      autoSubmit(x, inst, `Submitted v${y.version} with ${y.evidence.length} evidence file(s)`)
+      autoSubmit(x, inst, `Submitted v${y.version}${formDone || fromForm ? ' with the completed form' : ''}${y.evidence.length ? ` and ${y.evidence.length} evidence file(s)` : ''}`)
     }, { ...audit, action: 'submit', summary: `${def.name} submitted for review` })
     toast('Submitted for review')
   }
@@ -283,11 +324,13 @@ function DeliverableRow({ s, p, def, d, open, onToggle, onWaiver }: { s: AppStat
             {d && d.version > 0 && <span className="text-[11px] text-faint">v{d.version}</span>}
             {overdue && <Badge tone="bad">Overdue</Badge>}
             {busy && <Badge tone="marker">In workflow</Badge>}
+            {rec && <Badge tone={recordTone(rec.status)} title={rec.folder}>{rec.status === 'filed' ? `Filed · node ${rec.nodeId}` : RECORD_STATUS_LABEL[rec.status]}</Badge>}
           </div>
           <div className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-muted">
             <span>Owner {personName(s, d?.ownerId)}</span><span>Reviewer {personName(s, d?.reviewerId)}</span>
             <span className={cx(overdue && 'font-semibold text-bad')}>Due {fmtDate(d?.due)}</span>
             <span>{d?.evidence.length ?? 0} evidence</span>
+            {tpl && <span className={cx(formDone ? 'text-good' : d?.form ? 'text-warn' : '')}>Form {d?.form ? `${formRequired - formMissing.length}/${formRequired}` : 'not started'}</span>}
           </div>
         </div>
         <span className="mt-1 text-[11px] text-faint">{open ? '▲' : '▼'}</span>
@@ -299,6 +342,7 @@ function DeliverableRow({ s, p, def, d, open, onToggle, onWaiver }: { s: AppStat
             <div><div className="eyebrow mb-0.5">Acceptance criteria</div>{def.acceptance}</div>
           </div>
           {d.waiverReason && <Callout tone="warn" title="Waived">{d.waiverReason}</Callout>}
+          {tpl && <RecordStatus s={s} d={d} />}
           <div>
             <div className="eyebrow mb-1">Evidence</div>
             {d.evidence.length ? (
@@ -323,8 +367,9 @@ function DeliverableRow({ s, p, def, d, open, onToggle, onWaiver }: { s: AppStat
           <div className="flex flex-wrap items-center gap-2">
             <input ref={file} type="file" multiple className="hidden" onChange={(e) => attach(e.target.files)} />
             {(status === 'not-started' || status === 'returned') && !busy && <Button size="sm" onClick={() => setStatus('in-progress', `${def.name} marked in progress`)}>Mark in progress</Button>}
+            {tpl && <Button size="sm" variant={!done && !busy && !formDone ? 'primary' : 'secondary'} icon={<Icon name="doc" className="h-3.5 w-3.5" />} onClick={() => setFormOpen(true)}>{done || busy || status === 'submitted' ? 'View form' : d.form ? 'Continue form' : 'Open form'}</Button>}
             {!done && !busy && <Button size="sm" icon={<Icon name="plus" className="h-3.5 w-3.5" />} onClick={() => file.current?.click()}>Attach evidence</Button>}
-            {!done && !busy && <Button size="sm" variant="primary" disabled={!d.evidence.length} onClick={submit} title={d.evidence.length ? '' : 'Attach evidence first'}>Submit for review</Button>}
+            {!done && !busy && <Button size="sm" variant={formDone || d.evidence.length ? 'primary' : 'secondary'} disabled={!d.evidence.length && !formDone} onClick={() => submit()} title={d.evidence.length || formDone ? '' : 'Complete the form or attach evidence first'}>Submit for review</Button>}
             {!done && !busy && <Button size="sm" variant="ghost" onClick={onWaiver}>Request waiver</Button>}
             {linkTab && <a href={projectHref(p.id, linkTab)} className="text-[12px] font-semibold text-link hover:underline">Open {humanize(linkTab)} →</a>}
             {done && me.roles.includes('admin') && <span className="text-[11px] text-faint">Accepted deliverables are locked; a new version starts if the gate recycles.</span>}
@@ -333,6 +378,7 @@ function DeliverableRow({ s, p, def, d, open, onToggle, onWaiver }: { s: AppStat
           {waiverWf && <WorkflowStatus instanceId={waiverWf.id} compact={waiverWf.status !== 'running'} />}
         </div>
       )}
+      {formOpen && d && tpl && <DeliverableFormModal s={s} p={p} def={def} d={d} busy={busy} onClose={() => setFormOpen(false)} onSubmit={!done && !busy ? () => submit(true) : undefined} />}
     </li>
   )
 }
@@ -673,7 +719,7 @@ function PriorStages({ s, p }: { s: AppState; p: Project }) {
           return (
             <li key={st.id}>
               <button className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-sunken/50" onClick={() => setOpen(open === i ? null : i)}>
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink text-[11px] font-bold text-surface">{i + 1}</span>
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-link text-[11px] font-bold text-surface">{i + 1}</span>
                 <span className="min-w-0 flex-1 text-[13px] font-semibold">{st.name}</span>
                 <span className="text-[11px] text-muted">{dls.filter((d) => d.status === 'accepted' || d.status === 'waived').length}/{dls.length} accepted · {ev} evidence</span>
                 <span className="text-[11px] text-faint">{open === i ? '▲' : '▼'}</span>

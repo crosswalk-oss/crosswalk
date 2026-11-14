@@ -2,7 +2,8 @@
 import React, { useState } from 'react'
 import { money } from '@/core/util'
 
-export const SERIES = ['rgb(var(--link))', 'rgb(var(--marker))', 'rgb(var(--good))', 'rgb(var(--bad))', 'rgb(var(--muted))', 'rgb(var(--info))']
+// Blue, berry, green and orange are the four deck colours (chart-strength fills); index 2 stays green because callers use it for "completed".
+export const SERIES = ['rgb(var(--c1))', 'rgb(var(--c4))', 'rgb(var(--c2))', 'rgb(var(--c3))', 'rgb(var(--muted))', '#0f766e']
 const AXIS = 'rgb(var(--line))'
 const TEXT = 'rgb(var(--muted))'
 
@@ -14,7 +15,8 @@ function niceTicks(min: number, max: number, n = 4): number[] {
   const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => span / s <= n) ?? mag * 10
   const lo = Math.floor(min / step) * step
   const out: number[] = []
-  for (let v = lo; v <= max + step * 0.5; v += step) out.push(Math.round(v * 1e6) / 1e6)
+  // the top tick always covers the largest value, so nothing is drawn off the chart
+  for (let v = lo; ; v += step) { out.push(Math.round(v * 1e6) / 1e6); if (v >= max - 1e-9 || out.length > 50) break }
   return out
 }
 
@@ -33,7 +35,7 @@ export function LineChart({ labels, series, height = 220, format = money, marker
   const every = Math.max(1, Math.ceil(labels.length / 8))
   return (
     <div className="relative">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" onMouseLeave={() => setHover(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`Line chart: ${series.map((x) => x.name).join(', ')}`} onMouseLeave={() => setHover(null)}>
         {ticks.map((t) => <g key={t}><line x1={L} x2={W - Rm} y1={Y(t)} y2={Y(t)} stroke={AXIS} strokeWidth={1} /><text x={L - 8} y={Y(t) + 4} textAnchor="end" fontSize={11} fill={TEXT}>{format(t)}</text></g>)}
         {labels.map((l, i) => i % every === 0 && <text key={i} x={X(i)} y={H - 10} textAnchor="middle" fontSize={11} fill={TEXT}>{l}</text>)}
         {markers?.map((m) => <g key={m.index}><line x1={X(m.index)} x2={X(m.index)} y1={T} y2={H - B} stroke="rgb(var(--ink))" strokeDasharray="3 3" strokeWidth={1} /><text x={X(m.index) + 4} y={T + 10} fontSize={11} fill="rgb(var(--ink))">{m.label}</text></g>)}
@@ -59,17 +61,17 @@ export function LineChart({ labels, series, height = 220, format = money, marker
 }
 
 /** Vertical bars; multiple series render side by side (grouped) or stacked. */
-export function BarChart({ labels, series, height = 220, format = money, stacked, highlight }: { labels: string[]; series: { name: string; values: number[]; color?: string }[]; height?: number; format?: (n: number) => string; stacked?: boolean; highlight?: number }) {
+export function BarChart({ labels, series, height = 220, format = money, stacked, highlight, targets, targetLabel = 'Limit' }: { labels: string[]; series: { name: string; values: number[]; color?: string }[]; height?: number; format?: (n: number) => string; stacked?: boolean; highlight?: number; targets?: (number | undefined)[]; targetLabel?: string }) {
   const W = 720, H = height, L = 64, Rm = 12, T = 12, B = 30
   const totals = labels.map((_, i) => (stacked ? series.reduce((a, s) => a + Math.max(0, s.values[i] || 0), 0) : Math.max(...series.map((s) => s.values[i] || 0))))
-  const ticks = niceTicks(0, Math.max(...totals, 1))
+  const ticks = niceTicks(0, Math.max(...totals, ...(targets ?? []).map((v) => v ?? 0), 1))
   const ymax = ticks[ticks.length - 1]
   const bw = (W - L - Rm) / labels.length
   const Y = (v: number) => T + (1 - v / ymax) * (H - T - B)
   const every = Math.max(1, Math.ceil(labels.length / 10))
   return (
     <div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`Bar chart: ${series.map((x) => x.name).join(', ')}`}>
         {ticks.map((t) => <g key={t}><line x1={L} x2={W - Rm} y1={Y(t)} y2={Y(t)} stroke={AXIS} /><text x={L - 8} y={Y(t) + 4} textAnchor="end" fontSize={11} fill={TEXT}>{format(t)}</text></g>)}
         {labels.map((l, i) => {
           const x0 = L + i * bw
@@ -85,11 +87,12 @@ export function BarChart({ labels, series, height = 220, format = money, stacked
                 return <rect key={si} x={x0 + bw * 0.15 + si * gw} y={Y(v)} width={gw - 1} height={Math.max(0, Y(0) - Y(v))} fill={c} rx={1} />
               })}
               {i % every === 0 && <text x={x0 + bw / 2} y={H - 10} textAnchor="middle" fontSize={11} fill={TEXT}>{l}</text>}
+              {targets?.[i] != null && <g><line x1={x0 + bw * 0.08} x2={x0 + bw * 0.92} y1={Y(targets[i]!)} y2={Y(targets[i]!)} stroke="rgb(var(--bad))" strokeWidth={2} strokeDasharray="5 3" /><title>{`${l} ${targetLabel.toLowerCase()} ${format(targets[i]!)}`}</title></g>}
             </g>
           )
         })}
       </svg>
-      {series.length > 1 && <div className="mt-1 flex flex-wrap gap-x-4 text-xs text-muted">{series.map((s, si) => <span key={s.name} className="inline-flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: s.color ?? SERIES[si % SERIES.length] }} />{s.name}</span>)}</div>}
+      {(series.length > 1 || targets) && <div className="mt-1 flex flex-wrap gap-x-4 text-xs text-muted">{series.map((s, si) => <span key={s.name} className="inline-flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: s.color ?? SERIES[si % SERIES.length] }} />{s.name}</span>)}{targets && <span className="inline-flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed border-bad" />{targetLabel}</span>}</div>}
     </div>
   )
 }
@@ -110,12 +113,24 @@ export function HBarChart({ rows, format = money, max }: { rows: { label: string
   )
 }
 
-/** Waterfall bridge from one total to another (estimate or baseline bridge). */
-export function Waterfall({ start, end, steps, startLabel = 'From', endLabel = 'To', height = 240 }: { start: number; end: number; steps: { label: string; delta: number }[]; startLabel?: string; endLabel?: string; height?: number }) {
+/** Split a label into at most two lines of about `n` characters (word boundaries; ellipsis if still too long). */
+function wrap2(label: string, n: number): string[] {
+  if (label.length <= n) return [label]
+  const words = label.split(' ')
+  let a = ''
+  while (words.length && (a + ' ' + words[0]).trim().length <= n) a = (a + ' ' + words.shift()).trim()
+  if (!a) a = words.shift() ?? ''
+  let b = words.join(' ')
+  if (b.length > n) b = b.slice(0, n - 1) + '…'
+  return b ? [a, b] : [a]
+}
+
+/** Waterfall bridge from one total to another (estimate or baseline bridge). Steps marked `subtotal` draw a running-total bar. */
+export function Waterfall({ start, end, steps, startLabel = 'From', endLabel = 'To', height = 240 }: { start: number; end: number; steps: { label: string; delta: number; subtotal?: boolean }[]; startLabel?: string; endLabel?: string; height?: number }) {
   const W = 720, H = height, L = 64, Rm = 12, T = 18, B = 46
   const bars: { label: string; y0: number; y1: number; kind: 'total' | 'up' | 'down' }[] = [{ label: startLabel, y0: 0, y1: start, kind: 'total' }]
   let acc = start
-  for (const s of steps) { bars.push({ label: s.label, y0: acc, y1: acc + s.delta, kind: s.delta >= 0 ? 'up' : 'down' }); acc += s.delta }
+  for (const s of steps) { if (s.subtotal) { bars.push({ label: s.label, y0: 0, y1: acc, kind: 'total' }); continue } bars.push({ label: s.label, y0: acc, y1: acc + s.delta, kind: s.delta >= 0 ? 'up' : 'down' }); acc += s.delta }
   bars.push({ label: endLabel, y0: 0, y1: end, kind: 'total' })
   const hi = Math.max(...bars.map((b) => Math.max(b.y0, b.y1)))
   const lo = Math.min(0, ...bars.map((b) => Math.min(b.y0, b.y1)))
@@ -124,7 +139,7 @@ export function Waterfall({ start, end, steps, startLabel = 'From', endLabel = '
   const Y = (v: number) => T + (1 - (v - ymin) / (ymax - ymin)) * (H - T - B)
   const bw = (W - L - Rm) / bars.length
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`Waterfall chart from ${startLabel} to ${endLabel}`}>
       {ticks.map((t) => <g key={t}><line x1={L} x2={W - Rm} y1={Y(t)} y2={Y(t)} stroke={AXIS} /><text x={L - 8} y={Y(t) + 4} textAnchor="end" fontSize={11} fill={TEXT}>{money(t)}</text></g>)}
       {bars.map((b, i) => {
         const x = L + i * bw + bw * 0.15, w = bw * 0.7
@@ -136,7 +151,7 @@ export function Waterfall({ start, end, steps, startLabel = 'From', endLabel = '
             <rect x={x} y={top} width={w} height={h} fill={c} opacity={b.kind === 'total' ? 0.85 : 0.8} rx={1} />
             {i < bars.length - 1 && <line x1={x + w} x2={x + bw} y1={Y(b.y1)} y2={Y(b.y1)} stroke={TEXT} strokeDasharray="2 2" />}
             <text x={x + w / 2} y={top - 4} textAnchor="middle" fontSize={10.5} fill="rgb(var(--ink))">{b.kind === 'total' ? money(b.y1) : (delta > 0 ? '+' : '') + money(delta)}</text>
-            <text x={x + w / 2} y={H - B + 14} textAnchor="middle" fontSize={10.5} fill={TEXT}>{b.label.length > 14 ? b.label.slice(0, 13) + '…' : b.label}</text>
+            <text x={x + w / 2} y={H - B + 14} textAnchor="middle" fontSize={10.5} fill={TEXT}>{wrap2(b.label, Math.max(10, Math.floor(bw / 6.2))).map((ln, k) => <tspan key={k} x={x + w / 2} dy={k ? 12 : 0}>{ln}</tspan>)}<title>{b.label}</title></text>
           </g>
         )
       })}
@@ -162,7 +177,7 @@ export function Histogram({ bins, markers, format = money, height = 200 }: { bin
   const X = (v: number) => L + ((v - lo) / (hi - lo || 1)) * (W - L - Rm)
   const bw = (W - L - Rm) / bins.length
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Histogram of simulated outcomes">
       {bins.map((b, i) => { const h = (b.n / mx) * (H - T - B); return <rect key={i} x={L + i * bw} y={H - B - h} width={bw - 1} height={h} fill="rgb(var(--link))" opacity={0.55} /> })}
       <line x1={L} x2={W - Rm} y1={H - B} y2={H - B} stroke={AXIS} />
       {[0, 0.25, 0.5, 0.75, 1].map((f) => <text key={f} x={L + f * (W - L - Rm)} y={H - 10} textAnchor={f === 0 ? 'start' : f === 1 ? 'end' : 'middle'} fontSize={11} fill={TEXT}>{format(lo + f * (hi - lo))}</text>)}
@@ -173,7 +188,7 @@ export function Histogram({ bins, markers, format = money, height = 200 }: { bin
 
 /** 5×5 likelihood × consequence heat map with counts; click a cell to filter. */
 export function RiskMatrix({ cells, onPick, selected }: { cells: Record<string, number>; onPick?: (l: number, c: number) => void; selected?: string }) {
-  const tone = (l: number, c: number) => { const s = l * c; return s >= 15 ? 'bg-bad/80 text-white' : s >= 8 ? 'bg-warn/70 text-ink' : 'bg-good/25 text-ink' }
+  const tone = (l: number, c: number) => { const s = l * c; return s >= 15 ? 'bg-bad text-white' : s >= 8 ? 'bg-warn/50 text-ink' : 'bg-good/25 text-ink' }
   return (
     <div className="inline-grid grid-cols-[auto_repeat(5,minmax(34px,48px))] gap-1 text-[11px]">
       {[5, 4, 3, 2, 1].map((l) => (
@@ -181,7 +196,7 @@ export function RiskMatrix({ cells, onPick, selected }: { cells: Record<string, 
           <div className="flex items-center justify-end pr-1 text-faint">L{l}</div>
           {[1, 2, 3, 4, 5].map((c) => {
             const k = `${l}-${c}`, n = cells[k] || 0
-            return <button key={k} onClick={() => onPick?.(l, c)} className={`flex h-9 items-center justify-center rounded-sm font-bold tabular-nums ${tone(l, c)} ${selected === k ? 'ring-2 ring-ink' : ''} ${n ? '' : 'opacity-40'}`}>{n || ''}</button>
+            return <button key={k} aria-label={`Likelihood ${l}, consequence ${c}: ${n} risk${n === 1 ? '' : 's'}`} onClick={() => onPick?.(l, c)} className={`flex h-9 items-center justify-center rounded-sm font-bold tabular-nums ${tone(l, c)} ${selected === k ? 'ring-2 ring-ink' : ''} ${n ? '' : 'opacity-40'}`}>{n || ''}</button>
           })}
         </React.Fragment>
       ))}
@@ -199,7 +214,7 @@ export function RangeBar({ low, point, high, scaleMax }: { low: number; point: n
     <div className="relative h-5 w-full">
       <div className="absolute top-2 h-1 w-full rounded bg-sunken" />
       <div className="absolute top-1.5 h-2 rounded bg-info/40" style={{ left: pct(low), width: `calc(${pct(high)} - ${pct(low)})` }} />
-      <div className="absolute top-0.5 h-4 w-1 rounded bg-ink" style={{ left: pct(point) }} title={money(point)} />
+      <div className="absolute top-0.5 h-4 w-1 rounded bg-link" style={{ left: pct(point) }} title={money(point)} />
     </div>
   )
 }

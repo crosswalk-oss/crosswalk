@@ -7,7 +7,7 @@ import { describeAssignee, edgeOutcomeLabel, isHuman, laneFor, lanesOf, nodeType
 
 export type Palette = Record<'ink' | 'muted' | 'faint' | 'line' | 'surface' | 'sunken' | 'good' | 'warn' | 'bad' | 'info' | 'link' | 'marker', string>
 export const TOKEN_PALETTE: Palette = Object.fromEntries(['ink', 'muted', 'faint', 'line', 'surface', 'sunken', 'good', 'warn', 'bad', 'info', 'link', 'marker'].map((k) => [k, `rgb(var(--${k}))`])) as Palette
-export const PRINT_PALETTE: Palette = { ink: '#141b24', muted: '#4f5a69', faint: '#7e8896', line: '#d6dce3', surface: '#ffffff', sunken: '#eef1f4', good: '#1b8048', warn: '#b86e00', bad: '#c02828', info: '#2c6ab2', link: '#145caa', marker: '#f0b000' }
+export const PRINT_PALETTE: Palette = { ink: '#141b24', muted: '#4f5a69', faint: '#7e8896', line: '#d6dce3', surface: '#ffffff', sunken: '#eef1f4', good: '#00823b', warn: '#b95400', bad: '#c81e3c', info: '#2c6ab2', link: '#145caa', marker: '#a8327f' }
 
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 

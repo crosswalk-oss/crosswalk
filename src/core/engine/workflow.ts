@@ -4,6 +4,7 @@ import { addDays, evalCondition, nowISO, uid } from '../util'
 import { approveEstimate } from './estimates'
 import { takeSnapshot } from './position'
 import { decideGate } from './gates'
+import { onDeliverableAccepted } from './records'
 import { publishModel, returnModel } from './factorModel'
 
 export const latestDef = (s: AppState, key: string): WorkflowDef | undefined =>
@@ -287,7 +288,7 @@ function onComplete(d: AppState, inst: WorkflowInstance) {
     }
     case 'contingency': { const x = d.contingencyDraws.find((v) => v.id === id); if (x) x.status = ok ? 'approved' : 'rejected'; break }
     case 'variance': { const x = d.variances.find((v) => v.id === id); if (x) x.status = ok ? 'accepted' : 'returned'; break }
-    case 'deliverable': { const x = d.deliverables.find((v) => v.id === id); if (x) { x.status = ok ? 'accepted' : 'returned'; x.updatedAt = nowISO() } break }
+    case 'deliverable': { const x = d.deliverables.find((v) => v.id === id); if (x) { x.status = ok ? 'accepted' : 'returned'; x.updatedAt = nowISO(); if (ok && !d.settings.records?.paused) onDeliverableAccepted(d, x.id, d.currentUserId) } break }
     case 'waiver': {
       const x = d.deliverables.find((v) => v.id === inst.data.deliverableId)
       if (x && ok) { x.status = 'waived'; x.waiverReason = String(inst.data.reason ?? '') }

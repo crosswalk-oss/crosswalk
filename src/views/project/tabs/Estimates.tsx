@@ -91,7 +91,7 @@ export default function Estimates({ projectId }: { projectId: string }) {
 
       {showNew5 && <NewParametric project={p} onClose={() => setShowNew5(false)} onCreated={(id) => { setSel(id); setShowNew5(false) }} />}
       {showQuick && (
-        <Modal open wide onClose={() => setShowQuick(false)} title={`Request Class 5 quick estimate · ${p.code}`}>
+        <Modal open xl onClose={() => setShowQuick(false)} title={`Request Class 5 quick estimate · ${p.code}`}>
           <QuickRequest projectId={p.id} onCancel={() => setShowQuick(false)} onDone={(id) => { setSel(id); setShowQuick(false) }} />
         </Modal>
       )}
@@ -329,7 +329,7 @@ function ComparePanel({ s, ests }: { s: AppState; ests: Estimate[] }) {
           <div className="min-w-0">
             <div className="mb-1 flex flex-wrap items-baseline gap-x-3 text-[13px]"><span>v{ea.version} <ClassBadge cls={ea.cls} /> {money(ta.total)}</span><span className="text-muted">→</span><span>v{eb.version} <ClassBadge cls={eb.cls} /> {money(tb.total)}</span><b className={tb.total > ta.total ? 'text-bad' : 'text-good'}>{moneyDelta(tb.total - ta.total)} ({ta.total ? (tb.total >= ta.total ? '+' : '') + pct(tb.total / ta.total - 1, 1) : '—'})</b></div>
             <Waterfall start={ta.total} end={tb.total} steps={wfSteps} startLabel={`v${ea.version} C${ea.cls}`} endLabel={`v${eb.version} C${eb.cls}`} height={260} />
-            <Legend items={[{ swatch: <Swatch className="bg-bad/80" />, label: 'Increase' }, { swatch: <Swatch className="bg-good/80" />, label: 'Decrease' }, { swatch: <Swatch className="bg-ink/85" />, label: 'Version total' }]} />
+            <Legend items={[{ swatch: <Swatch className="bg-bad/80" />, label: 'Increase' }, { swatch: <Swatch className="bg-good/80" />, label: 'Decrease' }, { swatch: <Swatch className="bg-link/85" />, label: 'Version total' }]} />
             <div className="mt-2 flex flex-wrap gap-x-4 text-xs text-muted">
               <span>Range v{ea.version}: {money(ta.low)}–{money(ta.high)}</span><span>Range v{eb.version}: {money(tb.low)}–{money(tb.high)}</span>
               <span>{tb.total >= ta.low && tb.total <= ta.high ? `v${eb.version} falls inside v${ea.version}'s expected range` : `v${eb.version} falls outside v${ea.version}'s expected range`}</span>

@@ -108,7 +108,7 @@ export function LineGrid(props: LineGridProps) {
   let r = -1
 
   return (
-    <div ref={ref} className="scroll-x rounded-md border border-line" role="grid" aria-label="Forecast by WBS function and line item, by month">
+    <div ref={ref} className="scroll-x rounded-md border border-line" role="region" aria-label="Forecast by WBS function and line item, by month">
       <table className="w-max min-w-full border-separate border-spacing-0 text-[12px]">
         <thead className="text-[10.5px] font-semibold uppercase tracking-wide text-muted">
           <tr>
@@ -245,7 +245,7 @@ export function LineGrid(props: LineGridProps) {
 function ActCell({ v, unit, onClick, muted, label }: { v: number; unit: Unit; onClick?: () => void; muted?: boolean; label: string }) {
   const cls = cx('block w-full min-w-[70px] whitespace-nowrap px-2 py-1 text-right italic tabular-nums', muted ? 'text-muted' : 'text-ink/80', v < 0 && 'text-bad')
   if (!onClick) return <span className={cls}>{fmtUnit(v, unit)}</span>
-  return <button onClick={onClick} aria-label={`SAP transactions for ${label}`} title="Show the SAP transactions behind this actual" className={cx(cls, 'underline decoration-dotted decoration-faint underline-offset-2 hover:bg-link/10 hover:text-link')}>{fmtUnit(v, unit)}</button>
+  return <button onClick={onClick} aria-label={`${fmtUnit(v, unit)}, SAP transactions for ${label}`} title="Show the SAP transactions behind this actual" className={cx(cls, 'underline decoration-dotted decoration-faint underline-offset-2 hover:bg-link/10 hover:text-link')}>{fmtUnit(v, unit)}</button>
 }
 
 function CellInput({ value, unit, r, c, label, warn, onCommit, onPaste, onNav, maxR, maxC }: {

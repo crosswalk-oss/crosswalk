@@ -19,34 +19,28 @@ const st = () => useStore.getState()
 const as = (id: string) => { useStore.setState({ currentUserId: id }); (useStore.getInitialState() as any).currentUserId = id }
 
 describe('Class 5 quick estimate views', () => {
-  test('request form renders dropdowns and a live result for a project and for a new need', () => {
+  test('PM request: length, location and Low / Medium / High risk ratings; live parametric result with Monte Carlo; no adjust controls', () => {
     as('u-pm1')
     const p = st().projects.find((x) => x.code === 'PRJ-1005')!
     const html = renderToString(<QuickRequest projectId={p.id} />)
-    for (const t of ['Asset type', 'Work method', 'Diameter band', 'Setting', 'Region (district)', 'Quantity (feet)', 'Spend midpoint year', 'Site cost drivers', 'Soil / rock', 'Permit complexity', 'Work-hour restrictions', 'What is it for', 'Send to estimating team', 'Forward-looking estimate', 'Factor model', 'Cost drivers', 'Base rate × quantity', '= Direct cost', 'Rate-table check', 'Generated basis of estimate', 'Draft wording — verify', 'Run Monte Carlo', 'AACE Class 5']) expect(html).toContain(t)
+    for (const t of ['Length of pipe (feet)', 'Location (region)', 'Pipe and work', 'Risks that drive the estimate', 'Traffic control &amp; lane closures', 'Soil &amp; rock conditions', 'Road, rail &amp; water crossings', 'Low risk', 'Medium risk', 'High risk', 'What is it for', 'Send to estimating team', 'Forward-looking estimate', 'Monte Carlo', 'P80', 'Tornado', 'How the number is built', 'Rate table', 'Risk-based contingency', 'AACE Class 5']) expect(html).toContain(t)
+    for (const t of ['Adjustment %', 'Override reason', 'Site cost drivers', 'Diameter band']) expect(html).not.toContain(t)
     expect(html).not.toMatch(/disadvantaged/i)
     const nn = renderToString(<QuickRequest allowPicker />)
     expect(nn).toContain('New need — no project yet')
     expect(nn).toContain('start a new project')
-    // unbanded asset hides the band
-    const c = st().projects.find((x) => x.code === 'PRJ-1023')!
-    expect(renderToString(<QuickRequest projectId={c.id} />)).not.toContain('Diameter band')
   })
 
-  test('estimator sees the Adjust panel on an in-review quick estimate; others do not', () => {
-    const e = st().estimates.find((x) => x.method === 'quick' && x.status === 'in-review')!
+  test('estimator sees the review panel (re-rate risks, ±%, reason) on an in-review request; the requester does not', () => {
+    const e = st().estimates.find((x) => x.method === 'quick' && x.status === 'in-review' && x.parametric)!
     const p = st().projects.find((x) => x.id === e.projectId)!
     as('u-est1')
     const html = renderToString(<QuickEstimateView estimate={e} project={p} />)
-    expect(html).toContain('Adjust (estimating team)')
-    expect(html).toContain('Override reason (required)')
-    expect(html).toContain(st().settings.factorModel.overrideReasons[0])
-    expect(html).toContain('Before → after')
-    for (const t of ['Rate-table check', 'Basis of estimate', 'Draft wording — verify', 'Run Monte Carlo', 'Site drivers']) expect(html).toContain(t)
-    expect(html).toMatch(/Cost drivers · factor model v(<!-- -->)?2/)
-    expect(html).toContain('Quick · Class 5')
-    as('u-pm1')
-    expect(renderToString(<QuickEstimateView estimate={e} project={p} />)).not.toContain('Adjust (estimating team)')
+    for (const t of ['Review and adjust (estimating team)', 'Adjustment % of direct', 'Reason (required)', st().settings.factorModel.overrideReasons[0], 'Before → after (P80)', 'Soil &amp; rock conditions', 'Monte Carlo', 'Basis of estimate', 'Model check (estimating team)', 'Length of pipe']) expect(html).toContain(t)
+    as(e.createdById)
+    const pm = renderToString(<QuickEstimateView estimate={e} project={p} />)
+    expect(pm).not.toContain('Review and adjust (estimating team)')
+    expect(pm).toContain('The requester cannot change the number after sending it.')
   })
 
   test('adjusted and approved estimate shows its adjustment history', () => {
@@ -56,18 +50,19 @@ describe('Class 5 quick estimate views', () => {
     const html = renderToString(<QuickEstimateView estimate={e} project={p} />)
     expect(html).toContain('Adjustment history')
     expect(html).toContain('Omar Siddiqui')
-    expect(html).toContain('+12%')
     expect(html).toContain('flood-control channel')
+    expect(html).toMatch(/was (<!-- -->)?low risk/)
   })
 
   test('inbox record summary for a quick estimate task', () => {
     as('u-est2')
-    const e = st().estimates.find((x) => x.method === 'quick' && x.status === 'in-review')!
+    const e = st().estimates.find((x) => x.method === 'quick' && x.status === 'in-review' && x.parametric)!
     const inst = st().workflows.find((w) => w.id === e.workflowInstanceId)!
     const html = renderToString(<RecordSummary s={st()} inst={inst} />)
     expect(html).toContain('Quick · Class 5')
-    expect(html).toContain('Adjust (estimating team)')
+    expect(html).toContain('Review and adjust (estimating team)')
     expect(html).toContain('What it is for')
+    expect(html).toContain('Traffic control &amp; lane closures')
   })
 
   test('project estimates tab marks quick estimates and offers the request action', () => {
@@ -76,8 +71,8 @@ describe('Class 5 quick estimate views', () => {
     const html = renderToString(<Estimates projectId={p.id} />)
     expect(html).toContain('Quick · Class 5')
     expect(html).toContain('Request Class 5 quick estimate')
-    expect(html).toContain('Cost drivers')
-    expect(html).toContain('Rate-table check')
+    expect(html).toContain('Traffic control &amp; lane closures')
+    expect(html).toContain('Monte Carlo')
   })
 
   test('historical cost table, drawer, import and derive render', () => {

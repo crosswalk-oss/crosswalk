@@ -8,11 +8,13 @@ Open-source capital project delivery for gas utilities. It covers:
 - forecasting by WBS function
 - SAP actuals import and reconciliation
 - risk-linked contingency, change control and job safety plans
+- capital allocation across the portfolio, by weighted benefit within a capital limit
+- gate deliverables completed as forms and filed to the records system (simulated in the demo)
 - a workflow designer that also prints the SOP
 
 Every dollar, date and scope change traces back to an approved decision and its evidence.
 
-**Live demo: [crosswalk-oss.github.io/crosswalk](https://crosswalk-oss.github.io/crosswalk/)**, which rebuilds on every push to `main`.
+**Live demo: [Crosswalk on Neon](https://br-round-queen-beb383xn-crosswalk.compute.c-9.us-east-2.aws.neon.tech/)**, a shared database where viewing is open and editing needs the passcode.
 
 > **All data in this repository is fictional.** The demo runs a made-up utility, **Arroyo Valley Gas**:
 > 30 projects on five programs, with lines named AV-11 to AV-28 and vendors such as "Delta Pipeline Co.".
@@ -21,15 +23,19 @@ Every dollar, date and scope change traces back to an approved decision and its 
 
 ## Try it
 
-- **No install:** run `npm run build` once (or take the file from a release) and open `dist/index.html` in any
-  browser. It is one self-contained file that makes no network calls.
-- **Fastest:** download [`Crosswalk.html`](Crosswalk.html) from this repository and double-click it. It is the
-  latest build, the whole app in one file.
-- **Run locally:**
+- **Hosted demo:** everyone shares one dataset in a Postgres database. Anyone with the link can look around;
+  changes need the edit passcode and are saved for everyone, with every change kept in the database's history.
+- **Offline copy:** download [`Crosswalk.html`](Crosswalk.html) and double-click it. It is the whole app in one
+  file and makes no network calls. It isn't connected to the database, so changes there are not saved.
+- **Deliverables that inherit and redact:** an answer given on an earlier deliverable is offered on later ones that
+  ask the same thing, with its source shown. Fields can be tagged (personal, commercial, security, third party) in
+  Configuration, and any record can be downloaded as a redacted copy with a log of what was withheld.
+- **Run locally with the database:**
 
   ```bash
   npm install
-  npm run dev          # http://localhost:5173
+  npm run build && npm run serve:local   # http://localhost:8788, edit passcode "local", in-memory Postgres
+  npm run dev                            # UI only, hot reload, not saved
   ```
 
 ### A five-minute demo path
@@ -59,7 +65,9 @@ Every dollar, date and scope change traces back to an approved decision and its 
 npm run typecheck
 npm test                 # vitest: engine tests + AGENT_RULES guard tests
 npm run build            # dist/index.html: the whole app as one self-contained file
-npm run licenses         # every dependency must be MIT, Apache-2.0, BSD or ISC
+npm run licenses         # every dependency must carry a permissive license (MIT, Apache-2.0, BSD, ISC, Zlib)
+npm run notices          # regenerate THIRD_PARTY_NOTICES.md from the lockfile
+npm run audit            # no known high or critical vulnerability in what ships
 npm run sample:sap       # regenerate the fictional SAP sample extract
 ```
 
@@ -75,15 +83,27 @@ npm run sample:sap       # regenerate the fictional SAP sample extract
 
 ## Host the public demo (free)
 
-The demo is one static file with no server, so any static host works. `index.html` carries a strict
-Content-Security-Policy (`connect-src 'self'`), so the browser itself blocks any outside call wherever it is hosted.
+The demo is one **Neon Function** that serves the page and the API, sitting next to its **Neon Postgres**
+database. It runs on Neon's free plan, with one account. `neon.ts` declares the function, and
+`.github/workflows/deploy.yml` runs the checks and `neon deploy` on each push to `main`. That needs three
+repository secrets:
 
-- **GitHub Pages:** free for public repositories. In the repository, open Settings → Pages → Source and
-  choose **GitHub Actions**. `.github/workflows/pages.yml` then typechecks, tests, builds and publishes on every
-  push to `main`.
-- **Cloudflare Pages:** free, and works with a private repository. Connect the repository, set the build
-  command to `npm run build` and the output directory to `dist`. `public/_headers` adds the security headers.
-- **Vercel:** `vercel.json` is included, but the free Hobby plan is for personal, non-commercial use only.
+| Secret | Where it comes from |
+| --- | --- |
+| `NEON_API_KEY` | Neon → Account settings → API keys |
+| `NEON_PROJECT_ID` | Neon → your project → Settings |
+| `EDIT_PASSCODE` | Any phrase you choose; people type it to edit |
+
+Deploy by hand with `EDIT_PASSCODE` in `.env.local` and `npm run deploy`. Without the secrets, the workflow
+only runs the checks. How the data is stored:
+
+- A "generation" starts from a full snapshot.
+- Every edit is appended as an ordered change (immer patches).
+- Database triggers refuse any update or delete (`migrations/001_shared_state.sql`).
+- The function applies new migrations on its first request.
+- "Reset demo data" starts a new generation. Nothing is ever deleted.
+- Secret settings (AI key, map tokens) and the persona you act as never leave the browser.
+- On the shared demo, file uploads and pasted extracts are turned off. Only the bundled fictional samples load.
 
 The public demo is for fictional data only:
 
@@ -97,7 +117,9 @@ Hosting real data belongs inside an organization's managed cloud, after its arch
 
 | Area | Highlights |
 | --- | --- |
+| Capital allocation | Benefit measures with adjustable weights; selects the set of projects that fits a capital limit, in total or by year, with deferrals and prerequisites; compared with rank order |
 | Stage gates | Configurable lifecycle templates, conditional deliverables, readiness score, gate packets, Go/Conditions/Recycle/Hold/Cancel decisions with immutable history, stage permissions |
+| Deliverables and records | A form for every gate deliverable, pre-filled from the project; answers carried forward; redacted copies; filing to the records system with metadata on approval (simulated connector) |
 | Estimating | Class from a maturity checklist; Class 5 factor model (physical, legal and logistical drivers only, itemized, with a range and a backtest); rate-table Class 5 by region; Class 3 line items; loaders, escalation, contingency, county sales tax; BOE as PDF or CSV; version bridge; estimate → budget |
 | Factor model admin | Weights, multipliers and uncertainty per driver; backtest; override reasons; publish gate; version history |
 | Forecast | Line items under WBS functions 100–999 with a curve profile per function, then hand adjustment; ETC/EAC by function; versions and review |
@@ -116,7 +138,11 @@ Hosting real data belongs inside an organization's managed cloud, after its arch
 src/core/types.ts          domain model (read it first)
 src/core/engine/*.ts       pure functions, no UI/storage/network imports; every change ships with vitest tests
 src/core/seed/             fictional reference data + history replayed through the engine
-src/core/data/             the one data-access interface (browser localStorage now; Postgres later)
+src/core/data/             the one data-access interface: the app's own API (Postgres); UI preferences stay in the browser
+src/core/sync.ts           loads the shared data, sends each change, merges others' edits, re-applies on conflicts
+src/server/                the API: plain (request) => response handler, SQL repository, migration runner
+server/function.ts         the Neon Function: serves the page and the API (neon.ts declares it)
+migrations/                plain SQL migrations (append-only tables)
 src/core/auth/             swappable OIDC-style interface: id, name, groups → Crosswalk roles
 src/core/store.ts          zustand + immer; every write goes through update(fn, audit); the audit log is append-only
 src/views/                 one folder per module
@@ -125,10 +151,10 @@ samples/                   fictional sample files (SAP extract)
 
 The planned production path (see [AGENT_RULES.md](AGENT_RULES.md) §5):
 
-- a static front end plus serverless `(request) => response` handlers (Vercel functions, then AWS Lambda)
+- a static front end plus serverless `(request) => response` handlers (a Neon Function now, AWS Lambda later)
 - Postgres through plain SQL migrations
 - OIDC sign-in
-- infrastructure in Terraform
+- infrastructure in Terraform (today `neon.ts` declares the Neon side; Terraform for the rest is still to do)
 - no containers or VMs
 
 ## Contributing

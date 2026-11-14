@@ -100,7 +100,7 @@ function VariancePanel({ s, projectId, onWrite }: { s: AppState; projectId: stri
   const explain = () => { const c = unexplainedChanges.find((x) => x.id === (pick || unexplainedChanges[0]?.id)); if (c) onWrite({ breach: { metric: 'eac', description: `${c.code} cost growth — ${c.title}`, amount: c.costImpact }, changeIds: [c.id] }) }
   return (
     <Panel title="Variance explanations" subtitle={`Thresholds: EAC above Current baseline by more than ${t.eacPct}% or ${money(t.eacAbs)}; milestone slip over ${t.milestoneDays} days`}
-      actions={unexplainedChanges.length ? <><Select className="w-auto max-w-[260px]" value={pick || unexplainedChanges[0].id} onChange={(e) => setPick(e.target.value)} options={unexplainedChanges.map((c) => ({ value: c.id, label: `${c.code} · ${moneyDelta(c.costImpact)}` }))} /><Button size="sm" onClick={explain}>Explain change</Button></> : undefined}>
+      actions={unexplainedChanges.length ? <><Select aria-label="Change request to explain" className="w-auto max-w-[260px]" value={pick || unexplainedChanges[0].id} onChange={(e) => setPick(e.target.value)} options={unexplainedChanges.map((c) => ({ value: c.id, label: `${c.code} · ${moneyDelta(c.costImpact)}` }))} /><Button size="sm" onClick={explain}>Explain change</Button></> : undefined}>
       {unexplainedChanges.length > 0 && <p className="mb-3 text-xs text-muted">{unexplainedChanges.length} approved change{unexplainedChanges.length > 1 ? 's' : ''} of {money(t.eacAbs)} or more {unexplainedChanges.length > 1 ? 'have' : 'has'} no variance narrative; reviewers expect one for material cost growth.</p>}
       {unexplained.length > 0 && (
         <div className="mb-3 flex flex-col gap-2">
@@ -317,7 +317,7 @@ function ReconPanel({ s, projectId }: { s: AppState; projectId: string }) {
         {r.unmapped ? (
           <div className="flex flex-col gap-2 rounded-md border border-marker bg-marker/10 p-2.5">
             <div><Badge tone="marker">Unmapped</Badge> <b className="tabular-nums">{money(r.unmapped.amount, 'full')}</b> in {fmtMonth(r.unmapped.period)} — {r.unmapped.text}.</div>
-            <div className="flex flex-wrap items-center gap-2"><Select className="w-auto min-w-[200px]" value={mapTo} onChange={(e) => setMapTo(e.target.value)} options={r.rows.map((x) => ({ value: x.categoryId, label: x.name }))} /><Button size="sm" onClick={mapLine}>Map to category</Button></div>
+            <div className="flex flex-wrap items-center gap-2"><Select aria-label="Cost category to map to" className="w-auto min-w-[200px]" value={mapTo} onChange={(e) => setMapTo(e.target.value)} options={r.rows.map((x) => ({ value: x.categoryId, label: x.name }))} /><Button size="sm" onClick={mapLine}>Map to category</Button></div>
           </div>
         ) : <div className="text-good">All postings mapped to cost categories.</div>}
         <div className="flex flex-wrap justify-between gap-2 text-xs text-muted">

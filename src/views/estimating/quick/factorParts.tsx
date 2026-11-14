@@ -127,12 +127,27 @@ export function BoeText({ basis, title = 'Basis of estimate' }: { basis: BasisOf
 /** Monte Carlo of a priced estimate: histogram with percentiles, S-curve, tornado of each uncertainty's contribution. */
 export function MonteCarloPanel({ r, iterations = 5000, seed = 11 }: { r: Pick<FactorResult, 'total' | 'parts'>; iterations?: number; seed?: number }) {
   const mc = useMemo(() => monteCarloFactor(r, iterations, seed), [r, iterations, seed])
-  const lo = Math.min(...mc.tornado.map((t) => t.low)), hi = Math.max(...mc.tornado.map((t) => t.high))
+  return <MonteCarloView mc={mc} point={r.total} note={<>Seeded draws (seed {mc.seed}) of the model's base-rate uncertainty and the uncertainty of each driver off its baseline, lognormal and independent, centred on the estimate. Same inputs, same result.</>} />
+}
+
+export interface MonteCarloData {
+  iterations: number
+  seed: number
+  p: { P10: number; P50: number; P80: number; P90: number }
+  mean: number
+  histogram: { x: number; n: number }[]
+  scurve: { pct: number; value: number }[]
+  tornado: { id: string; label: string; low: number; high: number; swing: number; share: number }[]
+}
+
+/** A finished Monte Carlo: percentile tiles, histogram with markers, S-curve, tornado. */
+export function MonteCarloView({ mc, point, note, pointLabel = 'Estimate' }: { mc: MonteCarloData; point: number; note?: React.ReactNode; pointLabel?: string }) {
+  const lo = Math.min(point, ...mc.tornado.map((t) => t.low)), hi = Math.max(point, ...mc.tornado.map((t) => t.high))
   const x = (v: number) => `${((v - lo) / (hi - lo || 1)) * 100}%`
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        {(['P10', 'P50', 'P80', 'P90'] as const).map((k) => <div key={k} className="rounded border border-line px-2.5 py-1.5"><div className="text-[10.5px] font-semibold uppercase tracking-wide text-faint">{k}</div><div className="font-display text-[16px] font-bold tabular-nums">{money(mc.p[k])}</div></div>)}
+        {(['P10', 'P50', 'P80', 'P90'] as const).map((k) => <div key={k} className={cx('rounded border px-2.5 py-1.5', k === 'P80' ? 'border-warn/60 bg-warn/5' : 'border-line')}><div className="text-[10.5px] font-semibold uppercase tracking-wide text-faint">{k}</div><div className="font-display text-[16px] font-bold tabular-nums">{money(mc.p[k])}</div></div>)}
         <div className="rounded border border-line px-2.5 py-1.5"><div className="text-[10.5px] font-semibold uppercase tracking-wide text-faint">Mean</div><div className="font-display text-[16px] font-bold tabular-nums">{money(mc.mean)}</div></div>
       </div>
       <div>
@@ -143,23 +158,23 @@ export function MonteCarloPanel({ r, iterations = 5000, seed = 11 }: { r: Pick<F
         <div className="eyebrow mb-1">S-curve · cost at each confidence level</div>
         <LineChart labels={mc.scurve.map((p) => `${p.pct}%`)} series={[{ name: 'Total cost', values: mc.scurve.map((p) => p.value), area: true }]} height={200} yMin={mc.scurve[0].value} />
       </div>
-      <div>
-        <div className="eyebrow mb-1">Tornado · P10–P90 swing from each source of uncertainty alone</div>
+      {mc.tornado.length > 0 && <div>
+        <div className="eyebrow mb-1">Tornado · what drives the range (each source swung alone)</div>
         <div className="flex flex-col gap-1.5">
           {mc.tornado.map((t) => (
-            <div key={t.id} className="grid grid-cols-1 items-center gap-x-2 gap-y-0.5 text-[12px] sm:grid-cols-[minmax(0,200px)_1fr_auto]">
+            <div key={t.id} className="grid grid-cols-1 items-center gap-x-2 gap-y-0.5 text-[12px] sm:grid-cols-[minmax(0,210px)_1fr_auto]">
               <span className="truncate" title={t.label}>{t.label}</span>
               <span className="relative h-3.5 rounded-sm bg-sunken">
-                <span className="absolute top-0 h-3.5 rounded-l-sm bg-good/60" style={{ left: x(t.low), width: `calc(${x(r.total)} - ${x(t.low)})` }} />
-                <span className="absolute top-0 h-3.5 rounded-r-sm bg-bad/60" style={{ left: x(r.total), width: `calc(${x(t.high)} - ${x(r.total)})` }} />
-                <span className="absolute -top-0.5 h-[18px] w-0.5 bg-ink" style={{ left: x(r.total) }} />
+                <span className="absolute top-0 h-3.5 rounded-l-sm bg-good/60" style={{ left: x(Math.min(t.low, point)), width: `calc(${x(point)} - ${x(Math.min(t.low, point))})` }} />
+                <span className="absolute top-0 h-3.5 rounded-r-sm bg-bad/60" style={{ left: x(point), width: `calc(${x(Math.max(t.high, point))} - ${x(point)})` }} />
+                <span className="absolute -top-0.5 h-[18px] w-0.5 bg-link" style={{ left: x(point) }} title={pointLabel} />
               </span>
               <span className="tabular-nums text-muted">{money(t.low)}–{money(t.high)} · <b className="text-ink">{pct(t.share)}</b> of variance</span>
             </div>
           ))}
         </div>
-      </div>
-      <p className="text-[11.5px] text-muted">Seeded draws (seed {mc.seed}) of the model's base-rate uncertainty and the uncertainty of each driver off its baseline, lognormal and independent, centred on the estimate. Same inputs, same result.</p>
+      </div>}
+      {note && <p className="text-[11.5px] text-muted">{note}</p>}
     </div>
   )
 }
