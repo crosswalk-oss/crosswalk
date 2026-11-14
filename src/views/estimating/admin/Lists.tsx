@@ -84,12 +84,12 @@ export function UnitsQuantities({ s, canEdit }: { s: AppState; canEdit: boolean 
 }
 
 // ───────────────────────────── Scope library
-function Lines({ id, value, onChange, disabled }: { id: string; value: string[]; onChange: (v: string[]) => void; disabled: boolean }) {
+function Lines({ id, label, value, onChange, disabled }: { id: string; label: string; value: string[]; onChange: (v: string[]) => void; disabled: boolean }) {
   const [txt, setTxt] = useState(value.join('\n'))
   const joined = value.join('\n')
   const last = useRef(joined)
   useEffect(() => { if (joined !== last.current) { setTxt(joined); last.current = joined } }, [joined])
-  return <TextArea id={id} disabled={disabled} className="min-h-[260px] text-[12.5px] leading-relaxed" value={txt} onChange={(e) => { setTxt(e.target.value); const v = e.target.value.split('\n').map((x) => x.trim()).filter(Boolean); last.current = v.join('\n'); onChange(v) }} />
+  return <TextArea id={id} aria-label={label} disabled={disabled} className="min-h-[260px] text-[12.5px] leading-relaxed" value={txt} onChange={(e) => { setTxt(e.target.value); const v = e.target.value.split('\n').map((x) => x.trim()).filter(Boolean); last.current = v.join('\n'); onChange(v) }} />
 }
 
 export function ScopeLibrary({ s, canEdit }: { s: AppState; canEdit: boolean }) {
@@ -111,7 +111,7 @@ export function ScopeLibrary({ s, canEdit }: { s: AppState; canEdit: boolean }) 
         {cols.map((c) => (
           <div key={c.k} className="min-w-0">
             <div className="mb-1 flex items-baseline justify-between"><span className="font-display text-[14px] font-bold">{c.title}</span><span className="text-xs text-muted">{L.draft[c.k].length} · {c.hint}</span></div>
-            <Lines id={`lib-${c.k}`} disabled={!canEdit} value={L.draft[c.k]} onChange={(v) => L.set((d) => ({ ...d, [c.k]: v }))} />
+            <Lines id={`lib-${c.k}`} label={`${c.title}, one item per line`} disabled={!canEdit} value={L.draft[c.k]} onChange={(v) => L.set((d) => ({ ...d, [c.k]: v }))} />
           </div>
         ))}
       </div>

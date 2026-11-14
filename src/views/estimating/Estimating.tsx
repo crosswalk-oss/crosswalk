@@ -183,10 +183,10 @@ function Library({ s, onAdmin }: { s: AppState; onAdmin: () => void }) {
           <Button size="sm" variant={canEdit ? 'primary' : 'secondary'} onClick={onAdmin}>{canEdit ? 'Edit in Administration' : 'Open Administration'}</Button>
         </>}>
         <div className="flex flex-wrap gap-2 border-b border-line px-4 py-2.5">
-          <Input id="lib-q" className="h-8 w-48" placeholder="Search rates" value={q} onChange={(e) => setQ(e.target.value)} />
-          <Select id="lib-asset" className="h-8 w-48" value={asset} onChange={(e) => { setAsset(e.target.value); setMethod('') }} options={[{ value: '', label: 'All asset types' }, ...assets.map((a) => ({ value: a, label: ASSET_LABEL[a] }))]} />
-          <Select id="lib-method" className="h-8 w-48" value={method} onChange={(e) => setMethod(e.target.value)} options={[{ value: '', label: 'All work methods' }, ...methods.map((a) => ({ value: a, label: METHOD_LABEL[a] }))]} />
-          <Select id="lib-cat" className="h-8 w-52" value={cat} onChange={(e) => setCat(e.target.value)} options={[{ value: '', label: 'All categories' }, ...directCategories(s).map((c) => ({ value: c.id, label: `${c.code} ${c.name}` }))]} />
+          <Input id="lib-q" aria-label="Search rates" className="h-8 w-48" placeholder="Search rates" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Select id="lib-asset" aria-label="Asset type" className="h-8 w-48" value={asset} onChange={(e) => { setAsset(e.target.value); setMethod('') }} options={[{ value: '', label: 'All asset types' }, ...assets.map((a) => ({ value: a, label: ASSET_LABEL[a] }))]} />
+          <Select id="lib-method" aria-label="Work method" className="h-8 w-48" value={method} onChange={(e) => setMethod(e.target.value)} options={[{ value: '', label: 'All work methods' }, ...methods.map((a) => ({ value: a, label: METHOD_LABEL[a] }))]} />
+          <Select id="lib-cat" aria-label="Category" className="h-8 w-52" value={cat} onChange={(e) => setCat(e.target.value)} options={[{ value: '', label: 'All categories' }, ...directCategories(s).map((c) => ({ value: c.id, label: `${c.code} ${c.name}` }))]} />
         </div>
         <Table rows={rows} columns={cols} rowKey={(r) => r.id} maxHeight={620} dense />
       </Panel>

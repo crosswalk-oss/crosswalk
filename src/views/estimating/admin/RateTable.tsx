@@ -74,10 +74,10 @@ export function RateTableAdmin({ s, canEdit, onReprice }: { s: AppState; canEdit
         subtitle={`${base.length} items by WBS line and region · ${regional} regional rows · published ${last ? `${fmtDate(last.at.slice(0, 10))} by ${personName(s, last.byId)}` : '—'}. Regions without their own row price at base × region factor.`}
         actions={canEdit && <Button size="sm" variant="primary" onClick={() => setEditing('new')}>Add rate</Button>}>
         <div className="flex flex-wrap gap-2 border-b border-line px-4 py-2.5">
-          <Input id="rt-q" className="h-8 w-44" placeholder="Search items" value={q} onChange={(e) => setQ(e.target.value)} />
-          <Select id="rt-asset" className="h-8 w-44" value={asset} onChange={(e) => { setAsset(e.target.value); setMethod('') }} options={[{ value: '', label: 'All asset types' }, ...assets.map((a) => ({ value: a, label: ASSET_LABEL[a] }))]} />
-          <Select id="rt-method" className="h-8 w-44" value={method} onChange={(e) => setMethod(e.target.value)} options={[{ value: '', label: 'All work methods' }, ...methods.map((a) => ({ value: a, label: METHOD_LABEL[a] }))]} />
-          <Select id="rt-line" className="h-8 w-52" value={line} onChange={(e) => setLine(e.target.value)} options={[{ value: '', label: 'All WBS lines' }, ...lines.map((l) => ({ value: l.id, label: `${l.code} ${l.name}` }))]} />
+          <Input id="rt-q" aria-label="Search items" className="h-8 w-44" placeholder="Search items" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Select id="rt-asset" aria-label="Asset type" className="h-8 w-44" value={asset} onChange={(e) => { setAsset(e.target.value); setMethod('') }} options={[{ value: '', label: 'All asset types' }, ...assets.map((a) => ({ value: a, label: ASSET_LABEL[a] }))]} />
+          <Select id="rt-method" aria-label="Work method" className="h-8 w-44" value={method} onChange={(e) => setMethod(e.target.value)} options={[{ value: '', label: 'All work methods' }, ...methods.map((a) => ({ value: a, label: METHOD_LABEL[a] }))]} />
+          <Select id="rt-line" aria-label="WBS line" className="h-8 w-52" value={line} onChange={(e) => setLine(e.target.value)} options={[{ value: '', label: 'All WBS lines' }, ...lines.map((l) => ({ value: l.id, label: `${l.code} ${l.name}` }))]} />
           <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" className="h-3.5 w-3.5" checked={onlyRegional} onChange={(e) => setOnlyRegional(e.target.checked)} />With regional rows</label>
           <span className="ml-auto self-center text-[11.5px] text-muted">{rows.length} shown · <sup className="text-[9px] font-bold text-link">R</sup> regional rate</span>
         </div>
