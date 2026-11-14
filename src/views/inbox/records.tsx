@@ -39,7 +39,7 @@ export function recordTab(inst: WorkflowInstance): string {
 
 export function recordHref(inst: WorkflowInstance): string | undefined {
   if (inst.projectId) return projectHref(inst.projectId, recordTab(inst))
-  if (inst.recordType === 'initiation') return '#planning'
+  if (inst.recordType === 'initiation') return '#allocation'
   return undefined
 }
 

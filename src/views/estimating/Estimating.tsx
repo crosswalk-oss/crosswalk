@@ -110,8 +110,8 @@ function Register({ s }: { s: AppState }) {
         <div className="flex flex-wrap gap-2 border-b border-line px-4 py-2.5">
           <Input id="reg-q" className="h-8 w-48" placeholder="Search projects" value={q} onChange={(e) => setQ(e.target.value)} />
           <div className="w-52"><ProgramSelect id="reg-prog" value={prog} onChange={setProg} /></div>
-          <Select id="reg-cls" className="h-8 w-36" value={cls} onChange={(e) => setCls(e.target.value)} options={[{ value: '', label: 'All classes' }, ...[5, 4, 3, 2, 1].map((c) => ({ value: String(c), label: `Class ${c}` }))]} />
-          <Select id="reg-status" className="h-8 w-40" value={status} onChange={(e) => setStatus(e.target.value)} options={[{ value: '', label: 'All statuses' }, ...['draft', 'in-review', 'approved', 'superseded', 'rejected'].map((x) => ({ value: x, label: x === 'in-review' ? 'In review' : x[0].toUpperCase() + x.slice(1) }))]} />
+          <Select id="reg-cls" aria-label="Estimate class" className="h-8 w-36" value={cls} onChange={(e) => setCls(e.target.value)} options={[{ value: '', label: 'All classes' }, ...[5, 4, 3, 2, 1].map((c) => ({ value: String(c), label: `Class ${c}` }))]} />
+          <Select id="reg-status" aria-label="Estimate status" className="h-8 w-40" value={status} onChange={(e) => setStatus(e.target.value)} options={[{ value: '', label: 'All statuses' }, ...['draft', 'in-review', 'approved', 'superseded', 'rejected'].map((x) => ({ value: x, label: x === 'in-review' ? 'In review' : x[0].toUpperCase() + x.slice(1) }))]} />
           {(prog || cls || status || q) && <Button size="sm" variant="ghost" onClick={() => { setProg(''); setCls(''); setStatus(''); setQ('') }}>Clear filters</Button>}
         </div>
         <Table rows={sorted} columns={cols} rowKey={(r) => r.p.id} onRowClick={(r) => { go(projectHref(r.p.id, 'estimates')) }} empty={<div className="p-4"><Empty title="No estimates match">Change or clear the filters.</Empty></div>} />

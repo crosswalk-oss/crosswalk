@@ -60,7 +60,7 @@ export default function AllocationSettingsTab() {
             <thead><tr><th style={{ width: 44 }}>On</th><th style={{ minWidth: 260 }}>Measure</th><th>Group</th><th>Unit</th><th className="num">100 points =</th><th className="num">Weight</th><th className="num">Share</th><th style={{ width: 30 }} /></tr></thead>
             <tbody>
               {d.criteria.map((c, i) => (
-                <tr key={c.id} className={c.active ? '' : 'opacity-60'}>
+                <tr key={c.id} className={c.active ? '' : 'bg-sunken/60'}>
                   <td className="align-top"><input type="checkbox" aria-label={`${c.label} on`} className="mt-1.5 h-4 w-4 accent-[rgb(var(--ink))]" checked={c.active} onChange={(e) => setC(i, { active: e.target.checked })} /></td>
                   <td className="align-top">
                     <div className="flex flex-col gap-1">
@@ -131,7 +131,8 @@ export default function AllocationSettingsTab() {
             </div>
             <div className="border-t border-line pt-3">
               <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-[rgb(var(--ink))]" checked={d.annual.on} onChange={(e) => D.set((x) => ({ ...x, annual: { ...x.annual, on: e.target.checked } }))} /><span className="font-semibold">Limit spend year by year <span className="font-normal text-muted">instead of one total, the way rate-case funding is authorized</span></span></label>
-              <div className={d.annual.on ? 'mt-2 pl-6' : 'mt-2 pl-6 opacity-50'}>
+              <div className="mt-2 pl-6">
+                {!d.annual.on && <p className="mb-1 text-[12px] italic text-muted">Not applied while the box above is unchecked.</p>}
                 <table className="w-full text-[12.5px]">
                   <thead><tr className="text-left text-[11px] uppercase tracking-wide text-faint"><th className="py-1">Year</th><th className="py-1">Limit</th><th className="py-1">Basis</th></tr></thead>
                   <tbody>

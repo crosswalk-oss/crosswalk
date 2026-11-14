@@ -154,7 +154,7 @@ function Quantitative({ projectId }: { projectId: string }) {
   return (
     <Panel title="Quantitative analysis" subtitle={mc ? `${mc.iterations.toLocaleString()} iterations · base ${money(mc.baseCost)} (${basis.source}, excl. contingency) · ${isSaved ? `saved ${fmtDate(mc.date)}` : 'not saved'}` : undefined}
       actions={<>
-        <Select id="mc-iter" className="w-[130px]" value={String(iterations)} onChange={(e) => setIterations(Number(e.target.value))} options={[1000, 5000, 10000, 20000].map((n) => ({ value: String(n), label: `${n.toLocaleString()} runs` }))} />
+        <Select id="mc-iter" aria-label="Simulation runs" className="w-[130px]" value={String(iterations)} onChange={(e) => setIterations(Number(e.target.value))} options={[1000, 5000, 10000, 20000].map((n) => ({ value: String(n), label: `${n.toLocaleString()} runs` }))} />
         <Button size="sm" onClick={run}>Run Monte Carlo</Button>
         <Button size="sm" variant={isSaved ? 'secondary' : 'primary'} disabled={isSaved || !mc} onClick={save}>{isSaved ? 'Saved' : 'Save results'}</Button>
       </>}>

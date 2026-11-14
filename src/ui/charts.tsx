@@ -35,7 +35,7 @@ export function LineChart({ labels, series, height = 220, format = money, marker
   const every = Math.max(1, Math.ceil(labels.length / 8))
   return (
     <div className="relative">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" onMouseLeave={() => setHover(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`Line chart: ${series.map((x) => x.name).join(', ')}`} onMouseLeave={() => setHover(null)}>
         {ticks.map((t) => <g key={t}><line x1={L} x2={W - Rm} y1={Y(t)} y2={Y(t)} stroke={AXIS} strokeWidth={1} /><text x={L - 8} y={Y(t) + 4} textAnchor="end" fontSize={11} fill={TEXT}>{format(t)}</text></g>)}
         {labels.map((l, i) => i % every === 0 && <text key={i} x={X(i)} y={H - 10} textAnchor="middle" fontSize={11} fill={TEXT}>{l}</text>)}
         {markers?.map((m) => <g key={m.index}><line x1={X(m.index)} x2={X(m.index)} y1={T} y2={H - B} stroke="rgb(var(--ink))" strokeDasharray="3 3" strokeWidth={1} /><text x={X(m.index) + 4} y={T + 10} fontSize={11} fill="rgb(var(--ink))">{m.label}</text></g>)}
@@ -71,7 +71,7 @@ export function BarChart({ labels, series, height = 220, format = money, stacked
   const every = Math.max(1, Math.ceil(labels.length / 10))
   return (
     <div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`Bar chart: ${series.map((x) => x.name).join(', ')}`}>
         {ticks.map((t) => <g key={t}><line x1={L} x2={W - Rm} y1={Y(t)} y2={Y(t)} stroke={AXIS} /><text x={L - 8} y={Y(t) + 4} textAnchor="end" fontSize={11} fill={TEXT}>{format(t)}</text></g>)}
         {labels.map((l, i) => {
           const x0 = L + i * bw
@@ -139,7 +139,7 @@ export function Waterfall({ start, end, steps, startLabel = 'From', endLabel = '
   const Y = (v: number) => T + (1 - (v - ymin) / (ymax - ymin)) * (H - T - B)
   const bw = (W - L - Rm) / bars.length
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`Waterfall chart from ${startLabel} to ${endLabel}`}>
       {ticks.map((t) => <g key={t}><line x1={L} x2={W - Rm} y1={Y(t)} y2={Y(t)} stroke={AXIS} /><text x={L - 8} y={Y(t) + 4} textAnchor="end" fontSize={11} fill={TEXT}>{money(t)}</text></g>)}
       {bars.map((b, i) => {
         const x = L + i * bw + bw * 0.15, w = bw * 0.7
@@ -177,7 +177,7 @@ export function Histogram({ bins, markers, format = money, height = 200 }: { bin
   const X = (v: number) => L + ((v - lo) / (hi - lo || 1)) * (W - L - Rm)
   const bw = (W - L - Rm) / bins.length
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Histogram of simulated outcomes">
       {bins.map((b, i) => { const h = (b.n / mx) * (H - T - B); return <rect key={i} x={L + i * bw} y={H - B - h} width={bw - 1} height={h} fill="rgb(var(--link))" opacity={0.55} /> })}
       <line x1={L} x2={W - Rm} y1={H - B} y2={H - B} stroke={AXIS} />
       {[0, 0.25, 0.5, 0.75, 1].map((f) => <text key={f} x={L + f * (W - L - Rm)} y={H - 10} textAnchor={f === 0 ? 'start' : f === 1 ? 'end' : 'middle'} fontSize={11} fill={TEXT}>{format(lo + f * (hi - lo))}</text>)}
@@ -188,7 +188,7 @@ export function Histogram({ bins, markers, format = money, height = 200 }: { bin
 
 /** 5×5 likelihood × consequence heat map with counts; click a cell to filter. */
 export function RiskMatrix({ cells, onPick, selected }: { cells: Record<string, number>; onPick?: (l: number, c: number) => void; selected?: string }) {
-  const tone = (l: number, c: number) => { const s = l * c; return s >= 15 ? 'bg-bad/80 text-white' : s >= 8 ? 'bg-warn/70 text-ink' : 'bg-good/25 text-ink' }
+  const tone = (l: number, c: number) => { const s = l * c; return s >= 15 ? 'bg-bad text-white' : s >= 8 ? 'bg-warn/50 text-ink' : 'bg-good/25 text-ink' }
   return (
     <div className="inline-grid grid-cols-[auto_repeat(5,minmax(34px,48px))] gap-1 text-[11px]">
       {[5, 4, 3, 2, 1].map((l) => (
@@ -196,7 +196,7 @@ export function RiskMatrix({ cells, onPick, selected }: { cells: Record<string, 
           <div className="flex items-center justify-end pr-1 text-faint">L{l}</div>
           {[1, 2, 3, 4, 5].map((c) => {
             const k = `${l}-${c}`, n = cells[k] || 0
-            return <button key={k} onClick={() => onPick?.(l, c)} className={`flex h-9 items-center justify-center rounded-sm font-bold tabular-nums ${tone(l, c)} ${selected === k ? 'ring-2 ring-ink' : ''} ${n ? '' : 'opacity-40'}`}>{n || ''}</button>
+            return <button key={k} aria-label={`Likelihood ${l}, consequence ${c}: ${n} risk${n === 1 ? '' : 's'}`} onClick={() => onPick?.(l, c)} className={`flex h-9 items-center justify-center rounded-sm font-bold tabular-nums ${tone(l, c)} ${selected === k ? 'ring-2 ring-ink' : ''} ${n ? '' : 'opacity-40'}`}>{n || ''}</button>
           })}
         </React.Fragment>
       ))}

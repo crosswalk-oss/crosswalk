@@ -423,7 +423,7 @@ function LongLeadPanel({ projectId, items, asOf, cStart }: { projectId: string; 
                     <td className="whitespace-nowrap text-[12px]">{fmtDate(it.requiredOnSite)}</td>
                     <td className="whitespace-nowrap text-[12px]">{fmtDate(it.eta)}</td>
                     <td className="num">{it.status === 'received' ? <span className="text-faint">—</span> : <Badge tone={late ? 'bad' : float < 14 ? 'warn' : 'good'}>{float > 0 ? '+' : ''}{float}d</Badge>}</td>
-                    <td><Select className="h-7 w-[120px] py-0.5" value={it.status} onChange={(e) => setStatus(it, e.target.value as LongLeadItem['status'])} options={['requested', 'ordered', 'shipped', 'received']} /></td>
+                    <td><Select aria-label={`Status of ${it.item}`} className="h-7 w-[120px] py-0.5" value={it.status} onChange={(e) => setStatus(it, e.target.value as LongLeadItem['status'])} options={['requested', 'ordered', 'shipped', 'received']} /></td>
                     <td><Button size="sm" variant="ghost" onClick={() => setEdit({ it, isNew: false })}>Edit</Button></td>
                   </tr>
                 )

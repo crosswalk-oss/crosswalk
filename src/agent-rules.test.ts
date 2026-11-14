@@ -87,6 +87,11 @@ describe('Rule 13–15: fairness in the estimating model', () => {
       expect(t(parametricLines(q2, flipped.rates))).toBe(t(parametricLines(p, S.rates)))
     }
   })
+  it('outside the data model, the community flag is only shown, entered, offered as a routing condition or included in a project description — nothing ranks or prices by it', () => {
+    const ALLOWED = [/^src\/core\/types\.ts$/, /^src\/core\/seed\//, /^src\/views\/projects\/NewProject\.tsx$/, /^src\/views\/admin\/common\.tsx$/, /^src\/views\/workflows\/lib\.ts$/, /^src\/views\/portfolio\/reports\.ts$/, /^src\/views\/project\/tabs\/Lifecycle\.tsx$/, /^src\/views\/project\/tabs\/Overview\.tsx$/, /^src\/views\/project\/tabs\/info\/lib\.ts$/, /^src\/views\/project\/tabs\/Risk\.tsx$/]
+    const users = PROD.filter((f) => /\bdac\b/.test(read(f))).map(rel)
+    expect(users.filter((f) => !ALLOWED.some((re) => re.test(f)))).toEqual([])
+  })
   // Factor model (rules 13–15): factors bind only to physical, legal or logistical drivers.
   const FORBIDDEN = /\bdac\b|disadvantag|income|wealth|race|ethnic|home.?value|property.?value|zip|postal|census|demograph|poverty|language/i
   it('every factor in every model version binds to an allowed driver, never a demographic or wealth attribute', () => {

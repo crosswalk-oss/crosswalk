@@ -9,6 +9,7 @@ import { addDays, cx, fmtDate, fmtDateTime, nowISO, uid } from './core/util'
 import { Avatar, Badge, BrandMark, Button, Callout, ConfirmButton, Empty, Field, Input, Modal, Select } from './ui/kit'
 import { Toaster, toast } from './ui/toast'
 import { Icon, type IconName } from './ui/icons'
+import { useScrollRegions } from './ui/a11y'
 import { AskPanel } from './views/shared/AskPanel'
 import { useAiAvailable } from './core/ai'
 import ProjectView from './views/project/ProjectView'
@@ -27,7 +28,6 @@ import Inbox from './views/inbox/Inbox'
 import Catalog from './views/workflows/Catalog'
 import Designer from './views/workflows/Designer'
 import Admin from './views/admin/Admin'
-import Planning from './views/planning/Planning'
 import Audit from './views/audit/Audit'
 import ForecastCycle from './views/forecast/ForecastCycle'
 import MapPage from './views/map/MapPage'
@@ -55,7 +55,6 @@ const NAV: { group: string; items: { id: string; label: string; icon: IconName }
     { id: 'safety', label: 'Safety', icon: 'shield' },
     { id: 'field', label: 'Field tailboard', icon: 'phone' },
     { id: 'regulatory', label: 'Rate case & evidence', icon: 'scale' },
-    { id: 'planning', label: 'Portfolio planning', icon: 'layers' },
   ] },
   { group: 'Configure', items: [
     { id: 'workflows', label: 'Workflows', icon: 'flow' },
@@ -65,7 +64,7 @@ const NAV: { group: string; items: { id: string; label: string; icon: IconName }
 ]
 
 /** Phase-2 modules hidden for the pilot (settings.features). */
-const NAV_FEATURE: Record<string, keyof AppState['settings']['features']> = { field: 'fieldTailboard', planning: 'portfolioPlanning' }
+const NAV_FEATURE: Record<string, keyof AppState['settings']['features']> = { field: 'fieldTailboard' }
 const CHAT_PATH = 'M4 5h16v11H9l-5 4zM8 9h8M8 12h5'
 
 /** Send workflow reminders and escalations that are due (idempotent). */
@@ -82,6 +81,7 @@ function PhaseTwo({ name }: { name: string }) {
 }
 
 export default function App() {
+  useScrollRegions()
   const route = useRoute()
   const features = useStore((s) => s.settings.features)
   const sync = useSync()
@@ -110,7 +110,6 @@ export default function App() {
       case 'inbox': return <Inbox />
       case 'workflows': return <Catalog />
       case 'admin': return <Admin />
-      case 'planning': return features?.portfolioPlanning ? <Planning /> : <PhaseTwo name="Portfolio planning" />
       case 'audit': return <Audit />
       case 'forecast': return <ForecastCycle />
       case 'map': return <MapPage />
@@ -215,7 +214,7 @@ function TopBar({ onMenu, onAsk, onUnlock }: { onMenu: () => void; onAsk: () => 
         <SyncStatusChip onUnlock={onUnlock} />
         {ai && <Button variant="marker" size="sm" onClick={onAsk} icon={<span aria-hidden>✦</span>}>Ask</Button>}
         <div className="relative">
-          <button onClick={() => setBell(!bell)} className="relative rounded p-1.5 text-muted hover:bg-sunken" aria-label="Notifications"><Icon name="bell" className="h-5 w-5" />{unread > 0 && <span className="absolute -right-0.5 -top-0.5 rounded-full bg-bad px-1 text-[10px] font-bold text-white">{unread}</span>}</button>
+          <button onClick={() => setBell(!bell)} className="relative rounded p-1.5 text-muted hover:bg-sunken"><span className="sr-only">Notifications{unread > 0 ? `, ${unread} unread` : ''}</span><Icon name="bell" className="h-5 w-5" />{unread > 0 && <span aria-hidden className="absolute -right-0.5 -top-0.5 rounded-full bg-bad px-1 text-[10px] font-bold text-white">{unread}</span>}</button>
           {bell && (
             <div className="absolute right-0 top-10 z-30 w-80 rounded-md border border-line bg-surface shadow-xl">
               <div className="flex items-center justify-between border-b border-line px-3 py-2"><b className="text-[13px]">Notifications</b><button className="text-xs text-link" onClick={() => update((d) => d.notifications.forEach((n) => { if (n.toId === d.currentUserId) n.read = true }))}>Mark all read</button></div>
@@ -257,7 +256,8 @@ function UserMenu({ me }: { me: Person }) {
   }
   return (
     <div className="relative">
-      <button id="user-menu" onClick={() => setOpen(!open)} className="relative flex items-center gap-1.5 rounded p-1 hover:bg-sunken" aria-haspopup="menu" aria-expanded={open} aria-label={`Account menu for ${me.name}${away ? ' (out of office)' : ''}`}>
+      <button id="user-menu" onClick={() => setOpen(!open)} className="relative flex items-center gap-1.5 rounded p-1 hover:bg-sunken" aria-haspopup="menu" aria-expanded={open}>
+        <span className="sr-only">Account menu for {me.name}</span>
         <Avatar name={me.name} size={24} />
         {away && <span className="hidden rounded-sm bg-warn/15 px-1.5 py-px text-[10.5px] font-bold uppercase tracking-wide text-warn sm:inline">Out of office</span>}
         {(away || covering.length > 0) && <span className={cx('absolute left-5 top-0.5 h-2 w-2 rounded-full border border-surface', away ? 'bg-warn' : 'bg-info')} />}

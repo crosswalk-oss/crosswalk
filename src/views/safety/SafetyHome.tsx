@@ -142,7 +142,7 @@ export default function SafetyHome(_props: { projectId?: string; id?: string }) 
           )}
         </Panel>
 
-        <Panel title="Safety events" pad={false} actions={<Select id="ev-filter" className="w-[170px]" value={evFilter} onChange={(e) => setEvFilter(e.target.value as typeof evFilter)} options={[{ value: 'open', label: 'Open events' }, { value: 'sif', label: 'SIF potential' }, { value: 'all', label: 'All events' }]} />}>
+        <Panel title="Safety events" pad={false} actions={<Select id="ev-filter" aria-label="Safety events shown" className="w-[170px]" value={evFilter} onChange={(e) => setEvFilter(e.target.value as typeof evFilter)} options={[{ value: 'open', label: 'Open events' }, { value: 'sif', label: 'SIF potential' }, { value: 'all', label: 'All events' }]} />}>
           <EventsTable events={events} showProject />
         </Panel>
       </div>

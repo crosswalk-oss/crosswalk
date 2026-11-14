@@ -14,19 +14,19 @@
   --sunken: 243 236 224;
   --line: 228 221 209;
   --ink: 35 38 45;
-  --muted: 102 98 92;
-  --faint: 132 126 117;
+  --muted: 86 82 76;
+  --faint: 104 98 90; /* 4.9:1 on the sand band, 6:1 on cards: small grey text stays readable */
   --steel: 240 231 215;
   --steelink: 58 55 50;
   --rail: 38 36 33;
   --railink: 236 229 217;
   --marker: 168 50 127;
   --markerink: 255 255 255;
-  --link: 0 112 192;
-  --good: 0 130 59;
-  --warn: 185 84 0;
-  --bad: 200 30 60;
-  --info: 0 112 192;
+  --link: 0 102 176;
+  --good: 0 110 50;
+  --warn: 158 70 0;
+  --bad: 176 22 50;
+  --info: 0 96 168;
   --brand: 240 179 65;
   --c1: 0 112 192; --c2: 0 176 80; --c3: 217 88 15; --c4: 168 50 127;
   --font-display: 'Archivo', 'Arial Narrow', system-ui, sans-serif;
@@ -81,6 +81,9 @@ textarea.inp { min-height: 72px; resize: vertical; }
 /* Controls that sit on the dark menu rail: muted text and hover states are restated for a dark ground. */
 .on-rail { --muted: 190 183 172; --ink: 255 255 255; --sunken: 62 59 55; }
 .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.scroll-x:focus-visible { outline: 2px solid rgb(var(--link)); outline-offset: -2px; }
+/* A link inside running text is underlined, so it is not told apart by colour alone. */
+a.text-link:not(.font-semibold):not(.font-bold):not(.font-mono) { text-decoration: underline; text-underline-offset: 2px; }
 .mark-stripe { background-image: repeating-linear-gradient(135deg, rgb(var(--brand)) 0 8px, rgb(var(--surface)) 8px 16px); }
 @keyframes fadein { from { opacity: 0.4; transform: translateY(2px); } to { opacity: 1; transform: none; } }
 .fadein { animation: fadein 160ms ease-out; }

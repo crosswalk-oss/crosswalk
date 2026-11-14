@@ -77,12 +77,12 @@ export function ClassBadge({ cls, size = 'sm' }: { cls: AaceClass; size?: 'sm' |
 export function Avatar({ name, size = 22 }: { name: string; size?: number }) {
   let h = 0
   for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360
-  return <span aria-hidden className="inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white" style={{ width: size, height: size, fontSize: size * 0.42, background: `hsl(${h} 32% 42%)` }}>{initials(name)}</span>
+  return <span aria-hidden className="inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white" style={{ width: size, height: size, fontSize: size * 0.42, background: `hsl(${h} 36% 32%)` }}>{initials(name)}</span>
 }
 
-export function Progress({ value, tone = 'ink', className }: { value: number; tone?: 'ink' | 'good' | 'warn' | 'bad' | 'marker'; className?: string }) {
+export function Progress({ value, tone = 'ink', className, label = 'Progress' }: { value: number; tone?: 'ink' | 'good' | 'warn' | 'bad' | 'marker'; className?: string; label?: string }) {
   const c = { ink: 'bg-link', good: 'bg-good', warn: 'bg-warn', bad: 'bg-bad', marker: 'bg-marker' }[tone]
-  return <div className={cx('h-1.5 w-full overflow-hidden rounded-full bg-sunken', className)} role="progressbar" aria-valuenow={Math.round(value)} aria-valuemin={0} aria-valuemax={100}><div className={cx('h-full rounded-full', c)} style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div>
+  return <div className={cx('h-1.5 w-full overflow-hidden rounded-full bg-sunken', className)} role="progressbar" aria-label={label} aria-valuenow={Math.round(value)} aria-valuemin={0} aria-valuemax={100}><div className={cx('h-full rounded-full', c)} style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div>
 }
 
 /** Stage track: one segment per lifecycle stage, current stage marked. */

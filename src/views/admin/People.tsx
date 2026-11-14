@@ -19,8 +19,8 @@ export function PeopleTab() {
     <div className="flex flex-col gap-4">
       <Panel title="People" subtitle={`${s.people.length} people · ${s.people.filter((p) => p.company).length} contractor staff. Roles drive workflow routing; dollar authority drives approvals.`} pad={false}
         actions={<>
-          <Input className="h-7 w-44 py-0.5" placeholder="Search people" value={q} onChange={(e) => setQ(e.target.value)} />
-          <Select className="h-7 w-44 py-0.5" value={role} onChange={(e) => setRole(e.target.value)} options={[{ value: '', label: 'All roles' }, ...s.roles.map((r) => ({ value: r.id, label: r.name }))]} />
+          <Input aria-label="Search people" className="h-7 w-44 py-0.5" placeholder="Search people" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Select aria-label="Role" className="h-7 w-44 py-0.5" value={role} onChange={(e) => setRole(e.target.value)} options={[{ value: '', label: 'All roles' }, ...s.roles.map((r) => ({ value: r.id, label: r.name }))]} />
           <Button size="sm" variant="primary" onClick={() => setEdit({ isNew: true, p: { id: uid('u'), name: '', title: '', roles: [], email: '', dollarAuthority: 0 } })}>Add person</Button>
         </>}>
         <Table rows={rows} rowKey={(r) => r.id} onRowClick={(p) => setEdit({ p, isNew: false })} maxHeight={520} columns={[

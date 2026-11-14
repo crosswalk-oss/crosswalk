@@ -74,7 +74,7 @@ export default function RiskPortfolio(_props: { projectId?: string; id?: string 
   return (
     <div>
       <PageHeader eyebrow="Controls" title="Portfolio risk" subtitle="Every active risk across live projects, how much contingency stands behind it, and what we learned from the ones that happened."
-        actions={<Select id="risk-program" className="w-[260px]" value={program} onChange={(e) => { setProgram(e.target.value); setCell(undefined) }} options={[{ value: '', label: 'All programs' }, ...s.programs.map((p) => ({ value: p.id, label: `${p.code} · ${p.name}` }))]} />} />
+        actions={<Select id="risk-program" aria-label="Program" className="w-[260px]" value={program} onChange={(e) => { setProgram(e.target.value); setCell(undefined) }} options={[{ value: '', label: 'All programs' }, ...s.programs.map((p) => ({ value: p.id, label: `${p.code} · ${p.name}` }))]} />} />
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Stat label="Active risks" value={active.length} sub={`${projects.length} live projects`} />
@@ -189,8 +189,8 @@ function LessonsLibrary() {
     <Panel className="mt-4" title="Lessons learned library" subtitle="Published lessons and closed risks that carry a lesson. Shown to teams planning similar work." pad={false}
       actions={<>
         <Input id="lesson-q" className="w-[200px]" placeholder="Search lessons" value={q} onChange={(e) => setQ(e.target.value)} />
-        <Select id="lesson-cat" className="w-[160px]" value={cat} onChange={(e) => setCat(e.target.value)} options={[{ value: '', label: 'All categories' }, ...cats]} />
-        <Select id="lesson-wm" className="w-[190px]" value={wm} onChange={(e) => setWm(e.target.value)} options={[{ value: '', label: 'All work methods' }, ...methods.map((m) => ({ value: m, label: m.replace(/-/g, ' ') }))]} />
+        <Select id="lesson-cat" aria-label="Lesson category" className="w-[160px]" value={cat} onChange={(e) => setCat(e.target.value)} options={[{ value: '', label: 'All categories' }, ...cats]} />
+        <Select id="lesson-wm" aria-label="Work method" className="w-[190px]" value={wm} onChange={(e) => setWm(e.target.value)} options={[{ value: '', label: 'All work methods' }, ...methods.map((m) => ({ value: m, label: m.replace(/-/g, ' ') }))]} />
       </>}>
       {rows.length === 0 ? <div className="p-4"><Empty title="No lessons match">Try a broader search.</Empty></div> : (
         <div className="flex flex-col divide-y divide-line" style={{ maxHeight: 480, overflowY: 'auto' }}>

@@ -4,7 +4,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-const ALLOWED = ['MIT', 'MIT-0', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause', '0BSD', 'ISC']
+// Zlib (the zlib/libpng licence) is permissive with no copyleft; it arrives with pako, the compression code inside the PDF library.
+const ALLOWED = ['MIT', 'MIT-0', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause', '0BSD', 'ISC', 'Zlib']
 // Reviewed exceptions: build-time data, never shipped in the app bundle.
 const EXCEPTIONS = { 'caniuse-lite': 'CC-BY-4.0 browser-support data read by autoprefixer at build time only' }
 const ok = (expr) => {

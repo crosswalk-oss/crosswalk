@@ -161,7 +161,7 @@ function FundingGrid() {
           </div>
         )
       })()}
-      <div className="border-t border-line px-4 py-2 text-[12px] text-muted">Click a planned figure to edit the proceeding that authorizes that envelope. Portfolio planning uses these envelopes for its fit-to-funding scenarios.</div>
+      <div className="border-t border-line px-4 py-2 text-[12px] text-muted">Click a planned figure to edit the proceeding that authorizes that envelope. Capital allocation uses these envelopes as the capital available.</div>
     </Panel>
   )
 }
