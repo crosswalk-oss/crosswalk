@@ -1,5 +1,5 @@
 # Test, then deploy the demo as one Neon Function (page + API) next to its Neon Postgres database.
-# Every push to main: typecheck, tests, license check, build, then `neon deploy`. Migrations run on the
+# Every push to main: typecheck, tests, license check, third-party notices check, vulnerability scan, build, then `neon deploy`. Migrations run on the
 # function's first API request (plain SQL from migrations/, applied once each).
 #
 # Repository secrets (Settings → Secrets and variables → Actions):
@@ -33,6 +33,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run licenses
+      - run: npm run notices -- --check   # THIRD_PARTY_NOTICES.md matches the lockfile
+      - run: npm run audit               # no known high or critical vulnerability in what ships
   deploy:
     needs: check
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

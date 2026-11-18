@@ -14,7 +14,7 @@ export const BASEMAPS: { id: Basemap; label: string; url?: string; attribution: 
   { id: 'none', label: 'None', attribution: '' },
 ]
 
-const HEALTH: Record<RAG, string> = { green: '#1b8048', amber: '#d18a00', red: '#c62828' }
+const HEALTH: Record<RAG, string> = { green: '#00a04a', amber: '#d9580f', red: '#c62828' }
 const worst = (p: Project): RAG => (Object.values(p.health).includes('red') ? 'red' : Object.values(p.health).includes('amber') ? 'amber' : 'green')
 
 export interface LayerStatus { id: string; state: 'loading' | 'ok' | 'error'; message?: string; count?: number }

@@ -10,7 +10,7 @@ import { daysBetween, fmtDate, fmtMonth, money, sum, addDays } from '@/core/util
 import { latestApprovedEstimate, latestEstimate, defById } from './lib'
 
 const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-const rag = (r: string) => `<span class="tag" style="border-color:${r === 'red' ? '#c02828' : r === 'amber' ? '#b86e00' : '#1b8048'};color:${r === 'red' ? '#c02828' : r === 'amber' ? '#b86e00' : '#1b8048'}">${r.toUpperCase()}</span>`
+const rag = (r: string) => `<span class="tag" style="border-color:${r === 'red' ? '#c81e3c' : r === 'amber' ? '#b95400' : '#00823b'};color:${r === 'red' ? '#c81e3c' : r === 'amber' ? '#b95400' : '#00823b'}">${r.toUpperCase()}</span>`
 const table = (head: string[], rows: (string | number)[][], numCols: number[] = []) =>
   `<table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.map((r) => `<tr>${r.map((c, i) => `<td${numCols.includes(i) ? ' class="num"' : ''}>${typeof c === 'string' && c.startsWith('<') ? c : esc(c)}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${head.length}" class="meta">None</td></tr>`}</tbody></table>`
 

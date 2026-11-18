@@ -8,7 +8,6 @@ type Key = keyof Settings['features']
 
 const MODULES: { key: Key; name: string; what: string; where: string; needs: string }[] = [
   { key: 'fieldTailboard', name: 'Field tailboard', what: 'Phone-first pre-job briefing for crews: hazards and controls from the approved safety plan, crew sign-in, stop-work reminder, observations and near misses, with an offline queue.', where: 'Adds “Field tailboard” to the navigation and the button on Construction safety.', needs: 'Mobile device management for contractor phones; field connectivity plan.' },
-  { key: 'portfolioPlanning', name: 'Portfolio planning', what: 'Multi-year capital plan scenarios: rank candidate projects by risk reduction per dollar against funding envelopes, and compare plans side by side.', where: 'Adds “Portfolio planning” to the navigation.', needs: 'Integrity risk model scores from the DIMP / TIMP systems.' },
   { key: 'opQual', name: 'Operator qualification (an operator-qualification provider)', what: 'Checks every crew member on a safety plan against current operator-qualification records for the covered tasks the plan’s hazards require, and flags expired OQs at the tailboard.', where: 'Adds OQ columns, the crew OQ checks in safety plans, and the expiring-OQ list on Construction safety.', needs: 'the OQ provider (or OpQual) feed of contractor OQ records.' },
 ]
 

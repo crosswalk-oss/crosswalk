@@ -16,7 +16,7 @@ const lcOpts = (labels: string[]) => labels.map((l, i) => ({ value: String(i + 1
 export function ScoreChip({ l, c, title }: { l: number; c: number; title?: string }) {
   const sc = l * c
   const t = bandTone(sc)
-  return <span title={title ?? `L${l} × C${c}`} className={cx('inline-flex h-6 min-w-[30px] items-center justify-center rounded-sm px-1 font-mono text-[12px] font-bold tabular-nums', t === 'bad' ? 'bg-bad text-white' : t === 'warn' ? 'bg-warn/80 text-ink' : 'bg-good/25 text-ink')}>{sc}</span>
+  return <span title={title ?? `L${l} × C${c}`} className={cx('inline-flex h-6 min-w-[30px] items-center justify-center rounded-sm px-1 font-mono text-[12px] font-bold tabular-nums', t === 'bad' ? 'bg-bad text-white' : t === 'warn' ? 'bg-warn/50 text-ink' : 'bg-good/25 text-ink')}>{sc}</span>
 }
 
 export function RiskEditor({ risk, open, onClose, onRequestDraw, isNew }: { risk: Risk | null; open: boolean; onClose: () => void; onRequestDraw?: (r: Risk) => void; isNew?: boolean }) {

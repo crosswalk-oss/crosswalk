@@ -66,7 +66,7 @@ export default function RedactionSettingsTab() {
       </Callout>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {TAG_ORDER.map((t) => (
-          <div key={t} className="rounded-md border border-line bg-white p-3">
+          <div key={t} className="rounded-md border border-line bg-surface p-3">
             <div className="flex items-baseline justify-between gap-2"><span className="text-[13px] font-semibold">{REDACTION_TAGS[t].label}</span><Badge tone="info">{counts[t]}</Badge></div>
             <p className="mt-1 text-[12px] text-muted">{REDACTION_TAGS[t].covers}</p>
           </div>

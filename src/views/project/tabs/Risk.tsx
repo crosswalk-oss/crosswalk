@@ -154,7 +154,7 @@ function Quantitative({ projectId }: { projectId: string }) {
   return (
     <Panel title="Quantitative analysis" subtitle={mc ? `${mc.iterations.toLocaleString()} iterations · base ${money(mc.baseCost)} (${basis.source}, excl. contingency) · ${isSaved ? `saved ${fmtDate(mc.date)}` : 'not saved'}` : undefined}
       actions={<>
-        <Select id="mc-iter" className="w-[130px]" value={String(iterations)} onChange={(e) => setIterations(Number(e.target.value))} options={[1000, 5000, 10000, 20000].map((n) => ({ value: String(n), label: `${n.toLocaleString()} runs` }))} />
+        <Select id="mc-iter" aria-label="Simulation runs" className="w-[130px]" value={String(iterations)} onChange={(e) => setIterations(Number(e.target.value))} options={[1000, 5000, 10000, 20000].map((n) => ({ value: String(n), label: `${n.toLocaleString()} runs` }))} />
         <Button size="sm" onClick={run}>Run Monte Carlo</Button>
         <Button size="sm" variant={isSaved ? 'secondary' : 'primary'} disabled={isSaved || !mc} onClick={save}>{isSaved ? 'Saved' : 'Save results'}</Button>
       </>}>
@@ -219,7 +219,7 @@ function Contingency({ projectId, onRequest }: { projectId: string; onRequest: (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <Panel title="Contingency drawdowns" subtitle={hasBudget ? `${money(pos.contingencyOriginal)} original · ${money(pos.contingencyUsed)} used · ${money(pos.contingencyRemaining)} remaining` : 'Contingency is held in the estimate until a control budget is authorized'}
         actions={<Button size="sm" variant="primary" onClick={onRequest} disabled={!hasBudget}>Request drawdown</Button>}>
-        {hasBudget && <div className="mb-3"><div className="mb-1 flex justify-between text-xs text-muted"><span>Used {pct(pos.contingencyOriginal ? pos.contingencyUsed / pos.contingencyOriginal : 0)}</span><span>{money(pos.contingencyRemaining)} left</span></div><div className="h-2 overflow-hidden rounded-full bg-sunken"><div className="h-full bg-ink" style={{ width: `${Math.min(100, (pos.contingencyUsed / Math.max(1, pos.contingencyOriginal)) * 100)}%` }} /></div></div>}
+        {hasBudget && <div className="mb-3"><div className="mb-1 flex justify-between text-xs text-muted"><span>Used {pct(pos.contingencyOriginal ? pos.contingencyUsed / pos.contingencyOriginal : 0)}</span><span>{money(pos.contingencyRemaining)} left</span></div><div className="h-2 overflow-hidden rounded-full bg-sunken"><div className="h-full bg-link" style={{ width: `${Math.min(100, (pos.contingencyUsed / Math.max(1, pos.contingencyOriginal)) * 100)}%` }} /></div></div>}
         {draws.length === 0 && fromChanges.length === 0 && <Empty title="No drawdowns">Requests made against a realized risk appear here with their approval routing.</Empty>}
         <div className="flex flex-col divide-y divide-line">
           {draws.map((d) => {

@@ -150,7 +150,7 @@ export function QuickRequest({ projectId, allowPicker, reviseId, onDone, onCance
           <Field label="What is it for">
             <TextArea id="q-note" className="min-h-[60px]" placeholder="e.g. Screening number for the TY2028 GRC forecast" value={note} onChange={(e) => setNote(e.target.value)} />
           </Field>
-          <div className="-mt-1 flex flex-wrap gap-1">{PURPOSES.map((x) => <button key={x} type="button" onClick={() => setNote(x)} className={cx('rounded border px-2 py-0.5 text-[11.5px]', note === x ? 'border-ink bg-ink text-surface' : 'border-line text-muted hover:text-ink')}>{x}</button>)}</div>
+          <div className="-mt-1 flex flex-wrap gap-1">{PURPOSES.map((x) => <button key={x} type="button" onClick={() => setNote(x)} className={cx('rounded border px-2 py-0.5 text-[11.5px]', note === x ? 'border-link bg-link text-surface' : 'border-line text-muted hover:text-ink')}>{x}</button>)}</div>
           <Field label="Needed by (optional)" className="max-w-[220px]"><Input id="q-needby" type="date" min={s.settings.asOf} value={needBy} onChange={(e) => setNeedBy(e.target.value)} /></Field>
         </>}
         {pid !== NEW_NEED ? (

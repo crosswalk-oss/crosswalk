@@ -167,7 +167,7 @@ export function MonteCarloView({ mc, point, note, pointLabel = 'Estimate' }: { m
               <span className="relative h-3.5 rounded-sm bg-sunken">
                 <span className="absolute top-0 h-3.5 rounded-l-sm bg-good/60" style={{ left: x(Math.min(t.low, point)), width: `calc(${x(point)} - ${x(Math.min(t.low, point))})` }} />
                 <span className="absolute top-0 h-3.5 rounded-r-sm bg-bad/60" style={{ left: x(point), width: `calc(${x(Math.max(t.high, point))} - ${x(point)})` }} />
-                <span className="absolute -top-0.5 h-[18px] w-0.5 bg-ink" style={{ left: x(point) }} title={pointLabel} />
+                <span className="absolute -top-0.5 h-[18px] w-0.5 bg-link" style={{ left: x(point) }} title={pointLabel} />
               </span>
               <span className="tabular-nums text-muted">{money(t.low)}–{money(t.high)} · <b className="text-ink">{pct(t.share)}</b> of variance</span>
             </div>

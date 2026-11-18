@@ -85,7 +85,7 @@ export function AskPanel({ open, onClose }: { open: boolean; onClose: () => void
       )}
       <div className="flex flex-col gap-3">
         {turns.map((t, i) => (
-          <div key={i} className={t.role === 'user' ? 'self-end rounded-md bg-ink px-3 py-2 text-[13px] text-surface' : 'whitespace-pre-wrap rounded-md border border-line bg-sunken/50 px-3 py-2 text-[13px]'}>{t.role === 'assistant' ? linkify(t.content) : t.content}</div>
+          <div key={i} className={t.role === 'user' ? 'self-end rounded-md bg-link px-3 py-2 text-[13px] text-surface' : 'whitespace-pre-wrap rounded-md border border-line bg-sunken/50 px-3 py-2 text-[13px]'}>{t.role === 'assistant' ? linkify(t.content) : t.content}</div>
         ))}
         {busy && <div className="whitespace-pre-wrap rounded-md border border-line bg-sunken/50 px-3 py-2 text-[13px] text-muted">{linkify(draft)}</div>}
       </div>

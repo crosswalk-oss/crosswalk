@@ -307,7 +307,7 @@ function ContractsPanel({ projectId, contracts, canAward }: { projectId: string;
                     <td className="num">{money(c.value)}</td>
                     <td className="num">{c.changeOrders ? <span className={c.changeOrders / Math.max(1, c.value) > 0.1 ? 'text-bad' : ''}>{money(c.changeOrders)}<div className="text-[11px] text-faint">{((c.changeOrders / Math.max(1, c.value)) * 100).toFixed(1)}%</div></span> : '—'}</td>
                     <td className="num">{money(c.invoiced)}</td>
-                    <td><div className="h-1.5 rounded-full bg-sunken"><div className={cx('h-1.5 rounded-full', billed > 1 ? 'bg-bad' : 'bg-ink')} style={{ width: `${Math.min(100, billed * 100)}%` }} /></div><div className="text-[11px] tabular-nums text-faint">{(billed * 100).toFixed(0)}%</div></td>
+                    <td><div className="h-1.5 rounded-full bg-sunken"><div className={cx('h-1.5 rounded-full', billed > 1 ? 'bg-bad' : 'bg-link')} style={{ width: `${Math.min(100, billed * 100)}%` }} /></div><div className="text-[11px] tabular-nums text-faint">{(billed * 100).toFixed(0)}%</div></td>
                     <td className="whitespace-nowrap">
                       {c.status === 'rfp' && !running(c) && <Button size="sm" variant={canAward ? 'marker' : 'secondary'} disabled={!canAward} title={canAward ? undefined : 'Pass the authorization gate first'} onClick={() => setAward(c)}>Start award</Button>}
                       {c.workflowInstanceId && <Button size="sm" variant="ghost" onClick={() => setShow(show === c.id ? null : c.id)}>{show === c.id ? 'Hide' : 'Workflow'}</Button>}
@@ -423,7 +423,7 @@ function LongLeadPanel({ projectId, items, asOf, cStart }: { projectId: string; 
                     <td className="whitespace-nowrap text-[12px]">{fmtDate(it.requiredOnSite)}</td>
                     <td className="whitespace-nowrap text-[12px]">{fmtDate(it.eta)}</td>
                     <td className="num">{it.status === 'received' ? <span className="text-faint">—</span> : <Badge tone={late ? 'bad' : float < 14 ? 'warn' : 'good'}>{float > 0 ? '+' : ''}{float}d</Badge>}</td>
-                    <td><Select className="h-7 w-[120px] py-0.5" value={it.status} onChange={(e) => setStatus(it, e.target.value as LongLeadItem['status'])} options={['requested', 'ordered', 'shipped', 'received']} /></td>
+                    <td><Select aria-label={`Status of ${it.item}`} className="h-7 w-[120px] py-0.5" value={it.status} onChange={(e) => setStatus(it, e.target.value as LongLeadItem['status'])} options={['requested', 'ordered', 'shipped', 'received']} /></td>
                     <td><Button size="sm" variant="ghost" onClick={() => setEdit({ it, isNew: false })}>Edit</Button></td>
                   </tr>
                 )

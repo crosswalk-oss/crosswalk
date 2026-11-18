@@ -82,8 +82,8 @@ export function ConditionEditor({ s, edge, def, onChange, preview }: { s: AppSta
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-1">
-        <button className={cx('flex-1 rounded border px-2 py-1 text-[12px] font-semibold', !c ? 'border-ink bg-ink text-surface' : 'border-line text-muted hover:text-ink')} onClick={() => onChange(undefined)}>Default path</button>
-        <button className={cx('flex-1 rounded border px-2 py-1 text-[12px] font-semibold', c ? 'border-ink bg-ink text-surface' : 'border-line text-muted hover:text-ink')} onClick={() => onChange(c ?? { field: def.fields.find((f) => f.type === 'money' || f.type === 'number')?.key ?? fieldOpts[0]?.value ?? 'amount', op: 'gt', value: 0 })}>Rule</button>
+        <button className={cx('flex-1 rounded border px-2 py-1 text-[12px] font-semibold', !c ? 'border-link bg-link text-surface' : 'border-line text-muted hover:text-ink')} onClick={() => onChange(undefined)}>Default path</button>
+        <button className={cx('flex-1 rounded border px-2 py-1 text-[12px] font-semibold', c ? 'border-link bg-link text-surface' : 'border-line text-muted hover:text-ink')} onClick={() => onChange(c ?? { field: def.fields.find((f) => f.type === 'money' || f.type === 'number')?.key ?? fieldOpts[0]?.value ?? 'amount', op: 'gt', value: 0 })}>Rule</button>
       </div>
       {!c && <p className="text-[12px] text-muted">Taken when no rule on the other paths matches.{hasOtherDefault && <span className="text-bad"> Another path from this decision is already the default — a decision needs exactly one.</span>}</p>}
       {c && (

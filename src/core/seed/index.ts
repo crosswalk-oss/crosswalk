@@ -166,7 +166,7 @@ function emptyState(): AppState {
       },
       factorModel: JSON.parse(JSON.stringify(FACTOR_SETTINGS)),
       workflow: { reminderDays: 1, escalateAfterDays: 3 },
-      features: { fieldTailboard: false, portfolioPlanning: false, opQual: false },
+      features: { fieldTailboard: false, opQual: false },
     },
     roles: ROLES, people: PEOPLE, programs: PROGRAMS, funding: [], templates: TEMPLATES, projects: [], deliverables: [], gateDecisions: [], gateReviews: [], actions: [],
     categories: CATEGORIES, rates: RATES, estimates: [], budgets: [], snapshots: [], changes: [], costPeriods: [], forecasts: [], infoRevisions: [], historicalCosts: hist, factorModels: buildFactorModels(hist), backtestProjects: [], actualTxns: [], actualsImports: [], commitmentChanges: [], channels: [], messages: [], variances: [], risks: [], riskLibrary: RISK_LIBRARY,

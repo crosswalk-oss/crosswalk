@@ -156,8 +156,8 @@ function StageTimeline({ s, p }: { s: AppState; p: Project }) {
   const cur = closed ? undefined : tpl.stages[p.stageIndex]
   const node = (col: number, mark: React.ReactNode) => (
     <div className="relative flex h-12 w-full items-center justify-center">
-      {col > 0 && <span aria-hidden className={cx('absolute left-0 right-1/2 top-1/2 h-[3px] -translate-y-1/2', col <= at ? 'bg-ink' : 'bg-line')} />}
-      {col < 2 * n - 1 && <span aria-hidden className={cx('absolute left-1/2 right-0 top-1/2 h-[3px] -translate-y-1/2', col < at ? 'bg-ink' : 'bg-line')} />}
+      {col > 0 && <span aria-hidden className={cx('absolute left-0 right-1/2 top-1/2 h-[3px] -translate-y-1/2', col <= at ? 'bg-link' : 'bg-line')} />}
+      {col < 2 * n - 1 && <span aria-hidden className={cx('absolute left-1/2 right-0 top-1/2 h-[3px] -translate-y-1/2', col < at ? 'bg-link' : 'bg-line')} />}
       {mark}
     </div>
   )
@@ -178,7 +178,7 @@ function StageTimeline({ s, p }: { s: AppState; p: Project }) {
                 <li className="flex min-w-0 flex-col items-center text-center" aria-current={current ? 'step' : undefined} title={st.purpose}>
                   {node(2 * i, (
                     <span className={cx('relative flex h-9 w-9 items-center justify-center rounded-full border-2 text-[14px] font-bold tabular-nums',
-                      passed ? 'border-ink bg-ink text-surface' : hold ? 'border-warn bg-warn text-white ring-4 ring-warn/20' : current ? 'border-marker bg-marker text-markerink ring-4 ring-marker/25' : 'border-line bg-surface text-faint')}>
+                      passed ? 'border-link bg-link text-surface' : hold ? 'border-warn bg-warn text-white ring-4 ring-warn/20' : current ? 'border-marker bg-marker text-markerink ring-4 ring-marker/25' : 'border-line bg-surface text-faint')}>
                       {passed ? '✓' : i + 1}
                     </span>
                   ))}
@@ -191,7 +191,7 @@ function StageTimeline({ s, p }: { s: AppState; p: Project }) {
                 <li className="flex min-w-0 flex-col items-center text-center" title={st.gate.name}>
                   {node(2 * i + 1, (
                     <span className={cx('relative flex h-[26px] w-[26px] rotate-45 items-center justify-center rounded-[4px] border-2 bg-surface',
-                      last ? (went(last.outcome) ? 'border-ink !bg-ink' : 'border-warn') : current ? 'border-marker' : 'border-line')}>
+                      last ? (went(last.outcome) ? 'border-link !bg-link' : 'border-warn') : current ? 'border-marker' : 'border-line')}>
                       {last && !went(last.outcome) && <span aria-hidden className="absolute inset-0 bg-warn/15" />}
                       <span className={cx('relative -rotate-45 text-[10px] font-bold', last && went(last.outcome) ? 'text-surface' : current || last ? 'text-ink' : 'text-faint')}>G{i + 1}</span>
                     </span>
@@ -719,7 +719,7 @@ function PriorStages({ s, p }: { s: AppState; p: Project }) {
           return (
             <li key={st.id}>
               <button className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-sunken/50" onClick={() => setOpen(open === i ? null : i)}>
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink text-[11px] font-bold text-surface">{i + 1}</span>
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-link text-[11px] font-bold text-surface">{i + 1}</span>
                 <span className="min-w-0 flex-1 text-[13px] font-semibold">{st.name}</span>
                 <span className="text-[11px] text-muted">{dls.filter((d) => d.status === 'accepted' || d.status === 'waived').length}/{dls.length} accepted · {ev} evidence</span>
                 <span className="text-[11px] text-faint">{open === i ? '▲' : '▼'}</span>

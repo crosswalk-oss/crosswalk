@@ -24,7 +24,7 @@ export function MultiCheck<T extends string>({ options, value, onChange, classNa
         const on = value.includes(o.id)
         return (
           <button key={o.id} type="button" aria-pressed={on} onClick={() => onChange(on ? value.filter((x) => x !== o.id) : [...value, o.id])}
-            className={cx('rounded border px-2 py-0.5 text-[12px] font-semibold', on ? 'border-ink bg-ink text-surface' : 'border-line bg-surface text-muted hover:border-ink/40 hover:text-ink')}>
+            className={cx('rounded border px-2 py-0.5 text-[12px] font-semibold', on ? 'border-link bg-link text-surface' : 'border-line bg-surface text-muted hover:border-ink/40 hover:text-ink')}>
             {o.label}
           </button>
         )

@@ -59,18 +59,18 @@ export default function FieldMode(_props: { projectId?: string; id?: string }) {
         <div className="sticky top-0 z-10 flex items-center gap-2 bg-steel px-4 py-3 text-steelink sm:rounded-t-lg">
           <div className="min-w-0 flex-1">
             <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-marker">Field · {fmtDate(asOf)}</div>
-            <div className="truncate font-display text-[18px] font-bold text-white">{p ? `${p.code} · ${plan!.workPackage}` : 'Tailboard'}</div>
+            <div className="truncate font-display text-[18px] font-bold text-ink">{p ? `${p.code} · ${plan!.workPackage}` : 'Tailboard'}</div>
           </div>
           <button onClick={() => { setOffline(!offline); toast(offline ? 'Back online' : 'Offline: tailboards will queue on this device', 'info') }}
-            className={cx('flex h-11 items-center gap-2 rounded-md border-2 px-3 text-[13px] font-bold', offline ? 'border-warn bg-warn text-ink' : 'border-good/70 text-white')} aria-pressed={offline}>
-            <span className={cx('h-2.5 w-2.5 rounded-full', offline ? 'bg-ink' : 'bg-good')} />{offline ? 'Offline' : 'Online'}
+            className={cx('flex h-11 items-center gap-2 rounded-md border-2 px-3 text-[13px] font-bold', offline ? 'border-warn bg-warn text-white' : 'border-good/70 text-ink')} aria-pressed={offline}>
+            <span className={cx('h-2.5 w-2.5 rounded-full', offline ? 'bg-link' : 'bg-good')} />{offline ? 'Offline' : 'Online'}
           </button>
         </div>
 
         {queued > 0 && (
           <div className="mx-3 flex items-center gap-3 rounded-md border-2 border-warn bg-warn/10 px-3 py-2.5">
             <div className="min-w-0 flex-1 text-[14px] font-semibold">{queue.tailboards.length} tailboard{queue.tailboards.length === 1 ? '' : 's'}{queue.events.length ? ` · ${queue.events.length} report${queue.events.length === 1 ? '' : 's'}` : ''} waiting to sync</div>
-            <button onClick={sync} disabled={offline} className="h-11 rounded-md bg-ink px-4 text-[14px] font-bold text-surface disabled:opacity-40">Sync now</button>
+            <button onClick={sync} disabled={offline} className="h-11 rounded-md bg-link px-4 text-[14px] font-bold text-surface disabled:opacity-40">Sync now</button>
           </div>
         )}
 
@@ -83,7 +83,7 @@ export default function FieldMode(_props: { projectId?: string; id?: string }) {
 
         <div className="mx-3 grid grid-cols-2 gap-1 rounded-md bg-sunken p-1">
           {(['tailboard', 'report'] as const).map((m) => (
-            <button key={m} onClick={() => setMode(m)} className={cx('h-12 rounded text-[15px] font-bold', mode === m ? 'bg-ink text-surface' : 'text-muted')}>{m === 'tailboard' ? 'Tailboard' : 'Report observation'}</button>
+            <button key={m} onClick={() => setMode(m)} className={cx('h-12 rounded text-[15px] font-bold', mode === m ? 'bg-link text-surface' : 'text-muted')}>{m === 'tailboard' ? 'Tailboard' : 'Report observation'}</button>
           ))}
         </div>
 
@@ -204,7 +204,7 @@ function TailboardForm({ planId, offline, onQueue, queuedToday }: { planId: stri
             const oq = oqLevel(c.oqExpires, asOf)
             return (
               <button key={c.id} onClick={() => toggle(present, c.name, setPresent)} aria-pressed={on}
-                className={cx('flex min-h-[60px] flex-col items-start justify-center rounded-md border-2 px-3 py-2 text-left', on ? 'border-ink bg-ink text-surface' : 'border-line bg-surface')}>
+                className={cx('flex min-h-[60px] flex-col items-start justify-center rounded-md border-2 px-3 py-2 text-left', on ? 'border-link bg-link text-surface' : 'border-line bg-surface')}>
                 <span className="text-[15px] font-bold leading-tight">{on ? '✓ ' : ''}{c.name}</span>
                 <span className={cx('text-[11px] font-semibold', on ? 'text-surface/75' : 'text-muted')}>{c.role}{opQualOn(s) && c.oqTasks.length && oq.level === 'bad' ? ' · OQ EXPIRED' : ''}</span>
               </button>
@@ -263,8 +263,8 @@ function ReportForm({ planId, offline, onQueue, onDone }: { planId: string; offl
     onDone()
   }
   const T: { id: SafetyEvent['type']; label: string; cls: string }[] = [
-    { id: 'observation', label: 'Observation', cls: 'border-ink bg-ink text-surface' },
-    { id: 'near-miss', label: 'Near miss', cls: 'border-warn bg-warn text-ink' },
+    { id: 'observation', label: 'Observation', cls: 'border-link bg-link text-surface' },
+    { id: 'near-miss', label: 'Near miss', cls: 'border-warn bg-warn text-white' },
     { id: 'incident', label: 'Incident', cls: 'border-bad bg-bad text-white' },
   ]
   return (
@@ -283,7 +283,7 @@ function ReportForm({ planId, offline, onQueue, onDone }: { planId: string; offl
       <Card title="Could this have killed or seriously hurt someone?">
         <div className="grid grid-cols-2 gap-2">
           <button onClick={() => setSif(true)} aria-pressed={sif === true} className={cx('h-14 rounded-md border-2 text-[16px] font-black', sif === true ? 'border-bad bg-bad text-white' : 'border-line bg-surface')}>Yes</button>
-          <button onClick={() => setSif(false)} aria-pressed={sif === false} className={cx('h-14 rounded-md border-2 text-[16px] font-black', sif === false ? 'border-ink bg-ink text-surface' : 'border-line bg-surface')}>No</button>
+          <button onClick={() => setSif(false)} aria-pressed={sif === false} className={cx('h-14 rounded-md border-2 text-[16px] font-black', sif === false ? 'border-link bg-link text-surface' : 'border-line bg-surface')}>No</button>
         </div>
       </Card>
       <Card title="Fixed?">

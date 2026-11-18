@@ -9,6 +9,7 @@ import { addDays, cx, fmtDate, fmtDateTime, nowISO, uid } from './core/util'
 import { Avatar, Badge, BrandMark, Button, Callout, ConfirmButton, Empty, Field, Input, Modal, Select } from './ui/kit'
 import { Toaster, toast } from './ui/toast'
 import { Icon, type IconName } from './ui/icons'
+import { useScrollRegions } from './ui/a11y'
 import { AskPanel } from './views/shared/AskPanel'
 import { useAiAvailable } from './core/ai'
 import ProjectView from './views/project/ProjectView'
@@ -27,19 +28,16 @@ import Inbox from './views/inbox/Inbox'
 import Catalog from './views/workflows/Catalog'
 import Designer from './views/workflows/Designer'
 import Admin from './views/admin/Admin'
-import Planning from './views/planning/Planning'
 import Audit from './views/audit/Audit'
 import ForecastCycle from './views/forecast/ForecastCycle'
 import MapPage from './views/map/MapPage'
 import Actuals from './views/actuals/Actuals'
-import Materials from './views/materials/Materials'
 import Messages from './views/messages/Messages'
 import { isMessagesView, unreadCount } from './views/messages/lib'
 import type { AppState, Person } from './core/types'
 
 const NAV: { group: string; items: { id: string; label: string; icon: IconName }[] }[] = [
   { group: 'Work', items: [
-    { id: 'materials', label: 'Private materials', icon: 'play' },
     { id: 'inbox', label: 'My work', icon: 'inbox' },
     { id: 'messages', label: 'Messages', icon: 'chat' },
     { id: 'portfolio', label: 'Portfolio', icon: 'grid' },
@@ -57,7 +55,6 @@ const NAV: { group: string; items: { id: string; label: string; icon: IconName }
     { id: 'safety', label: 'Safety', icon: 'shield' },
     { id: 'field', label: 'Field tailboard', icon: 'phone' },
     { id: 'regulatory', label: 'Rate case & evidence', icon: 'scale' },
-    { id: 'planning', label: 'Portfolio planning', icon: 'layers' },
   ] },
   { group: 'Configure', items: [
     { id: 'workflows', label: 'Workflows', icon: 'flow' },
@@ -67,7 +64,7 @@ const NAV: { group: string; items: { id: string; label: string; icon: IconName }
 ]
 
 /** Phase-2 modules hidden for the pilot (settings.features). */
-const NAV_FEATURE: Record<string, keyof AppState['settings']['features']> = { field: 'fieldTailboard', planning: 'portfolioPlanning' }
+const NAV_FEATURE: Record<string, keyof AppState['settings']['features']> = { field: 'fieldTailboard' }
 const CHAT_PATH = 'M4 5h16v11H9l-5 4zM8 9h8M8 12h5'
 
 /** Send workflow reminders and escalations that are due (idempotent). */
@@ -84,6 +81,7 @@ function PhaseTwo({ name }: { name: string }) {
 }
 
 export default function App() {
+  useScrollRegions()
   const route = useRoute()
   const features = useStore((s) => s.settings.features)
   const sync = useSync()
@@ -112,13 +110,11 @@ export default function App() {
       case 'inbox': return <Inbox />
       case 'workflows': return <Catalog />
       case 'admin': return <Admin />
-      case 'planning': return features?.portfolioPlanning ? <Planning /> : <PhaseTwo name="Portfolio planning" />
       case 'audit': return <Audit />
       case 'forecast': return <ForecastCycle />
       case 'map': return <MapPage />
       case 'actuals': return <Actuals />
       case 'allocation': return <Allocation />
-      case 'materials': return <Materials onUnlock={() => setUnlockOpen(true)} />
       case 'filing': return <RecordsFiling />
       default:
         if (isMessagesView(route.view)) return <Messages view={route.view} />
@@ -130,10 +126,10 @@ export default function App() {
   const activeNav = route.view === 'project' ? 'projects' : route.view === 'workflow' ? 'workflows' : route.view === 'new-project' ? 'projects' : isMessagesView(route.view) ? 'messages' : route.view.startsWith('admin-') ? 'admin' : route.view
   return (
     <div className="flex h-full">
-      <aside className={cx('fixed inset-y-0 left-0 z-40 flex w-[236px] flex-col bg-steel text-steelink transition-transform lg:static lg:translate-x-0', navOpen ? 'translate-x-0' : '-translate-x-full')} style={{ paddingTop: 'env(safe-area-inset-top)', paddingLeft: 'env(safe-area-inset-left)' }}>
+      <aside className={cx('fixed inset-y-0 left-0 z-40 flex w-[236px] flex-col bg-rail text-railink transition-transform lg:static lg:translate-x-0', navOpen ? 'translate-x-0' : '-translate-x-full')} style={{ paddingTop: 'env(safe-area-inset-top)', paddingLeft: 'env(safe-area-inset-left)' }}>
         <Sidebar active={activeNav} />
       </aside>
-      {navOpen && <div className="fixed inset-0 z-30 bg-steel/50 lg:hidden" onClick={() => setNavOpen(false)} />}
+      {navOpen && <div className="fixed inset-0 z-30 bg-ink/40 lg:hidden" onClick={() => setNavOpen(false)} />}
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar onMenu={() => setNavOpen(true)} onAsk={() => setAskOpen(true)} onUnlock={() => setUnlockOpen(true)} />
         <main id="main" className="min-w-0 flex-1 overflow-y-auto" style={{ paddingLeft: 'max(16px, env(safe-area-inset-left))', paddingRight: 'max(16px, env(safe-area-inset-right))' }}>
@@ -160,29 +156,29 @@ function Sidebar({ active }: { active: string }) {
   return (
     <>
       <a href="#portfolio" className="flex items-center gap-2.5 px-4 pb-3 pt-4">
-        <BrandMark className="text-steel" />
-        <span className="flex flex-col leading-tight"><span className="font-display text-[17px] font-bold tracking-tight text-white">Crosswalk</span><span className="text-[11px] text-steelink/70">Capital project delivery</span></span>
+        <BrandMark className="text-surface" />
+        <span className="flex flex-col leading-tight"><span className="font-display text-[17px] font-bold tracking-tight text-white">Crosswalk</span><span className="text-[11px] text-railink/70">Capital project delivery</span></span>
       </a>
       <div className="mark-stripe mx-4 mb-3 h-1 rounded-full opacity-80" />
       <nav className="flex-1 overflow-y-auto px-2 pb-4">
         {NAV.map((g) => (
           <div key={g.group} className="mb-3">
-            <div className="px-2 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-steelink/50">{g.group}</div>
-            {g.items.filter((it) => (!NAV_FEATURE[it.id] || features?.[NAV_FEATURE[it.id]]) && (it.id !== 'materials' || (sync.mode === 'shared' && sync.canEdit))).map((it) => (
-              <a key={it.id} href={`#${it.id}`} className={cx('flex items-center gap-2.5 rounded px-2 py-1.5 text-[13px] font-medium', active === it.id ? 'bg-white/10 text-white' : 'text-steelink/85 hover:bg-white/5 hover:text-white')}>
+            <div className="px-2 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-railink/60">{g.group}</div>
+            {g.items.filter((it) => (!NAV_FEATURE[it.id] || features?.[NAV_FEATURE[it.id]])).map((it) => (
+              <a key={it.id} href={`#${it.id}`} className={cx('flex items-center gap-2.5 rounded px-2 py-1.5 text-[13px] font-medium', active === it.id ? 'bg-surface text-ink shadow-[inset_3px_0_0_rgb(var(--brand))]' : 'text-railink/90 hover:bg-white/10 hover:text-white')}>
                 {it.icon === 'chat'
-                  ? <svg viewBox="0 0 24 24" className={cx('h-4 w-4', active === it.id ? 'text-marker' : 'text-steelink/60')} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={CHAT_PATH} /></svg>
-                  : <Icon name={it.icon} className={cx('h-4 w-4', active === it.id ? 'text-marker' : 'text-steelink/60')} />}
+                  ? <svg viewBox="0 0 24 24" className={cx('h-4 w-4', active === it.id ? 'text-link' : 'text-railink/70')} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={CHAT_PATH} /></svg>
+                  : <Icon name={it.icon} className={cx('h-4 w-4', active === it.id ? 'text-link' : 'text-railink/70')} />}
                 <span className="flex-1">{it.label}</span>
                 {it.id === 'inbox' && taskCount > 0 && <span className="rounded-full bg-marker px-1.5 text-[11px] font-bold tabular-nums text-markerink">{taskCount}</span>}
-                {it.id === 'messages' && unreadMsgs > 0 && <span className="rounded-full bg-white/15 px-1.5 text-[11px] font-bold tabular-nums text-white" title={`${unreadMsgs} unread`}>{unreadMsgs}</span>}
+                {it.id === 'messages' && unreadMsgs > 0 && <span className={cx('rounded-full px-1.5 text-[11px] font-bold tabular-nums', active === it.id ? 'bg-ink/10 text-ink' : 'bg-white/15 text-white')} title={`${unreadMsgs} unread`}>{unreadMsgs}</span>}
               </a>
             ))}
           </div>
         ))}
       </nav>
-      <div className="border-t border-white/10 px-4 py-3 text-[11px] text-steelink/60" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
-        <div className="font-semibold text-steelink/80">{org}</div>
+      <div className="on-rail border-t border-white/10 px-4 py-3 text-[11px] text-railink/70" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
+        <div className="font-semibold text-railink/90">{org}</div>
         <div>{sync.mode === 'shared' ? 'Shared demo data' : 'Demo data'} · as of {fmtDate(asOf)}</div>
         {!sharedView && <div className="mt-2"><ConfirmButton size="sm" variant="ghost" confirmLabel={sync.mode === 'shared' ? 'Reset for everyone' : 'Reset all data'} onConfirm={() => { reset(); toast(sync.mode === 'shared' ? 'Demo data reset for everyone' : 'Demo data reset'); go('#portfolio') }}>Reset demo data</ConfirmButton></div>}
       </div>
@@ -218,7 +214,7 @@ function TopBar({ onMenu, onAsk, onUnlock }: { onMenu: () => void; onAsk: () => 
         <SyncStatusChip onUnlock={onUnlock} />
         {ai && <Button variant="marker" size="sm" onClick={onAsk} icon={<span aria-hidden>✦</span>}>Ask</Button>}
         <div className="relative">
-          <button onClick={() => setBell(!bell)} className="relative rounded p-1.5 text-muted hover:bg-sunken" aria-label="Notifications"><Icon name="bell" className="h-5 w-5" />{unread > 0 && <span className="absolute -right-0.5 -top-0.5 rounded-full bg-bad px-1 text-[10px] font-bold text-white">{unread}</span>}</button>
+          <button onClick={() => setBell(!bell)} className="relative rounded p-1.5 text-muted hover:bg-sunken"><span className="sr-only">Notifications{unread > 0 ? `, ${unread} unread` : ''}</span><Icon name="bell" className="h-5 w-5" />{unread > 0 && <span aria-hidden className="absolute -right-0.5 -top-0.5 rounded-full bg-bad px-1 text-[10px] font-bold text-white">{unread}</span>}</button>
           {bell && (
             <div className="absolute right-0 top-10 z-30 w-80 rounded-md border border-line bg-surface shadow-xl">
               <div className="flex items-center justify-between border-b border-line px-3 py-2"><b className="text-[13px]">Notifications</b><button className="text-xs text-link" onClick={() => update((d) => d.notifications.forEach((n) => { if (n.toId === d.currentUserId) n.read = true }))}>Mark all read</button></div>
@@ -260,7 +256,8 @@ function UserMenu({ me }: { me: Person }) {
   }
   return (
     <div className="relative">
-      <button id="user-menu" onClick={() => setOpen(!open)} className="relative flex items-center gap-1.5 rounded p-1 hover:bg-sunken" aria-haspopup="menu" aria-expanded={open} aria-label={`Account menu for ${me.name}${away ? ' (out of office)' : ''}`}>
+      <button id="user-menu" onClick={() => setOpen(!open)} className="relative flex items-center gap-1.5 rounded p-1 hover:bg-sunken" aria-haspopup="menu" aria-expanded={open}>
+        <span className="sr-only">Account menu for {me.name}</span>
         <Avatar name={me.name} size={24} />
         {away && <span className="hidden rounded-sm bg-warn/15 px-1.5 py-px text-[10.5px] font-bold uppercase tracking-wide text-warn sm:inline">Out of office</span>}
         {(away || covering.length > 0) && <span className={cx('absolute left-5 top-0.5 h-2 w-2 rounded-full border border-surface', away ? 'bg-warn' : 'bg-info')} />}

@@ -9,8 +9,9 @@ import { personName } from '@/core/store'
 
 /** Normalized phases so the 5-stage and 3-stage templates can be compared on one axis. */
 export const PHASES = ['Initiation', 'Option selection', 'Design & procurement', 'Construction', 'Closeout'] as const
-export const PHASE_CLS = ['bg-ink/15', 'bg-ink/30', 'bg-ink/55', 'bg-link', 'bg-good/70']
-export const PHASE_FILL = ['rgb(var(--ink) / 0.15)', 'rgb(var(--ink) / 0.3)', 'rgb(var(--ink) / 0.55)', 'rgb(var(--link))', 'rgb(var(--good) / 0.7)']
+// Initiation stays neutral; the four working stages take the four accents so each reads at a glance.
+export const PHASE_CLS = ['bg-ink/15', 'bg-marker', 'bg-warn', 'bg-link', 'bg-good']
+export const PHASE_FILL = ['rgb(var(--ink) / 0.15)', 'rgb(var(--marker))', 'rgb(var(--warn))', 'rgb(var(--link))', 'rgb(var(--good))']
 
 export function phaseOf(s: AppState, p: Project): number {
   const t = templateFor(s, p)

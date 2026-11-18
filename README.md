@@ -8,6 +8,8 @@ Open-source capital project delivery for gas utilities. It covers:
 - forecasting by WBS function
 - SAP actuals import and reconciliation
 - risk-linked contingency, change control and job safety plans
+- capital allocation across the portfolio, by weighted benefit within a capital limit
+- gate deliverables completed as forms and filed to the records system (simulated in the demo)
 - a workflow designer that also prints the SOP
 
 Every dollar, date and scope change traces back to an approved decision and its evidence.
@@ -23,9 +25,6 @@ Every dollar, date and scope change traces back to an approved decision and its 
 
 - **Hosted demo:** everyone shares one dataset in a Postgres database. Anyone with the link can look around;
   changes need the edit passcode and are saved for everyone, with every change kept in the database's history.
-- **Private materials:** on the hosted demo, a page that appears only after the passcode is entered. It plays a
-  video and shows slide decks, each with a download button (the video file, the deck as PowerPoint), all kept in the database, never in this repository, the page or the offline
-  copy. The API returns them only with the passcode. Upload or remove them with `scripts/upload-materials.mjs`.
 - **Offline copy:** download [`Crosswalk.html`](Crosswalk.html) and double-click it. It is the whole app in one
   file and makes no network calls. It isn't connected to the database, so changes there are not saved.
 - **Deliverables that inherit and redact:** an answer given on an earlier deliverable is offered on later ones that
@@ -66,7 +65,9 @@ Every dollar, date and scope change traces back to an approved decision and its 
 npm run typecheck
 npm test                 # vitest: engine tests + AGENT_RULES guard tests
 npm run build            # dist/index.html: the whole app as one self-contained file
-npm run licenses         # every dependency must be MIT, Apache-2.0, BSD or ISC
+npm run licenses         # every dependency must carry a permissive license (MIT, Apache-2.0, BSD, ISC, Zlib)
+npm run notices          # regenerate THIRD_PARTY_NOTICES.md from the lockfile
+npm run audit            # no known high or critical vulnerability in what ships
 npm run sample:sap       # regenerate the fictional SAP sample extract
 ```
 
@@ -116,7 +117,9 @@ Hosting real data belongs inside an organization's managed cloud, after its arch
 
 | Area | Highlights |
 | --- | --- |
+| Capital allocation | Benefit measures with adjustable weights; selects the set of projects that fits a capital limit, in total or by year, with deferrals and prerequisites; compared with rank order |
 | Stage gates | Configurable lifecycle templates, conditional deliverables, readiness score, gate packets, Go/Conditions/Recycle/Hold/Cancel decisions with immutable history, stage permissions |
+| Deliverables and records | A form for every gate deliverable, pre-filled from the project; answers carried forward; redacted copies; filing to the records system with metadata on approval (simulated connector) |
 | Estimating | Class from a maturity checklist; Class 5 factor model (physical, legal and logistical drivers only, itemized, with a range and a backtest); rate-table Class 5 by region; Class 3 line items; loaders, escalation, contingency, county sales tax; BOE as PDF or CSV; version bridge; estimate → budget |
 | Factor model admin | Weights, multipliers and uncertainty per driver; backtest; override reasons; publish gate; version history |
 | Forecast | Line items under WBS functions 100–999 with a curve profile per function, then hand adjustment; ETC/EAC by function; versions and review |

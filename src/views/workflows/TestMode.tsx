@@ -58,7 +58,7 @@ export function TestMode({ s, def, preview, setPreview }: { s: AppState; def: Wo
           <ol className="divide-y divide-line">
             {steps.map((st, i) => (
               <li key={st.node.id + i} className={cx('flex gap-3 px-4 py-2.5', st.kind === 'auto' && 'bg-sunken/40')}>
-                <span className={cx('mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold', st.kind === 'human' ? (st.people.length ? 'bg-ink text-surface' : 'bg-bad text-white') : 'border border-line text-faint')}>{i + 1}</span>
+                <span className={cx('mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold', st.kind === 'human' ? (st.people.length ? 'bg-link text-surface' : 'bg-bad text-white') : 'border border-line text-faint')}>{i + 1}</span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <b className="text-[13px]">{st.node.label}</b>

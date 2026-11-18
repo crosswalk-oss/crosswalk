@@ -1,6 +1,6 @@
 // Shared implementation of the data-access interface: the app's own API (src/server/api.ts) over relative
 // URLs, so it works wherever the page is served from. The only network calls this app makes for data.
-import type { CommitResult, DataAccess, MaterialInfo, RemoteChange } from './types'
+import type { CommitResult, DataAccess, RemoteChange } from './types'
 
 function storage(): Storage | null {
   try { return (globalThis as { localStorage?: Storage }).localStorage ?? null } catch { return null }
@@ -52,14 +52,6 @@ export function sharedDataAccess(): DataAccess {
     async startGeneration(passcode, schema, reason, actor, stateGz) {
       const r = await ok<{ generation: { id: number } }>(await call('generation', { method: 'POST', body: JSON.stringify({ schema, reason, actor, stateGz }) }, passcode))
       return r?.generation.id ?? null
-    },
-    async listMaterials(passcode) {
-      const r = await ok<{ materials: MaterialInfo[] }>(await call('materials', {}, passcode))
-      return r?.materials ?? null
-    },
-    async materialChunk(passcode, id, idx) {
-      const r = await call(`materials/chunk?id=${id}&idx=${idx}`, {}, passcode)
-      return r && r.ok ? await r.arrayBuffer() : null
     },
     getPref(key) {
       try { const v = storage()?.getItem(key); if (v != null) return v } catch { /* blocked */ }

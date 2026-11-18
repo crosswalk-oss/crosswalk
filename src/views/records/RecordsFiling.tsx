@@ -101,7 +101,7 @@ export default function RecordsFiling() {
 function FragmentRow({ cells, detail, open, onToggle }: { cells: React.ReactNode; detail: React.ReactNode; open: boolean; onToggle: () => void }) {
   return (
     <>
-      <tr className={cx('cursor-pointer', open && 'bg-sunken/40')} onClick={onToggle} aria-expanded={open}>{cells}</tr>
+      <tr className={cx('cursor-pointer', open && 'bg-sunken/40')} onClick={onToggle}>{cells}</tr>
       {open && <tr><td colSpan={8} className="bg-sunken/30 p-0">{detail}</td></tr>}
     </>
   )

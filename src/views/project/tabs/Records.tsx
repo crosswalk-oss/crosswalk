@@ -166,7 +166,7 @@ function RecordsMatrix({ p }: { p: Project }) {
         <Input className="h-7 w-44 py-0.5" placeholder="New segment name" value={newSeg} onChange={(e) => setNewSeg(e.target.value)} />
         <Button size="sm" disabled={!newSeg.trim()} onClick={addSegment}>Add segment</Button>
         <span className="mx-2 text-line">|</span>
-        <Select className="h-7 w-52 py-0.5" value={newType} onChange={(e) => setNewType(e.target.value as RType)} options={[{ value: '', label: 'Require another record type…' }, ...ALL_TYPES.filter((t) => !types.includes(t))]} />
+        <Select aria-label="Require another record type" className="h-7 w-52 py-0.5" value={newType} onChange={(e) => setNewType(e.target.value as RType)} options={[{ value: '', label: 'Require another record type…' }, ...ALL_TYPES.filter((t) => !types.includes(t))]} />
         <Button size="sm" disabled={!newType} onClick={addType}>Require</Button>
         {!canVerify && <span className="ml-auto text-[12px] text-muted">Attach as any team member; only the Records role can verify.</span>}
       </div>

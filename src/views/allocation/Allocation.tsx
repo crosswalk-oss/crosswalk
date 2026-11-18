@@ -148,7 +148,7 @@ function Controls({ cfg, draft, setDraft, shares, auth, problems, dirty, r, s }:
           <div className="inline-flex self-start rounded-md border border-line p-0.5 text-[12.5px]" role="group" aria-label="How capital is limited">
             {([false, true] as const).map((on) => (
               <button key={String(on)} type="button" aria-pressed={draft.annual.on === on} onClick={() => setDraft({ ...draft, annual: { ...draft.annual, on } })}
-                className={cx('rounded px-2.5 py-1 font-semibold', draft.annual.on === on ? 'bg-ink text-white' : 'text-muted hover:text-ink')}>{on ? 'Limit by year' : 'One total'}</button>
+                className={cx('rounded px-2.5 py-1 font-semibold', draft.annual.on === on ? 'bg-link text-white' : 'text-muted hover:text-ink')}>{on ? 'Limit by year' : 'One total'}</button>
             ))}
           </div>
           {!draft.annual.on ? (

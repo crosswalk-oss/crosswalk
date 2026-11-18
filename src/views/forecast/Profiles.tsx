@@ -34,7 +34,7 @@ export function ProfileChip({ s, profile, onClick, title }: { s: AppState; profi
     <Tag onClick={onClick} title={title ?? `${name} · ${fmtMonth(profile.start)} – ${fmtMonth(profile.end)}${profile.adjusted ? ' · cells edited by hand after applying' : ''}`}
       className={cx('inline-flex min-w-0 max-w-[190px] items-center gap-1 rounded border px-1.5 text-[10.5px] font-semibold leading-[18px]', profile.adjusted ? 'border-warn/50 bg-warn/10 text-ink' : 'border-link/40 bg-link/10 text-ink', onClick && 'hover:border-ink/50')}>
       <span className="truncate">{name}</span>
-      {profile.adjusted && <span className="shrink-0 rounded-sm bg-warn/25 px-1 text-[9.5px] uppercase tracking-wide text-warn">adjusted</span>}
+      {profile.adjusted && <span className="shrink-0 rounded-sm bg-warn/15 px-1 text-[9.5px] font-semibold uppercase tracking-wide text-ink">adjusted</span>}
     </Tag>
   )
 }

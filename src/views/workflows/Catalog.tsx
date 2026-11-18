@@ -247,6 +247,8 @@ function DoaEditor({ s }: { s: AppState }) {
   )
 }
 
+// Fills dark enough for the white labels on the band (4.5:1 or better); the chart greens and oranges are not.
+const BAND = ['rgb(var(--c1))', 'rgb(var(--c4))', 'rgb(var(--good))', 'rgb(var(--warn))', 'rgb(var(--muted))', '#0f766e']
 /** Log-scale band showing how authority steps up by amount. */
 function DoaBand({ rows }: { rows: DoaMatrix['rows'] }) {
   if (!rows.length) return null
@@ -256,7 +258,7 @@ function DoaBand({ rows }: { rows: DoaMatrix['rows'] }) {
   return (
     <div className="border-t border-line px-4 py-3">
       <div className="relative h-7 overflow-hidden rounded bg-sunken">
-        {rows.map((r, i) => { const a = x(prev || 10_000), b = x(r.upTo); prev = r.upTo; return <div key={i} className="absolute top-0 flex h-7 items-center overflow-hidden border-r-2 border-surface px-1.5 text-[11px] font-semibold text-white" style={{ left: `${a}%`, width: `${Math.max(0, b - a)}%`, background: SERIES[i % SERIES.length] }} title={r.label}><span className="truncate">{r.label}</span></div> })}
+        {rows.map((r, i) => { const a = x(prev || 10_000), b = x(r.upTo); prev = r.upTo; return <div key={i} className="absolute top-0 flex h-7 items-center overflow-hidden border-r-2 border-surface px-1.5 text-[11px] font-semibold text-white" style={{ left: `${a}%`, width: `${Math.max(0, b - a)}%`, background: BAND[i % BAND.length] }} title={r.label}><span className="truncate">{r.label}</span></div> })}
       </div>
       <div className="mt-1 flex justify-between text-[10.5px] text-faint tabular-nums">{[10_000, 100_000, 1_000_000, 10_000_000, 100_000_000].map((v) => <span key={v}>{money(v)}</span>)}</div>
     </div>

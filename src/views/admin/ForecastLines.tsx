@@ -167,7 +167,7 @@ function LineModal({ line, isNew, onClose, onSave }: { line: ForecastLine; isNew
               const fnOf = s.settings.wbsFunctions.find((f) => f.categoryIds.includes(c.id))
               return (
                 <button key={c.id} type="button" aria-pressed={on} onClick={() => toggle(c.id)} title={`${c.name}${o ? ` — now on ${o.code}` : ''}${fnOf ? ` · WBS ${fnOf.code}` : ''}`}
-                  className={cx('rounded border px-2 py-0.5 text-[12px] font-semibold', on ? 'border-ink bg-ink text-surface' : o ? 'border-dashed border-line bg-surface text-faint hover:text-ink' : 'border-line bg-surface text-muted hover:border-ink/40 hover:text-ink')}>
+                  className={cx('rounded border px-2 py-0.5 text-[12px] font-semibold', on ? 'border-link bg-link text-surface' : o ? 'border-dashed border-line bg-surface text-faint hover:text-ink' : 'border-line bg-surface text-muted hover:border-ink/40 hover:text-ink')}>
                   {c.name}{o && !on ? <span className="ml-1 font-mono text-[10.5px]">{o.code}</span> : null}
                 </button>
               )

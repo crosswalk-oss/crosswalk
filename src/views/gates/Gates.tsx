@@ -43,7 +43,7 @@ export default function Gates(_props: { projectId?: string; id?: string }) {
       <PageHeader eyebrow="Stage-gate governance" title="Gate reviews"
         subtitle="Board dates across the portfolio with live readiness, and how long projects take to move through each stage. Readiness counts accepted or waived deliverables against the gate's required list."
         actions={<>
-          <Select id="gates-program" value={program} onChange={(e) => setProgram(e.target.value)} options={[{ value: '', label: 'All programs' }, ...s.programs.map((p) => ({ value: p.id, label: `${p.code} · ${p.name}` }))]} />
+          <Select id="gates-program" aria-label="Program" value={program} onChange={(e) => setProgram(e.target.value)} options={[{ value: '', label: 'All programs' }, ...s.programs.map((p) => ({ value: p.id, label: `${p.code} · ${p.name}` }))]} />
           <Button icon={<Icon name="download" className="h-4 w-4" />} onClick={exportCsv}>Export</Button>
           <Button variant="primary" icon={<Icon name="plus" className="h-4 w-4" />} onClick={() => setSched({ open: true })}>Schedule review</Button>
         </>} />

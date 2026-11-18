@@ -125,7 +125,7 @@ export default function Projects(_props: { projectId?: string; id?: string }) {
           <div className="scroll-x flex gap-1">
             {QUICK.map((x) => {
               const n = x.id === 'mine' ? mineCount : undefined
-              return <button key={x.id} onClick={() => setQuick(x.id)} className={cx('shrink-0 rounded-full border px-3 py-1 text-xs font-semibold', quick === x.id ? 'border-ink bg-ink text-surface' : 'border-line text-muted hover:text-ink')}>{x.label}{n !== undefined && <span className="ml-1 opacity-70">{n}</span>}</button>
+              return <button key={x.id} onClick={() => setQuick(x.id)} className={cx('shrink-0 rounded-full border px-3 py-1 text-xs font-semibold', quick === x.id ? 'border-link bg-link text-surface' : 'border-line text-muted hover:text-ink')}>{x.label}{n !== undefined && <span className="ml-1 opacity-70">{n}</span>}</button>
             })}
           </div>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))]">
@@ -133,10 +133,10 @@ export default function Projects(_props: { projectId?: string; id?: string }) {
               <Icon name="search" className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
               <Input id="proj-search" className="pl-8" placeholder="Search number, name, city, PM, line" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
-            <Select id="proj-program" value={program} onChange={(e) => setProgram(e.target.value)} options={[{ value: '', label: 'All programs' }, ...s.programs.map((p) => ({ value: p.id, label: `${p.code} · ${p.name}` }))]} />
-            <Select id="proj-phase" value={phase} onChange={(e) => setPhase(e.target.value)} options={[{ value: '', label: 'All phases' }, ...PHASES.map((p, i) => ({ value: String(i), label: p }))]} />
-            <Select id="proj-status" value={status} onChange={(e) => setStatus(e.target.value)} options={[{ value: 'open', label: 'Active & on hold' }, { value: '', label: 'All statuses' }, { value: 'active', label: 'Active' }, { value: 'on-hold', label: 'On hold' }, { value: 'closed', label: 'Closed' }, { value: 'cancelled', label: 'Cancelled' }]} />
-            <Select id="proj-pm" value={pm} onChange={(e) => setPm(e.target.value)} options={[{ value: '', label: 'All PMs' }, ...pms.map((p) => ({ value: p.id, label: p.name }))]} />
+            <Select id="proj-program" aria-label="Program" value={program} onChange={(e) => setProgram(e.target.value)} options={[{ value: '', label: 'All programs' }, ...s.programs.map((p) => ({ value: p.id, label: `${p.code} · ${p.name}` }))]} />
+            <Select id="proj-phase" aria-label="Phase" value={phase} onChange={(e) => setPhase(e.target.value)} options={[{ value: '', label: 'All phases' }, ...PHASES.map((p, i) => ({ value: String(i), label: p }))]} />
+            <Select id="proj-status" aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} options={[{ value: 'open', label: 'Active & on hold' }, { value: '', label: 'All statuses' }, { value: 'active', label: 'Active' }, { value: 'on-hold', label: 'On hold' }, { value: 'closed', label: 'Closed' }, { value: 'cancelled', label: 'Cancelled' }]} />
+            <Select id="proj-pm" aria-label="Project manager" value={pm} onChange={(e) => setPm(e.target.value)} options={[{ value: '', label: 'All PMs' }, ...pms.map((p) => ({ value: p.id, label: p.name }))]} />
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
             <span><b className="tabular-nums text-ink">{rows.length}</b> projects</span>

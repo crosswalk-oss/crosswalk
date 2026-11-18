@@ -1056,7 +1056,7 @@ export interface Settings {
   estimating: EstimatingConfig
   factorModel: FactorModelSettings
   workflow: { reminderDays: number; escalateAfterDays: number } // reminder before/at due; escalate to the assignee's manager this many days overdue
-  features: { fieldTailboard: boolean; portfolioPlanning: boolean; opQual: boolean } // phase-2 modules, off for the pilot
+  features: { fieldTailboard: boolean; opQual: boolean } // phase-2 modules, off for the pilot
   /** Capital allocation: benefit weights, scoring scale, capital available and per-project decisions. */
   allocation?: AllocationSettings
   /** Where approved deliverable records are filed (OpenText or similar). */
